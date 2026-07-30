@@ -168,19 +168,19 @@ function hideTooltip() {
 
 function renderStatRow(data) {
   const tiles = [
-    ["🔥", data.streak_days, "Day streak"],
-    ["💎", data.gems, "Gems"],
-    ["❤️", data.hearts, "Hearts"],
-    ["⭐", data.xp, "XP"],
-    ["🏅", data.level, "Level"],
+    ["🔥", data.streak_days, "Day streak", "fire"],
+    ["💎", data.gems, "Gems", "gem"],
+    ["❤️", data.hearts, "Hearts", "heart"],
+    ["⭐", data.xp, "XP", "xp"],
+    ["🏅", data.level, "Level", "level"],
   ];
   const row = $("#dash-stat-row");
   row.innerHTML = "";
-  for (const [icon, value, label] of tiles) {
+  for (const [icon, value, label, tone] of tiles) {
     const tile = document.createElement("div");
     tile.className = "stat-tile";
     const iconEl = document.createElement("div");
-    iconEl.className = "stat-icon";
+    iconEl.className = `stat-icon stat-icon-${tone}`;
     iconEl.textContent = icon;
     const valueEl = document.createElement("span");
     valueEl.className = "stat-value";
@@ -338,27 +338,44 @@ async function loadDashboard() {
 }
 
 function renderMascot(data) {
-  const emoji = $("#mascot-emoji");
+  const card = $("#mascot-card");
+  const badge = $("#mascot-badge");
   const message = $("#mascot-message");
+  card.classList.remove("mood-sad", "mood-cool", "mood-fire", "mood-curious", "mood-happy");
   if (data.hearts === 0) {
-    emoji.textContent = "😟";
+    card.classList.add("mood-sad");
+    badge.textContent = "💔";
     message.textContent = "Out of hearts! Refill them in the gem shop or wait for tomorrow.";
   } else if (data.streak_freezes > 0) {
-    emoji.textContent = "🦉";
+    card.classList.add("mood-cool");
+    badge.textContent = "🧊";
     message.textContent = `${data.streak_freezes} streak freeze${data.streak_freezes === 1 ? "" : "s"} banked — your streak is protected if you miss a day.`;
   } else if (data.streak_days >= 7) {
-    emoji.textContent = "🤩";
+    card.classList.add("mood-fire");
+    badge.textContent = "🔥";
     message.textContent = `${data.streak_days}-day streak! You're on fire — keep it going.`;
   } else if (data.due_reviews > 0) {
-    emoji.textContent = "🧐";
+    card.classList.add("mood-curious");
+    badge.textContent = "🧐";
     message.textContent = `${data.due_reviews} word${data.due_reviews === 1 ? "" : "s"} ready for review in your next lesson.`;
   } else if (data.streak_days > 0) {
-    emoji.textContent = "😊";
+    card.classList.add("mood-happy");
+    badge.textContent = "😊";
     message.textContent = `${data.streak_days} day streak — nice work, don't break it!`;
   } else {
-    emoji.textContent = "🦉";
+    badge.textContent = "👋";
     message.textContent = "Ready for your first lesson today?";
   }
+}
+
+const AVATAR_PALETTE = ["#1cb0f6", "#58cc02", "#ff9600", "#ce82ff", "#ff4b4b", "#ffc800"];
+function avatarColor(name) {
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+function initials(name) {
+  return (name || "?").trim().slice(0, 2).toUpperCase();
 }
 
 function renderLeaderboard(data) {
@@ -380,6 +397,11 @@ function renderLeaderboard(data) {
     rank.className = "leaderboard-rank";
     rank.textContent = medals[entry.rank] || `#${entry.rank}`;
 
+    const avatar = document.createElement("span");
+    avatar.className = "leaderboard-avatar";
+    avatar.style.background = avatarColor(entry.display_name);
+    avatar.textContent = initials(entry.display_name);
+
     const name = document.createElement("span");
     name.className = "leaderboard-name";
     name.textContent = entry.is_you ? `${entry.display_name} (you)` : entry.display_name;
@@ -388,13 +410,13 @@ function renderLeaderboard(data) {
     xp.className = "leaderboard-xp";
     xp.textContent = `${entry.weekly_xp} XP`;
 
-    row.append(rank, name, xp);
+    row.append(rank, avatar, name, xp);
     el.appendChild(row);
   }
   if (data.your_rank && data.your_rank > data.leaderboard.length) {
     const you = document.createElement("div");
     you.className = "leaderboard-row is-you";
-    you.innerHTML = `<span class="leaderboard-rank">#${data.your_rank}</span><span class="leaderboard-name">You</span><span class="leaderboard-xp">${data.your_weekly_xp} XP</span>`;
+    you.innerHTML = `<span class="leaderboard-rank">#${data.your_rank}</span><span class="leaderboard-avatar" style="background:${avatarColor("You")}">${initials("You")}</span><span class="leaderboard-name">You</span><span class="leaderboard-xp">${data.your_weekly_xp} XP</span>`;
     el.appendChild(you);
   }
 }
@@ -798,7 +820,8 @@ async function finishLesson() {
     : result.mastered
       ? "Unit mastered!"
       : "Keep practicing this unit to master it.";
-  $("#complete-mascot-emoji").textContent = result.leveled_up ? "🤩" : "🦉";
+  $("#complete-mascot").classList.toggle("mood-fire", !!result.leveled_up);
+  $("#complete-mascot-badge").textContent = result.leveled_up ? "🎉" : "⭐";
   showScreen("#screen-complete");
 }
 

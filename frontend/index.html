@@ -106,8 +106,27 @@
         <div id="tab-progress" class="tab-panel hidden">
           <div class="dashboard">
 
-            <div class="card mascot-card">
-              <div id="mascot-emoji" class="mascot-emoji">🦉</div>
+            <div class="card mascot-card" id="mascot-card">
+              <div class="mascot-avatar">
+                <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+                  <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
+                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
+                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
+                  <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
+                  <circle cx="44" cy="60" r="16" fill="#fff" />
+                  <circle cx="76" cy="60" r="16" fill="#fff" />
+                  <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+                  <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+                  <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
+                  <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
+                  <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
+                  <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
+                  <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
+                  <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
+                  <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+                </svg>
+                <span id="mascot-badge" class="mascot-badge"></span>
+              </div>
               <div class="mascot-bubble">
                 <p id="mascot-message" class="mascot-message">Loading your progress…</p>
               </div>
@@ -141,13 +160,13 @@
               <p class="subtitle">Earn gems by finishing lessons. Spend them here — no real money, ever.</p>
               <div class="shop-grid">
                 <div class="shop-item">
-                  <div class="shop-item-icon">🧊</div>
+                  <div class="shop-item-icon" style="background: rgba(28,176,246,0.14)">🧊</div>
                   <div class="shop-item-name">Streak Freeze</div>
                   <p class="shop-item-desc">Auto-protects your streak the next time you miss a day.</p>
                   <button id="buy-streak-freeze" class="btn btn-shop">200 💎</button>
                 </div>
                 <div class="shop-item">
-                  <div class="shop-item-icon">❤️</div>
+                  <div class="shop-item-icon" style="background: rgba(255,75,75,0.14)">❤️</div>
                   <div class="shop-item-name">Refill Hearts</div>
                   <p class="shop-item-desc">Instantly restore all 5 hearts.</p>
                   <button id="buy-heart-refill" class="btn btn-shop">100 💎</button>
@@ -158,6 +177,14 @@
             <div class="card">
               <h2 class="card-title">Last 14 days</h2>
               <div id="dash-activity" class="activity-strip"></div>
+              <div class="activity-legend">
+                <span>Less</span>
+                <span class="legend-cell" style="background: var(--gray-border)"></span>
+                <span class="legend-cell" style="background: var(--seq-300)"></span>
+                <span class="legend-cell" style="background: var(--seq-500)"></span>
+                <span class="legend-cell" style="background: var(--seq-700)"></span>
+                <span>More</span>
+              </div>
             </div>
 
             <div class="card">
@@ -194,7 +221,26 @@
     <!-- Lesson complete -->
     <section id="screen-complete" class="screen hidden overlay">
       <div class="card complete-card">
-        <div id="complete-mascot-emoji" class="complete-mascot">🦉</div>
+        <div class="complete-mascot" id="complete-mascot">
+          <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+            <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
+            <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
+            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
+            <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
+            <circle cx="44" cy="60" r="16" fill="#fff" />
+            <circle cx="76" cy="60" r="16" fill="#fff" />
+            <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+            <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+            <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
+            <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
+            <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
+            <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
+            <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
+            <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
+            <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+          </svg>
+          <span id="complete-mascot-badge" class="mascot-badge"></span>
+        </div>
         <h2 id="complete-title">Lesson complete! 🎉</h2>
         <div class="complete-rewards">
           <span class="reward-pill">⭐ <b id="complete-xp-pill">0</b> XP</span>
