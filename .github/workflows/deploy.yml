@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FLY_APP: lingua-ai-coach
+  FLY_APP: language-ai-x90j9w
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:

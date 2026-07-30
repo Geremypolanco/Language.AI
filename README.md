@@ -71,7 +71,7 @@ Create a dedicated OAuth client for this app:
 2. Under **Authorized redirect URIs**, add:
 
    ```
-   https://lingua-ai-coach.fly.dev/auth/google/callback
+   https://language-ai-x90j9w.fly.dev/auth/google/callback
    ```
 
    That's the exact value to register — it comes from the domain in
@@ -158,7 +158,7 @@ with dev data.
 
 Lingua deploys to its own Fly.io app/domain:
 
-- `fly.toml` declares app `lingua-ai-coach` → **`lingua-ai-coach.fly.dev`**.
+- `fly.toml` declares app `language-ai-x90j9w` → **`language-ai-x90j9w.fly.dev`**.
 - `Dockerfile` is a standalone image built from this repo.
 - `.github/workflows/deploy.yml` deploys on every push to `main`, gated on
   `.github/workflows/ci.yml` passing first, using the `FLY_API_TOKEN` repo secret.
@@ -166,10 +166,9 @@ Lingua deploys to its own Fly.io app/domain:
 To ship it the first time:
 
 ```bash
-fly apps create lingua-ai-coach   # or pick another name — see fly.toml's header comment
-fly volumes create lingua_data --size 1 --region ord --app lingua-ai-coach
-fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... LINGUA_SESSION_SECRET=... HF_TOKEN=... --app lingua-ai-coach
-fly deploy --app lingua-ai-coach --remote-only
+fly volumes create lingua_data --size 1 --region ord --app language-ai-x90j9w
+fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... LINGUA_SESSION_SECRET=... HF_TOKEN=... --app language-ai-x90j9w
+fly deploy --app language-ai-x90j9w --remote-only
 ```
 
 If you rename the Fly app or bring your own domain, update **both**
