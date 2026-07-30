@@ -1,6 +1,14 @@
 // Lingua frontend — vanilla JS, no build step (mirrors the rest of this repo's
 // static-HTML deployment style, but as a fully independent app).
 
+// Custom SVG icons (defined in index.html's sprite) instead of emoji — emoji
+// render inconsistently across OS/browser and read as an unfinished shortcut
+// rather than a designed product.
+function iconSvg(name, extraClass = "") {
+  const cls = `icon ${extraClass}`.trim();
+  return `<svg class="${cls}"><use href="#icon-${name}"/></svg>`;
+}
+
 // Any language the tutor chat model knows works for exercises/conversation —
 // this list is what's offered in the picker, not a hard backend restriction.
 // Keep in sync with backend/hf_client.py's _MMS_LANG_CODES for TTS voice
@@ -338,11 +346,11 @@ function animateCountUp(el, target) {
 
 function renderStatRow(data) {
   const tiles = [
-    ["🔥", data.streak_days, "Racha", "fire"],
-    ["💎", data.gems, "Gemas", "gem"],
-    ["❤️", data.hearts, "Vidas", "heart"],
-    ["⭐", data.xp, "XP", "xp"],
-    ["🏅", data.level, "Nivel", "level"],
+    ["flame", data.streak_days, "Racha", "fire"],
+    ["gem", data.gems, "Gemas", "gem"],
+    ["heart", data.hearts, "Vidas", "heart"],
+    ["star", data.xp, "XP", "xp"],
+    ["medal", data.level, "Nivel", "level"],
   ];
   const row = $("#dash-stat-row");
   row.innerHTML = "";
@@ -351,7 +359,7 @@ function renderStatRow(data) {
     tile.className = "stat-tile";
     const iconEl = document.createElement("div");
     iconEl.className = `stat-icon stat-icon-${tone}`;
-    iconEl.textContent = icon;
+    iconEl.innerHTML = iconSvg(icon);
     const valueEl = document.createElement("span");
     valueEl.className = "stat-value";
     const labelEl = document.createElement("span");
@@ -560,27 +568,27 @@ function renderMascot(data) {
   card.classList.remove("mood-sad", "mood-cool", "mood-fire", "mood-curious", "mood-happy");
   if (data.hearts === 0) {
     card.classList.add("mood-sad");
-    badge.textContent = "💔";
+    badge.innerHTML = iconSvg("heart-broken");
     message.textContent = "¡Sin vidas! Recárgalas en la tienda de gemas o espera hasta mañana.";
   } else if (data.streak_freezes > 0) {
     card.classList.add("mood-cool");
-    badge.textContent = "🧊";
+    badge.innerHTML = iconSvg("snowflake");
     const freezeWord = data.streak_freezes === 1 ? "congelación de racha guardada" : "congelaciones de racha guardadas";
     message.textContent = `${data.streak_freezes} ${freezeWord} — tu racha está protegida si faltas un día.`;
   } else if (data.streak_days >= 7) {
     card.classList.add("mood-fire");
-    badge.textContent = "🔥";
+    badge.innerHTML = iconSvg("flame");
     message.textContent = `¡Racha de ${data.streak_days} días! Estás que ardes — sigue así.`;
   } else if (data.due_reviews > 0) {
     card.classList.add("mood-curious");
-    badge.textContent = "🧐";
+    badge.innerHTML = iconSvg("book");
     message.textContent = `${data.due_reviews} palabra${data.due_reviews === 1 ? "" : "s"} lista${data.due_reviews === 1 ? "" : "s"} para repasar en tu próxima lección.`;
   } else if (data.streak_days > 0) {
     card.classList.add("mood-happy");
-    badge.textContent = "😊";
+    badge.innerHTML = iconSvg("sparkle");
     message.textContent = `Racha de ${data.streak_days} ${diaWord(data.streak_days)} — ¡buen trabajo, no la rompas!`;
   } else {
-    badge.textContent = "👋";
+    badge.innerHTML = iconSvg("wave");
     message.textContent = "¿Listo para tu primera lección de hoy?";
   }
 }
@@ -605,14 +613,19 @@ function renderLeaderboard(data) {
     el.appendChild(empty);
     return;
   }
-  const medals = { 1: "🥇", 2: "🥈", 3: "🥉" };
+  const medalTone = { 1: "gold", 2: "silver", 3: "bronze" };
   for (const entry of data.leaderboard) {
     const row = document.createElement("div");
     row.className = "leaderboard-row" + (entry.is_you ? " is-you" : "");
 
     const rank = document.createElement("span");
-    rank.className = "leaderboard-rank";
-    rank.textContent = medals[entry.rank] || `#${entry.rank}`;
+    const tone = medalTone[entry.rank];
+    rank.className = "leaderboard-rank" + (tone ? ` medal-${tone}` : "");
+    if (tone) {
+      rank.innerHTML = iconSvg("medal");
+    } else {
+      rank.textContent = `#${entry.rank}`;
+    }
 
     const avatar = document.createElement("span");
     avatar.className = "leaderboard-avatar";
@@ -638,9 +651,9 @@ function renderLeaderboard(data) {
   }
 }
 
-function showToast(text) {
+function showToast(text, icon) {
   const toast = $("#toast");
-  toast.textContent = text;
+  toast.innerHTML = icon ? `${iconSvg(icon)} ${text}` : text;
   toast.classList.remove("hidden");
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => toast.classList.add("hidden"), 2600);
@@ -655,7 +668,7 @@ function setupShop(data) {
   freezeBtn.onclick = async () => {
     try {
       await api(`/api/shop/${state.userId}/streak-freeze`, { method: "POST" });
-      showToast("🧊 ¡Congelación de racha comprada!");
+      showToast("¡Congelación de racha comprada!", "snowflake");
       await loadDashboard();
     } catch (err) {
       showToast(err.message);
@@ -664,7 +677,7 @@ function setupShop(data) {
   heartBtn.onclick = async () => {
     try {
       await api(`/api/shop/${state.userId}/heart-refill`, { method: "POST" });
-      showToast("❤️ ¡Vidas rellenadas!");
+      showToast("¡Vidas rellenadas!", "heart");
       await loadDashboard();
     } catch (err) {
       showToast(err.message);
@@ -783,7 +796,7 @@ async function recordAnswer(exercise, correct) {
   }
 }
 
-const PRAISE = ["¡Correcto! 🎉", "¡Muy bien! ✨", "¡Gran trabajo! 👏", "¡Lo lograste! 🙌", "¡Exactamente! 💪"];
+const PRAISE = ["¡Correcto!", "¡Muy bien!", "¡Gran trabajo!", "¡Lo lograste!", "¡Exactamente!"];
 const MISS_LEADIN = ["No es correcto.", "Cerca, pero no es correcto.", "¡Casi!"];
 
 function showFeedback(container, correct, extra, customMessage) {
@@ -889,7 +902,7 @@ function renderMultipleChoice(ex, container) {
 function renderListenType(ex, container, targetLang) {
   const btn = document.createElement("button");
   btn.className = "audio-btn";
-  btn.textContent = "🔊";
+  btn.innerHTML = iconSvg("volume");
   btn.addEventListener("click", () => playAudio(ex.audio_text || ex.target_text, targetLang));
   container.appendChild(btn);
   playAudio(ex.audio_text || ex.target_text, targetLang);
@@ -941,14 +954,14 @@ function renderSpeakRepeat(ex, container, targetLang) {
 
   const playBtn = document.createElement("button");
   playBtn.className = "audio-btn";
-  playBtn.textContent = "🔊";
+  playBtn.innerHTML = iconSvg("volume");
   playBtn.addEventListener("click", () => playAudio(ex.audio_text || ex.target_text, targetLang));
   container.appendChild(playBtn);
   playAudio(ex.audio_text || ex.target_text, targetLang);
 
   const recordBtn = document.createElement("button");
   recordBtn.className = "btn btn-primary";
-  recordBtn.textContent = "🎙️ Mantén presionado y repite";
+  recordBtn.innerHTML = `${iconSvg("mic")} Mantén presionado y repite`;
   container.appendChild(recordBtn);
 
   const heard = document.createElement("div");
@@ -970,7 +983,7 @@ function renderSpeakRepeat(ex, container, targetLang) {
   const stop = async () => {
     if (!recorder || recorder.state === "inactive") return;
     recorder.stop();
-    recordBtn.textContent = "🎙️ Mantén presionado y repite";
+    recordBtn.innerHTML = `${iconSvg("mic")} Mantén presionado y repite`;
     await new Promise((resolve) => (recorder.onstop = resolve));
     const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
     const res = await fetch("/api/content/stt", {
@@ -1060,16 +1073,16 @@ async function finishLesson() {
   });
   $("#complete-xp-pill").textContent = result.xp_gained;
   $("#complete-gems-pill").textContent = result.gems_gained;
-  $("#complete-streak").textContent = result.streak_freeze_used
-    ? `🧊 Congelación de racha usada — ¡tu racha de ${result.streak_days} ${diaWord(result.streak_days)} está a salvo!`
-    : `🔥 Racha de ${result.streak_days} ${diaWord(result.streak_days)}`;
-  $("#complete-level").textContent = result.leveled_up
-    ? `🎊 ¡Subiste de nivel! Ahora estás en ${result.leveled_up}.`
+  $("#complete-streak").innerHTML = result.streak_freeze_used
+    ? `${iconSvg("snowflake")} Congelación de racha usada — ¡tu racha de ${result.streak_days} ${diaWord(result.streak_days)} está a salvo!`
+    : `${iconSvg("flame")} Racha de ${result.streak_days} ${diaWord(result.streak_days)}`;
+  $("#complete-level").innerHTML = result.leveled_up
+    ? `${iconSvg("sparkle")} ¡Subiste de nivel! Ahora estás en ${result.leveled_up}.`
     : result.mastered
       ? "¡Unidad dominada!"
       : "Sigue practicando esta unidad para dominarla.";
   $("#complete-mascot").classList.toggle("mood-fire", !!result.leveled_up);
-  $("#complete-mascot-badge").textContent = result.leveled_up ? "🎉" : "⭐";
+  $("#complete-mascot-badge").innerHTML = iconSvg(result.leveled_up ? "sparkle" : "star");
   showScreen("#screen-complete");
 }
 
@@ -1150,7 +1163,7 @@ function setupMic() {
     state.mediaRecorder.ondataavailable = (ev) => state.audioChunks.push(ev.data);
     state.mediaRecorder.start();
     micBtn.classList.add("recording");
-    micBtn.textContent = "🔴 Escuchando…";
+    micBtn.textContent = "Escuchando…";
     avatar.classList.add("listening");
   };
 
@@ -1158,7 +1171,7 @@ function setupMic() {
     if (!state.mediaRecorder || state.mediaRecorder.state === "inactive") return;
     state.mediaRecorder.stop();
     micBtn.classList.remove("recording");
-    micBtn.textContent = "🎙️ Mantén presionado para hablar";
+    micBtn.innerHTML = `${iconSvg("mic")} Mantén presionado para hablar`;
     avatar.classList.remove("listening");
     await new Promise((resolve) => (state.mediaRecorder.onstop = resolve));
     stream.getTracks().forEach((t) => t.stop());

@@ -10,12 +10,90 @@
 <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="icon-brand" viewBox="0 0 24 24">
+        <path d="M12 3C7.03 3 3 6.58 3 11c0 2.49 1.28 4.72 3.3 6.2-.12.98-.5 2.18-1.42 3.4a.6.6 0 0 0 .58.94c1.98-.36 3.5-1.14 4.55-1.84A11.6 11.6 0 0 0 12 19c4.97 0 9-3.58 9-8s-4.03-8-9-8z" fill="currentColor"/>
+        <circle cx="8.3" cy="11" r="1.15" fill="#fff"/>
+        <circle cx="12" cy="11" r="1.15" fill="#fff"/>
+        <circle cx="15.7" cy="11" r="1.15" fill="#fff"/>
+      </symbol>
+      <symbol id="icon-flame" viewBox="0 0 24 24">
+        <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-gem" viewBox="0 0 24 24">
+        <path d="M6 3h12l4 6-10 12L2 9Z" fill="currentColor"/>
+        <path d="M11 3 8 9l4 12 4-12-3-6M2 9h20" stroke="rgba(255,255,255,0.55)" stroke-width="1" fill="none" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-heart" viewBox="0 0 24 24">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-heart-broken" viewBox="0 0 24 24">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="currentColor" opacity="0.35"/>
+        <path d="M13 6l-2.2 4.2 2.6 2L11 16.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-star" viewBox="0 0 24 24">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-medal" viewBox="0 0 24 24">
+        <path d="M7 3h10l-2.2 6.2L17 12l-5 9-5-9 2.2-2.8L7 3Z" fill="currentColor" opacity="0.85"/>
+        <circle cx="12" cy="14" r="6" fill="currentColor"/>
+        <circle cx="12" cy="14" r="3.4" fill="rgba(255,255,255,0.5)"/>
+      </symbol>
+      <symbol id="icon-trophy" viewBox="0 0 24 24">
+        <path d="M7 4h10v4a5 5 0 0 1-10 0V4Z" fill="currentColor"/>
+        <path d="M7 5H4a3 3 0 0 0 3 5M17 5h3a3 3 0 0 1-3 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <path d="M10 13.5v2.5h4v-2.5M9 20h6M12 16v4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <rect x="4" y="11" width="16" height="10" rx="2" fill="currentColor"/>
+        <path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11" stroke="currentColor" stroke-width="2" fill="none"/>
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-mic" viewBox="0 0 24 24">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="currentColor"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-volume" viewBox="0 0 24 24">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>
+        <path d="M16 8.5a4.5 4.5 0 0 1 0 7M19 5.5a9 9 0 0 1 0 13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-power" viewBox="0 0 24 24">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M12 2v10" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-snowflake" viewBox="0 0 24 24">
+        <path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11M8 4l4 3 4-3M8 20l4-3 4 3M2.5 9.5l4.5 1.5-1 4.5M21.5 9.5l-4.5 1.5 1 4.5M2.5 14.5l4.5-1.5-1-4.5M21.5 14.5l-4.5-1.5 1-4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-book" viewBox="0 0 24 24">
+        <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H12v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z" fill="currentColor" opacity="0.85"/>
+        <path d="M20 4.5A2.5 2.5 0 0 0 17.5 2H12v20h5.5a2.5 2.5 0 0 0 2.5-2.5v-15Z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-wave" viewBox="0 0 24 24">
+        <path d="M8 12.5V6a1.5 1.5 0 0 1 3 0v5M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11.5V6a1.5 1.5 0 0 1 3 0v7M17 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a7 7 0 0 1-6.1-3.6L4 14.5c-.6-1 .1-2 1.2-2 .5 0 1 .2 1.3.6L8 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-sparkle" viewBox="0 0 24 24">
+        <path d="M12 2c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6Z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15"/>
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+        <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <div id="app">
 
     <!-- Sign in -->
     <section id="screen-login" class="screen">
       <div class="card onboarding-card">
-        <h1>🗣️ Lingua</h1>
+        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
         <p class="subtitle">De principiante a nativo — lecciones personalizadas, conversaciones reales.</p>
         <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
           <span class="g-icon">G</span> Iniciar sesión con Google
@@ -34,7 +112,7 @@
     <!-- Onboarding -->
     <section id="screen-onboarding" class="screen hidden">
       <div class="card onboarding-card" id="onboarding-step-profile">
-        <h1>🗣️ Lingua</h1>
+        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
         <p class="subtitle">Cuéntanos tus objetivos — esto personaliza cada lección.</p>
         <form id="onboarding-form">
           <label>Tu nombre
@@ -67,21 +145,32 @@
       <div class="card onboarding-card hidden" id="onboarding-step-result">
         <div class="complete-mascot" id="placement-result-mascot">
           <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
-            <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
-            <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
-            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
-            <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
-            <circle cx="44" cy="60" r="16" fill="#fff" />
-            <circle cx="76" cy="60" r="16" fill="#fff" />
-            <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-            <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-            <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
-            <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
-            <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
-            <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
-            <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
-            <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
-            <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+            <defs>
+              <radialGradient id="owlGrad1" cx="35%" cy="28%" r="80%">
+                <stop offset="0%" stop-color="#5cc9f9"/>
+                <stop offset="100%" stop-color="#0e88c2"/>
+              </radialGradient>
+            </defs>
+            <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad1)" />
+            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
+            <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
+            <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+            <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+            <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+            <circle cx="44" cy="60" r="16.5" fill="#fff" />
+            <circle cx="76" cy="60" r="16.5" fill="#fff" />
+            <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+            <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+            <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+            <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+            <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
+            <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
+            <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
+            <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
+            <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
+            <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
+            <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
+            <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
           </svg>
         </div>
         <h2>¡Estás en el nivel <span id="placement-result-level">A2</span>!</h2>
@@ -93,19 +182,19 @@
     <!-- Main app -->
     <section id="screen-main" class="screen hidden">
       <header class="topbar">
-        <div class="brand">🗣️ Lingua</div>
+        <div class="brand"><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</div>
         <div class="stats">
-          <span title="Racha">🔥 <b id="stat-streak">0</b></span>
-          <span title="Gemas">💎 <b id="stat-gems">0</b></span>
-          <span title="Vidas">❤️ <b id="stat-hearts">5</b></span>
-          <span title="XP">⭐ <b id="stat-xp">0</b></span>
+          <span title="Racha"><svg class="icon" style="color: var(--orange)"><use href="#icon-flame"/></svg> <b id="stat-streak">0</b></span>
+          <span title="Gemas"><svg class="icon" style="color: var(--blue)"><use href="#icon-gem"/></svg> <b id="stat-gems">0</b></span>
+          <span title="Vidas"><svg class="icon" style="color: var(--danger)"><use href="#icon-heart"/></svg> <b id="stat-hearts">5</b></span>
+          <span title="XP"><svg class="icon" style="color: var(--gold-dark)"><use href="#icon-star"/></svg> <b id="stat-xp">0</b></span>
           <span title="Nivel" id="stat-level">A1</span>
         </div>
         <nav class="tabs">
           <button class="tab-btn active" data-tab="path">Camino</button>
           <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
           <button class="tab-btn" data-tab="progress">Progreso</button>
-          <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión">⏻</button>
+          <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
         </nav>
       </header>
 
@@ -117,12 +206,41 @@
         <div id="tab-talk" class="tab-panel hidden">
           <div class="call-frame">
             <div class="avatar-tile">
-              <div id="avatar" class="avatar">🧑‍🏫</div>
+              <div id="avatar" class="avatar">
+                <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="owlGrad0" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#5cc9f9"/>
+                      <stop offset="100%" stop-color="#0e88c2"/>
+                    </radialGradient>
+                  </defs>
+                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad0)"/>
+                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c"/>
+                  <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff"/>
+                  <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7"/>
+                  <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55"/>
+                  <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55"/>
+                  <circle cx="44" cy="60" r="16.5" fill="#fff"/>
+                  <circle cx="76" cy="60" r="16.5" fill="#fff"/>
+                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2"/>
+                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2"/>
+                  <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                  <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c"/>
+                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c"/>
+                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff"/>
+                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff"/>
+                  <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727"/>
+                  <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+                  <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)"/>
+                  <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)"/>
+                </svg>
+              </div>
               <div id="call-status" class="call-status">Conectando…</div>
             </div>
             <div id="transcript" class="transcript"></div>
             <div class="call-controls">
-              <button id="mic-btn" class="mic-btn">🎙️ Mantén presionado para hablar</button>
+              <button id="mic-btn" class="mic-btn"><svg class="icon"><use href="#icon-mic"/></svg> Mantén presionado para hablar</button>
               <form id="text-fallback-form" class="text-fallback">
                 <input type="text" id="text-fallback-input" placeholder="…o escribe en su lugar" />
                 <button type="submit">Enviar</button>
@@ -137,21 +255,32 @@
             <div class="card mascot-card" id="mascot-card">
               <div class="mascot-avatar">
                 <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
-                  <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
-                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
-                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
-                  <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
-                  <circle cx="44" cy="60" r="16" fill="#fff" />
-                  <circle cx="76" cy="60" r="16" fill="#fff" />
-                  <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-                  <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-                  <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
-                  <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
-                  <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
-                  <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
-                  <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
-                  <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
-                  <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+                  <defs>
+                    <radialGradient id="owlGrad3" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#5cc9f9"/>
+                      <stop offset="100%" stop-color="#0e88c2"/>
+                    </radialGradient>
+                  </defs>
+                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad3)" />
+                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
+                  <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
+                  <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+                  <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+                  <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+                  <circle cx="44" cy="60" r="16.5" fill="#fff" />
+                  <circle cx="76" cy="60" r="16.5" fill="#fff" />
+                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+                  <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+                  <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
+                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
+                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
+                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
+                  <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
+                  <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
+                  <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
+                  <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
                 </svg>
                 <span id="mascot-badge" class="mascot-badge"></span>
               </div>
@@ -164,7 +293,7 @@
 
             <div class="card league-card">
               <div class="card-title-row">
-                <h2 class="card-title">🏆 Liga semanal</h2>
+                <h2 class="card-title"><svg class="icon"><use href="#icon-trophy"/></svg> Liga semanal</h2>
                 <span class="subtitle" id="league-reset-note">Se reinicia el lunes</span>
               </div>
               <div id="dash-leaderboard" class="leaderboard-list"></div>
@@ -176,7 +305,7 @@
             </div>
 
             <div id="dash-due-card" class="card due-card hidden">
-              <span class="due-icon">⏰</span>
+              <span class="due-icon"><svg class="icon"><use href="#icon-clock"/></svg></span>
               <div>
                 <div class="due-headline" id="dash-due-headline"></div>
                 <p class="subtitle">Estas palabras volverán a aparecer en tu próxima lección.</p>
@@ -184,20 +313,20 @@
             </div>
 
             <div class="card">
-              <h2 class="card-title">💎 Tienda de gemas</h2>
+              <h2 class="card-title"><svg class="icon"><use href="#icon-gem"/></svg> Tienda de gemas</h2>
               <p class="subtitle">Gana gemas terminando lecciones. Gástalas aquí — nunca con dinero real.</p>
               <div class="shop-grid">
                 <div class="shop-item">
-                  <div class="shop-item-icon" style="background: rgba(28,176,246,0.14)">🧊</div>
+                  <div class="shop-item-icon" style="background: rgba(28,176,246,0.14)"><svg class="icon"><use href="#icon-snowflake"/></svg></div>
                   <div class="shop-item-name">Congelar racha</div>
                   <p class="shop-item-desc">Protege tu racha automáticamente la próxima vez que faltes un día.</p>
-                  <button id="buy-streak-freeze" class="btn btn-shop">200 💎</button>
+                  <button id="buy-streak-freeze" class="btn btn-shop">200 <svg class="icon"><use href="#icon-gem"/></svg></button>
                 </div>
                 <div class="shop-item">
-                  <div class="shop-item-icon" style="background: rgba(255,75,75,0.14)">❤️</div>
+                  <div class="shop-item-icon" style="background: rgba(255,75,75,0.14)"><svg class="icon"><use href="#icon-heart"/></svg></div>
                   <div class="shop-item-name">Rellenar vidas</div>
                   <p class="shop-item-desc">Restaura al instante tus 5 vidas.</p>
-                  <button id="buy-heart-refill" class="btn btn-shop">100 💎</button>
+                  <button id="buy-heart-refill" class="btn btn-shop">100 <svg class="icon"><use href="#icon-gem"/></svg></button>
                 </div>
               </div>
             </div>
@@ -229,9 +358,9 @@
     <section id="screen-lesson" class="screen hidden overlay">
       <div class="lesson-frame">
         <div class="lesson-header">
-          <button id="lesson-exit" class="btn-icon">✕</button>
+          <button id="lesson-exit" class="btn-icon"><svg class="icon"><use href="#icon-x"/></svg></button>
           <div id="lesson-progress" class="lesson-progress"><div id="lesson-progress-bar"></div></div>
-          <div id="lesson-hearts">❤️ <span id="lesson-hearts-count">5</span></div>
+          <div id="lesson-hearts"><svg class="icon"><use href="#icon-heart"/></svg> <span id="lesson-hearts-count">5</span></div>
         </div>
         <div id="exercise-container" class="exercise-container"></div>
       </div>
@@ -242,28 +371,39 @@
       <div class="card complete-card">
         <div class="complete-mascot" id="complete-mascot">
           <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
-            <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
-            <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
-            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
-            <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
-            <circle cx="44" cy="60" r="16" fill="#fff" />
-            <circle cx="76" cy="60" r="16" fill="#fff" />
-            <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-            <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
-            <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
-            <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
-            <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
-            <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
-            <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
-            <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
-            <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+            <defs>
+              <radialGradient id="owlGrad2" cx="35%" cy="28%" r="80%">
+                <stop offset="0%" stop-color="#5cc9f9"/>
+                <stop offset="100%" stop-color="#0e88c2"/>
+              </radialGradient>
+            </defs>
+            <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad2)" />
+            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
+            <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
+            <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+            <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+            <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
+            <circle cx="44" cy="60" r="16.5" fill="#fff" />
+            <circle cx="76" cy="60" r="16.5" fill="#fff" />
+            <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+            <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
+            <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+            <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
+            <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
+            <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
+            <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
+            <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
+            <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
+            <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
+            <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
+            <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
           </svg>
           <span id="complete-mascot-badge" class="mascot-badge"></span>
         </div>
-        <h2 id="complete-title">¡Lección completada! 🎉</h2>
+        <h2 id="complete-title">¡Lección completada! <svg class="icon"><use href="#icon-sparkle"/></svg></h2>
         <div class="complete-rewards">
-          <span class="reward-pill">⭐ <b id="complete-xp-pill">0</b> XP</span>
-          <span class="reward-pill">💎 <b id="complete-gems-pill">0</b> gemas</span>
+          <span class="reward-pill"><svg class="icon"><use href="#icon-star"/></svg> <b id="complete-xp-pill">0</b> XP</span>
+          <span class="reward-pill"><svg class="icon"><use href="#icon-gem"/></svg> <b id="complete-gems-pill">0</b> gemas</span>
         </div>
         <p id="complete-streak"></p>
         <p id="complete-level"></p>
