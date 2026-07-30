@@ -167,6 +167,36 @@ def test_dashboard_requires_ownership():
         assert res.status_code == 403
 
 
+def test_dashboard_includes_gems_and_leaderboard():
+    with TestClient(app) as client:
+        user = _onboard(client, email="gems@example.com")
+        user_id = user["id"]
+        path = client.get(f"/api/lessons/{user_id}/path").json()
+        first_unit_id = next(u["id"] for u in path if u["level"] == "A1")
+        client.post(f"/api/lessons/{user_id}/complete", json={"unit_id": first_unit_id, "score": 1.0})
+
+        data = client.get(f"/api/progress/{user_id}/dashboard").json()
+        assert data["gems"] == 10
+        assert data["streak_freezes"] == 0
+        assert data["your_rank"] == 1
+        assert data["your_weekly_xp"] == 30
+        assert data["leaderboard"][0]["is_you"] is True
+
+
+def test_shop_buy_streak_freeze_requires_enough_gems():
+    with TestClient(app) as client:
+        user = _onboard(client, email="shop1@example.com")
+        res = client.post(f"/api/shop/{user['id']}/streak-freeze")
+        assert res.status_code == 400  # 0 gems on a brand-new account
+
+
+def test_shop_buy_heart_refill_requires_ownership():
+    with TestClient(app) as client:
+        user = _onboard(client, email="shop2@example.com")
+        res = client.post(f"/api/shop/{user['id']}not-mine/heart-refill")
+        assert res.status_code == 403
+
+
 def test_health_endpoint():
     with TestClient(app) as client:
         res = client.get("/api/health")

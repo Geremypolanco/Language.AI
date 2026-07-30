@@ -4,7 +4,7 @@ logic — the core of "adapts to the user" instead of a fixed static course.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from . import db
 from .models import CEFRLevel
@@ -13,6 +13,14 @@ MASTERY_SCORE_THRESHOLD = 0.8  # avg correctness required to consider a unit mas
 UNITS_TO_UNLOCK_NEXT_LEVEL = 3  # mastered units at current level before leveling up
 MAX_HEARTS = 5
 HEART_REGEN_MINUTES = 30
+
+GEM_BASE = 5  # gems per completed lesson, plus a score-scaled bonus below
+GEM_STREAK_FREEZE_COST = 200
+GEM_HEART_REFILL_COST = 100
+
+
+class ShopError(Exception):
+    """Raised when a gem purchase can't go through (not enough gems, etc)."""
 
 
 def grade_to_quality(correct: bool, attempts_before_correct: int = 0) -> int:
@@ -132,18 +140,41 @@ def record_lesson_result(user_id: str, unit_id: str, score: float) -> dict:
         )
 
         xp_gain = round(10 + score * 20)
-        cur.execute("SELECT xp, streak_days, hearts, last_active_date, level FROM users WHERE id=?", (user_id,))
+        gems_gain = round(GEM_BASE + score * 5)
+        cur.execute(
+            "SELECT xp, streak_days, hearts, gems, streak_freezes, last_active_date, level FROM users WHERE id=?",
+            (user_id,),
+        )
         u = cur.fetchone()
         new_xp = u["xp"] + xp_gain
-        today = db.today_str()
+        new_gems = u["gems"] + gems_gain
+        today_str = db.today_str()
+        today = date.fromisoformat(today_str)
         streak = u["streak_days"]
-        if u["last_active_date"] != today:
-            yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
-            streak = streak + 1 if u["last_active_date"] == yesterday else 1
+        freezes = u["streak_freezes"]
+        streak_freeze_used = False
+
+        if u["last_active_date"] != today_str:
+            if not u["last_active_date"]:
+                streak = 1  # first-ever activity
+            else:
+                gap_days = (today - date.fromisoformat(u["last_active_date"])).days
+                if gap_days == 1:
+                    streak += 1
+                else:
+                    # Missed (gap_days - 1) full calendar days — Duolingo-style streak
+                    # freezes auto-consume one per missed day if you have enough banked.
+                    freezes_needed = gap_days - 1
+                    if freezes >= freezes_needed:
+                        freezes -= freezes_needed
+                        streak += 1
+                        streak_freeze_used = True
+                    else:
+                        streak = 1
 
         cur.execute(
-            "UPDATE users SET xp=?, streak_days=?, last_active_date=? WHERE id=?",
-            (new_xp, streak, today, user_id),
+            "UPDATE users SET xp=?, streak_days=?, last_active_date=?, gems=?, streak_freezes=? WHERE id=?",
+            (new_xp, streak, today_str, new_gems, freezes, user_id),
         )
 
         leveled_up = _maybe_level_up(cur, user_id, CEFRLevel(u["level"]))
@@ -151,7 +182,11 @@ def record_lesson_result(user_id: str, unit_id: str, score: float) -> dict:
         return {
             "xp_gained": xp_gain,
             "xp_total": new_xp,
+            "gems_gained": gems_gain,
+            "gems_total": new_gems,
             "streak_days": streak,
+            "streak_freeze_used": streak_freeze_used,
+            "streak_freezes_remaining": freezes,
             "mastered": bool(mastered),
             "leveled_up": leveled_up,
         }
@@ -197,3 +232,74 @@ def regen_hearts_if_due(user_id: str) -> int:
             hearts = MAX_HEARTS
             cur.execute("UPDATE users SET hearts=? WHERE id=?", (hearts, user_id))
         return hearts
+
+
+# ── Gem shop ──────────────────────────────────────────────────────────────
+
+
+def buy_streak_freeze(user_id: str) -> dict:
+    with db.cursor() as cur:
+        cur.execute("SELECT gems, streak_freezes FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        if row["gems"] < GEM_STREAK_FREEZE_COST:
+            raise ShopError("Not enough gems for a streak freeze")
+        new_gems = row["gems"] - GEM_STREAK_FREEZE_COST
+        new_freezes = row["streak_freezes"] + 1
+        cur.execute("UPDATE users SET gems=?, streak_freezes=? WHERE id=?", (new_gems, new_freezes, user_id))
+        return {"gems": new_gems, "streak_freezes": new_freezes}
+
+
+def buy_heart_refill(user_id: str) -> dict:
+    with db.cursor() as cur:
+        cur.execute("SELECT gems, hearts FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        if row["hearts"] >= MAX_HEARTS:
+            raise ShopError("Hearts are already full")
+        if row["gems"] < GEM_HEART_REFILL_COST:
+            raise ShopError("Not enough gems for a heart refill")
+        new_gems = row["gems"] - GEM_HEART_REFILL_COST
+        cur.execute("UPDATE users SET gems=?, hearts=? WHERE id=?", (new_gems, MAX_HEARTS, user_id))
+        return {"gems": new_gems, "hearts": MAX_HEARTS}
+
+
+# ── Weekly leaderboard ──────────────────────────────────────────────────────
+
+
+def get_weekly_leaderboard(user_id: str, limit: int = 10) -> tuple[list[dict], int, int | None]:
+    """Ranks every user by XP earned since this Monday (recomputed from
+    lesson_history's own scores — no separate weekly-XP column to keep in
+    sync). Returns (top `limit` entries, the requester's own weekly XP, the
+    requester's own rank — present even when they're outside the top N)."""
+    today = datetime.now(UTC).date()
+    monday = (today - timedelta(days=today.weekday())).isoformat()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT user_id, score FROM lesson_history WHERE completed_at >= ?", (monday,))
+        rows = cur.fetchall()
+
+    xp_by_user: dict[str, int] = {}
+    for r in rows:
+        xp_by_user[r["user_id"]] = xp_by_user.get(r["user_id"], 0) + round(10 + r["score"] * 20)
+
+    your_weekly_xp = xp_by_user.get(user_id, 0)
+    if not xp_by_user:
+        return [], 0, None
+
+    user_ids = list(xp_by_user.keys())
+    with db.cursor() as cur:
+        placeholders = ",".join("?" for _ in user_ids)
+        cur.execute(f"SELECT id, display_name FROM users WHERE id IN ({placeholders})", tuple(user_ids))
+        names = {r["id"]: r["display_name"] for r in cur.fetchall()}
+
+    ranked = sorted(xp_by_user.items(), key=lambda kv: kv[1], reverse=True)
+    entries = []
+    your_rank = None
+    for i, (uid, xp) in enumerate(ranked):
+        rank = i + 1
+        if uid == user_id:
+            your_rank = rank
+        if rank <= limit:
+            entries.append(
+                {"rank": rank, "display_name": names.get(uid, "Learner"), "weekly_xp": xp, "is_you": uid == user_id}
+            )
+    return entries, your_weekly_xp, your_rank

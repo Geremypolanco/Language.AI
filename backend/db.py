@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS users (
     xp INTEGER NOT NULL DEFAULT 0,
     streak_days INTEGER NOT NULL DEFAULT 0,
     hearts INTEGER NOT NULL DEFAULT 5,
+    gems INTEGER NOT NULL DEFAULT 0,
+    streak_freezes INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -102,6 +104,8 @@ CREATE TABLE IF NOT EXISTS users (
     xp INTEGER NOT NULL DEFAULT 0,
     streak_days INTEGER NOT NULL DEFAULT 0,
     hearts INTEGER NOT NULL DEFAULT 5,
+    gems INTEGER NOT NULL DEFAULT 0,
+    streak_freezes INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -205,6 +209,10 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "email" not in existing_cols:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "gems" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN gems INTEGER NOT NULL DEFAULT 0")
+    if "streak_freezes" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN streak_freezes INTEGER NOT NULL DEFAULT 0")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()
 
@@ -214,6 +222,8 @@ def _migrate_postgres(conn: Any) -> None:
     introspection dance is needed like the SQLite path above."""
     with conn.cursor() as cur:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER NOT NULL DEFAULT 0")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freezes INTEGER NOT NULL DEFAULT 0")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()
 

@@ -7,7 +7,9 @@ alongside (see [Independence from ARIA](#independence-from-aria) below).
 Lingua teaches any language, beginner to native speaker, blending two proven
 methodologies:
 
-- **Duolingo-style** gamified skill tree, spaced repetition, XP, streaks, and hearts.
+- **Duolingo-style** gamified skill tree, spaced repetition, XP, streaks, hearts,
+  a gem economy (earn-only — no real-money purchases, ever), auto-consuming
+  streak freezes, and a weekly leaderboard ranking every learner by XP.
 - **Rosetta Stone-style** immersion: early lessons teach meaning through images
   and audio only, with translations introduced gradually as the learner advances.
 

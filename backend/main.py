@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .hf_client import hf_client
 from .routers import auth as auth_router
-from .routers import content, conversation, lessons, progress, users
+from .routers import content, conversation, lessons, progress, shop, users
 
 logger = logging.getLogger("lingua.main")
 
@@ -62,6 +62,7 @@ app.include_router(users.router)
 app.include_router(lessons.router)
 app.include_router(content.router)
 app.include_router(progress.router)
+app.include_router(shop.router)
 app.include_router(conversation.router)
 
 

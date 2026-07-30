@@ -67,9 +67,10 @@
       <header class="topbar">
         <div class="brand">🗣️ Lingua</div>
         <div class="stats">
-          <span title="XP">⭐ <b id="stat-xp">0</b></span>
           <span title="Streak">🔥 <b id="stat-streak">0</b></span>
+          <span title="Gems">💎 <b id="stat-gems">0</b></span>
           <span title="Hearts">❤️ <b id="stat-hearts">5</b></span>
+          <span title="XP">⭐ <b id="stat-xp">0</b></span>
           <span title="Level" id="stat-level">A1</span>
         </div>
         <nav class="tabs">
@@ -105,7 +106,22 @@
         <div id="tab-progress" class="tab-panel hidden">
           <div class="dashboard">
 
+            <div class="card mascot-card">
+              <div id="mascot-emoji" class="mascot-emoji">🦉</div>
+              <div class="mascot-bubble">
+                <p id="mascot-message" class="mascot-message">Loading your progress…</p>
+              </div>
+            </div>
+
             <div class="card stat-row" id="dash-stat-row"></div>
+
+            <div class="card league-card">
+              <div class="card-title-row">
+                <h2 class="card-title">🏆 Weekly leaderboard</h2>
+                <span class="subtitle" id="league-reset-note">Resets Monday</span>
+              </div>
+              <div id="dash-leaderboard" class="leaderboard-list"></div>
+            </div>
 
             <div class="card">
               <h2 class="card-title">Level progress</h2>
@@ -117,6 +133,25 @@
               <div>
                 <div class="due-headline" id="dash-due-headline"></div>
                 <p class="subtitle">These words will come back around in your next lesson.</p>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">💎 Gem shop</h2>
+              <p class="subtitle">Earn gems by finishing lessons. Spend them here — no real money, ever.</p>
+              <div class="shop-grid">
+                <div class="shop-item">
+                  <div class="shop-item-icon">🧊</div>
+                  <div class="shop-item-name">Streak Freeze</div>
+                  <p class="shop-item-desc">Auto-protects your streak the next time you miss a day.</p>
+                  <button id="buy-streak-freeze" class="btn btn-shop">200 💎</button>
+                </div>
+                <div class="shop-item">
+                  <div class="shop-item-icon">❤️</div>
+                  <div class="shop-item-name">Refill Hearts</div>
+                  <p class="shop-item-desc">Instantly restore all 5 hearts.</p>
+                  <button id="buy-heart-refill" class="btn btn-shop">100 💎</button>
+                </div>
               </div>
             </div>
 
@@ -139,6 +174,8 @@
         </div>
       </main>
 
+      <div id="toast" class="toast hidden"></div>
+
       <div id="chart-tooltip" class="chart-tooltip hidden" role="tooltip"></div>
     </section>
 
@@ -157,8 +194,13 @@
     <!-- Lesson complete -->
     <section id="screen-complete" class="screen hidden overlay">
       <div class="card complete-card">
+        <div id="complete-mascot-emoji" class="complete-mascot">🦉</div>
         <h2 id="complete-title">Lesson complete! 🎉</h2>
-        <p id="complete-xp"></p>
+        <div class="complete-rewards">
+          <span class="reward-pill">⭐ <b id="complete-xp-pill">0</b> XP</span>
+          <span class="reward-pill">💎 <b id="complete-gems-pill">0</b> gems</span>
+        </div>
+        <p id="complete-streak"></p>
         <p id="complete-level"></p>
         <button id="complete-continue" class="btn btn-primary">Continue</button>
       </div>

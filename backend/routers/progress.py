@@ -10,7 +10,15 @@ from fastapi import APIRouter, Depends
 
 from .. import auth, db, srs
 from ..curriculum import get_unit, units_for_level
-from ..models import ActivityDay, CEFRLevel, DashboardData, LevelMastery, ProgressSnapshot, RecentLesson
+from ..models import (
+    ActivityDay,
+    CEFRLevel,
+    DashboardData,
+    LeaderboardEntry,
+    LevelMastery,
+    ProgressSnapshot,
+    RecentLesson,
+)
 from .users import get_user_by_id_or_404
 
 router = APIRouter(prefix="/api/progress", tags=["progress"])
@@ -29,6 +37,8 @@ def get_progress(user_id: str, session: dict = Depends(auth.require_owner)) -> P
         xp=user.xp,
         streak_days=user.streak_days,
         hearts=user.hearts,
+        gems=user.gems,
+        streak_freezes=user.streak_freezes,
         level=user.level,
         due_reviews=srs.due_review_count(user_id),
         units_mastered=mastered,
@@ -96,11 +106,16 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
             )
         )
 
+    leaderboard_rows, your_weekly_xp, your_rank = srs.get_weekly_leaderboard(user_id)
+    leaderboard = [LeaderboardEntry(**row) for row in leaderboard_rows]
+
     return DashboardData(
         user_id=user_id,
         xp=user.xp,
         streak_days=user.streak_days,
         hearts=user.hearts,
+        gems=user.gems,
+        streak_freezes=user.streak_freezes,
         level=user.level,
         next_level=next_level,
         due_reviews=srs.due_review_count(user_id),
@@ -110,4 +125,7 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
         mastery_by_level=mastery_by_level,
         activity=activity,
         recent_lessons=recent_lessons,
+        leaderboard=leaderboard,
+        your_weekly_xp=your_weekly_xp,
+        your_rank=your_rank,
     )

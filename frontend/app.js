@@ -133,6 +133,7 @@ function refreshTopbar(progress) {
   $("#stat-xp").textContent = progress.xp;
   $("#stat-streak").textContent = progress.streak_days;
   $("#stat-hearts").textContent = progress.hearts;
+  $("#stat-gems").textContent = progress.gems;
   $("#stat-level").textContent = progress.level;
 }
 
@@ -167,9 +168,10 @@ function hideTooltip() {
 
 function renderStatRow(data) {
   const tiles = [
-    ["⭐", data.xp, "XP"],
     ["🔥", data.streak_days, "Day streak"],
+    ["💎", data.gems, "Gems"],
     ["❤️", data.hearts, "Hearts"],
+    ["⭐", data.xp, "XP"],
     ["🏅", data.level, "Level"],
   ];
   const row = $("#dash-stat-row");
@@ -325,11 +327,110 @@ async function loadDashboard() {
   const data = await api(`/api/progress/${state.userId}/dashboard`);
   refreshTopbar(data);
   renderStatRow(data);
+  renderMascot(data);
+  renderLeaderboard(data);
   renderLevelMeter(data);
   renderDueCard(data);
   renderActivity(data);
   renderMasteryChart(data);
   renderRecentLessons(data);
+  setupShop(data);
+}
+
+function renderMascot(data) {
+  const emoji = $("#mascot-emoji");
+  const message = $("#mascot-message");
+  if (data.hearts === 0) {
+    emoji.textContent = "😟";
+    message.textContent = "Out of hearts! Refill them in the gem shop or wait for tomorrow.";
+  } else if (data.streak_freezes > 0) {
+    emoji.textContent = "🦉";
+    message.textContent = `${data.streak_freezes} streak freeze${data.streak_freezes === 1 ? "" : "s"} banked — your streak is protected if you miss a day.`;
+  } else if (data.streak_days >= 7) {
+    emoji.textContent = "🤩";
+    message.textContent = `${data.streak_days}-day streak! You're on fire — keep it going.`;
+  } else if (data.due_reviews > 0) {
+    emoji.textContent = "🧐";
+    message.textContent = `${data.due_reviews} word${data.due_reviews === 1 ? "" : "s"} ready for review in your next lesson.`;
+  } else if (data.streak_days > 0) {
+    emoji.textContent = "😊";
+    message.textContent = `${data.streak_days} day streak — nice work, don't break it!`;
+  } else {
+    emoji.textContent = "🦉";
+    message.textContent = "Ready for your first lesson today?";
+  }
+}
+
+function renderLeaderboard(data) {
+  const el = $("#dash-leaderboard");
+  el.innerHTML = "";
+  if (data.leaderboard.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-note";
+    empty.textContent = "Complete a lesson this week to join the leaderboard.";
+    el.appendChild(empty);
+    return;
+  }
+  const medals = { 1: "🥇", 2: "🥈", 3: "🥉" };
+  for (const entry of data.leaderboard) {
+    const row = document.createElement("div");
+    row.className = "leaderboard-row" + (entry.is_you ? " is-you" : "");
+
+    const rank = document.createElement("span");
+    rank.className = "leaderboard-rank";
+    rank.textContent = medals[entry.rank] || `#${entry.rank}`;
+
+    const name = document.createElement("span");
+    name.className = "leaderboard-name";
+    name.textContent = entry.is_you ? `${entry.display_name} (you)` : entry.display_name;
+
+    const xp = document.createElement("span");
+    xp.className = "leaderboard-xp";
+    xp.textContent = `${entry.weekly_xp} XP`;
+
+    row.append(rank, name, xp);
+    el.appendChild(row);
+  }
+  if (data.your_rank && data.your_rank > data.leaderboard.length) {
+    const you = document.createElement("div");
+    you.className = "leaderboard-row is-you";
+    you.innerHTML = `<span class="leaderboard-rank">#${data.your_rank}</span><span class="leaderboard-name">You</span><span class="leaderboard-xp">${data.your_weekly_xp} XP</span>`;
+    el.appendChild(you);
+  }
+}
+
+function showToast(text) {
+  const toast = $("#toast");
+  toast.textContent = text;
+  toast.classList.remove("hidden");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.add("hidden"), 2600);
+}
+
+function setupShop(data) {
+  const freezeBtn = $("#buy-streak-freeze");
+  const heartBtn = $("#buy-heart-refill");
+  freezeBtn.disabled = data.gems < 200;
+  heartBtn.disabled = data.gems < 100 || data.hearts >= 5;
+
+  freezeBtn.onclick = async () => {
+    try {
+      await api(`/api/shop/${state.userId}/streak-freeze`, { method: "POST" });
+      showToast("🧊 Streak freeze purchased!");
+      await loadDashboard();
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+  heartBtn.onclick = async () => {
+    try {
+      await api(`/api/shop/${state.userId}/heart-refill`, { method: "POST" });
+      showToast("❤️ Hearts refilled!");
+      await loadDashboard();
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
 }
 
 async function loadPath() {
@@ -687,12 +788,17 @@ async function finishLesson() {
     method: "POST",
     body: JSON.stringify({ unit_id: unitId, score }),
   });
-  $("#complete-xp").textContent = `+${result.xp_gained} XP (total ${result.xp_total}) · 🔥 ${result.streak_days} day streak`;
+  $("#complete-xp-pill").textContent = result.xp_gained;
+  $("#complete-gems-pill").textContent = result.gems_gained;
+  $("#complete-streak").textContent = result.streak_freeze_used
+    ? `🧊 Streak freeze used — your ${result.streak_days}-day streak is safe!`
+    : `🔥 ${result.streak_days} day streak`;
   $("#complete-level").textContent = result.leveled_up
     ? `🎊 Level up! You're now at ${result.leveled_up}.`
     : result.mastered
       ? "Unit mastered!"
       : "Keep practicing this unit to master it.";
+  $("#complete-mascot-emoji").textContent = result.leveled_up ? "🤩" : "🦉";
   showScreen("#screen-complete");
 }
 

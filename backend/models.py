@@ -90,6 +90,8 @@ class UserProfile(BaseModel):
     xp: int = 0
     streak_days: int = 0
     hearts: int = 5
+    gems: int = 0
+    streak_freezes: int = 0
     created_at: str = ""
     last_active_date: str = ""
 
@@ -107,6 +109,8 @@ class ProgressSnapshot(BaseModel):
     xp: int
     streak_days: int
     hearts: int
+    gems: int
+    streak_freezes: int
     level: CEFRLevel
     due_reviews: int
     units_mastered: int
@@ -130,11 +134,20 @@ class RecentLesson(BaseModel):
     completed_at: str
 
 
+class LeaderboardEntry(BaseModel):
+    rank: int
+    display_name: str
+    weekly_xp: int
+    is_you: bool = False
+
+
 class DashboardData(BaseModel):
     user_id: str
     xp: int
     streak_days: int
     hearts: int
+    gems: int
+    streak_freezes: int
     level: CEFRLevel
     next_level: CEFRLevel | None
     due_reviews: int
@@ -144,3 +157,6 @@ class DashboardData(BaseModel):
     mastery_by_level: list[LevelMastery]
     activity: list[ActivityDay]
     recent_lessons: list[RecentLesson]
+    leaderboard: list[LeaderboardEntry]
+    your_weekly_xp: int
+    your_rank: int | None
