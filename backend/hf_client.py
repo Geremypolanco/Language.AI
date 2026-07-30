@@ -23,8 +23,11 @@ from .models import Exercise, ExerciseType
 
 logger = logging.getLogger("lingua.hf_client")
 
-# ISO 639-1 -> MMS-TTS ISO 639-3 code, for the languages most likely to be
-# picked in a demo. Falls back to English if a target language isn't mapped.
+# ISO 639-1 -> MMS-TTS ISO 639-3 code, covering every language offered in the
+# frontend's picker (frontend/app.js LANGS). Exercise/chat generation is fully
+# language-agnostic (any language the chat model knows works), so this map
+# only controls which voice narrates audio; a target language missing here
+# still teaches fully via text, it just falls back to an English voice.
 _MMS_LANG_CODES = {
     "en": "eng",
     "es": "spa",
@@ -42,6 +45,67 @@ _MMS_LANG_CODES = {
     "pl": "pol",
     "tr": "tur",
     "hi": "hin",
+    "id": "ind",
+    "vi": "vie",
+    "th": "tha",
+    "uk": "ukr",
+    "el": "ell",
+    "he": "heb",
+    "cs": "ces",
+    "ro": "ron",
+    "hu": "hun",
+    "fi": "fin",
+    "da": "dan",
+    "no": "nob",
+    "bg": "bul",
+    "sk": "slk",
+    "hr": "hrv",
+    "sr": "srp",
+    "lt": "lit",
+    "lv": "lav",
+    "et": "est",
+    "sl": "slv",
+    "fa": "fas",
+    "ur": "urd",
+    "bn": "ben",
+    "ta": "tam",
+    "te": "tel",
+    "mr": "mar",
+    "gu": "guj",
+    "pa": "pan",
+    "ml": "mal",
+    "kn": "kan",
+    "ne": "nep",
+    "si": "sin",
+    "my": "mya",
+    "km": "khm",
+    "lo": "lao",
+    "ms": "zlm",
+    "tl": "tgl",
+    "sw": "swh",
+    "am": "amh",
+    "so": "som",
+    "ha": "hau",
+    "yo": "yor",
+    "ig": "ibo",
+    "zu": "zul",
+    "xh": "xho",
+    "af": "afr",
+    "is": "isl",
+    "ga": "gle",
+    "cy": "cym",
+    "mt": "mlt",
+    "eu": "eus",
+    "ca": "cat",
+    "gl": "glg",
+    "az": "azj",
+    "kk": "kaz",
+    "uz": "uzn",
+    "mn": "khk",
+    "ka": "kat",
+    "hy": "hye",
+    "sq": "als",
+    "mk": "mkd",
 }
 
 

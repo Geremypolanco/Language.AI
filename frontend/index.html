@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lingua — Learn a language, talk like a native</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -30,7 +33,7 @@
 
     <!-- Onboarding -->
     <section id="screen-onboarding" class="screen hidden">
-      <div class="card onboarding-card">
+      <div class="card onboarding-card" id="onboarding-step-profile">
         <h1>🗣️ Lingua</h1>
         <p class="subtitle">Tell us about your goals — this personalizes every lesson.</p>
         <form id="onboarding-form">
@@ -43,22 +46,47 @@
           <label>I want to learn
             <select id="ob-target"></select>
           </label>
-          <label>My current level
-            <select id="ob-level">
-              <option value="A1">Beginner (A1)</option>
-              <option value="A2">Elementary (A2)</option>
-              <option value="B1">Intermediate (B1)</option>
-              <option value="B2">Upper-intermediate (B2)</option>
-              <option value="C1">Advanced (C1)</option>
-              <option value="C2">Proficient (C2)</option>
-              <option value="NATIVE">Native-level polish</option>
-            </select>
-          </label>
           <label>Interests (comma-separated, personalizes your lessons)
             <input type="text" id="ob-interests" placeholder="football, cooking, movies" />
           </label>
-          <button type="submit" class="btn btn-primary">Start learning</button>
+          <button type="submit" class="btn btn-primary">Find my level</button>
         </form>
+        <button type="button" id="ob-skip-fluent" class="btn-link">I'm already fluent — skip the placement test</button>
+      </div>
+
+      <div class="card onboarding-card hidden" id="onboarding-step-placement">
+        <div class="placement-header">
+          <h2>Let's find your level</h2>
+          <span class="placement-progress" id="placement-progress">Question 1 of 6</span>
+        </div>
+        <div class="lesson-progress placement-bar"><div id="placement-progress-bar"></div></div>
+        <p class="subtitle">Answer as best you can — questions adjust to you as you go, just like a real placement test.</p>
+        <div id="placement-exercise" class="placement-exercise"></div>
+      </div>
+
+      <div class="card onboarding-card hidden" id="onboarding-step-result">
+        <div class="complete-mascot" id="placement-result-mascot">
+          <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+            <ellipse cx="60" cy="68" rx="40" ry="38" fill="#1489c4" />
+            <ellipse cx="60" cy="70" rx="40" ry="38" fill="#1cb0f6" />
+            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#1489c4" />
+            <ellipse cx="60" cy="76" rx="22" ry="24" fill="#eaf7ff" />
+            <circle cx="44" cy="60" r="16" fill="#fff" />
+            <circle cx="76" cy="60" r="16" fill="#fff" />
+            <circle cx="44" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+            <circle cx="76" cy="60" r="16" fill="none" stroke="#1489c4" stroke-width="2" />
+            <circle class="mascot-pupil" cx="46" cy="61" r="7" fill="#26343c" />
+            <circle class="mascot-pupil" cx="78" cy="61" r="7" fill="#26343c" />
+            <circle cx="48.5" cy="58.5" r="2" fill="#fff" />
+            <circle cx="80.5" cy="58.5" r="2" fill="#fff" />
+            <path d="M55 66 L60 74 L65 66 Z" fill="#ffa727" />
+            <ellipse cx="26" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(-16 26 78)" />
+            <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
+          </svg>
+        </div>
+        <h2>You're at level <span id="placement-result-level">A2</span>!</h2>
+        <p class="subtitle" id="placement-result-note">We'll start your path there — it adapts further as you go.</p>
+        <button type="button" id="placement-continue" class="btn btn-primary">Start learning</button>
       </div>
     </section>
 
@@ -176,20 +204,12 @@
 
             <div class="card">
               <h2 class="card-title">Last 14 days</h2>
-              <div id="dash-activity" class="activity-strip"></div>
-              <div class="activity-legend">
-                <span>Less</span>
-                <span class="legend-cell" style="background: var(--gray-border)"></span>
-                <span class="legend-cell" style="background: var(--seq-300)"></span>
-                <span class="legend-cell" style="background: var(--seq-500)"></span>
-                <span class="legend-cell" style="background: var(--seq-700)"></span>
-                <span>More</span>
-              </div>
+              <div class="chart-frame chart-frame-activity"><canvas id="dash-activity-chart"></canvas></div>
             </div>
 
             <div class="card">
               <h2 class="card-title">Mastery by level</h2>
-              <div id="dash-mastery" class="mastery-chart"></div>
+              <div class="chart-frame chart-frame-mastery"><canvas id="dash-mastery-chart"></canvas></div>
             </div>
 
             <div class="card">
@@ -203,7 +223,6 @@
 
       <div id="toast" class="toast hidden"></div>
 
-      <div id="chart-tooltip" class="chart-tooltip hidden" role="tooltip"></div>
     </section>
 
     <!-- Lesson overlay -->
@@ -254,6 +273,7 @@
 
   </div>
 
+  <script src="/static/vendor/chart.umd.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

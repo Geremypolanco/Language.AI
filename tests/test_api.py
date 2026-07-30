@@ -204,3 +204,81 @@ def test_health_endpoint():
         body = res.json()
         assert "hf_configured" in body
         assert "google_configured" in body
+
+
+def test_placement_test_requires_pending_signin():
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/placement",
+            json={"native_lang": "English", "target_lang": "Spanish", "history": []},
+        )
+        assert res.status_code == 401
+
+
+def test_placement_test_starts_at_a2_and_converges_after_six_questions():
+    with TestClient(app) as client:
+        dev_login(client, "placement1@example.com")
+        res = client.post(
+            "/api/placement",
+            json={"native_lang": "English", "target_lang": "Spanish", "history": []},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["done"] is False
+        assert body["level"] == "A2"
+        assert body["exercise"]["vocab_key"]
+
+        history = [{"level": "A2", "correct": True}] * 6
+        res = client.post(
+            "/api/placement",
+            json={"native_lang": "English", "target_lang": "Spanish", "history": history},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["done"] is True
+        assert body["recommended_level"] is not None
+
+
+def test_placement_test_moves_down_a_level_after_a_wrong_answer():
+    with TestClient(app) as client:
+        dev_login(client, "placement2@example.com")
+        history = [{"level": "A2", "correct": False}]
+        res = client.post(
+            "/api/placement",
+            json={"native_lang": "English", "target_lang": "Spanish", "history": history},
+        )
+        assert res.status_code == 200
+        assert res.json()["level"] == "A1"
+
+
+def test_tutor_reply_requires_signin():
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/content/tutor-reply",
+            json={
+                "target_lang": "Spanish",
+                "native_lang": "English",
+                "level": "A2",
+                "prompt": "What did you do today?",
+                "user_answer": "Fui al parque.",
+            },
+        )
+        assert res.status_code == 401
+
+
+def test_tutor_reply_gives_a_demo_mode_reply_when_signed_in():
+    with TestClient(app) as client:
+        user = _onboard(client, email="tutorreply@example.com")
+        res = client.post(
+            "/api/content/tutor-reply",
+            json={
+                "target_lang": user["target_lang"],
+                "native_lang": user["native_lang"],
+                "level": user["level"],
+                "interests": user["interests"],
+                "prompt": "What did you do today?",
+                "user_answer": "Fui al parque.",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["reply"]

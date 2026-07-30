@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import auth
+from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
+from ..models import CEFRLevel
 
 # Gated behind "signed in" (any account, not a specific user_id) — these calls
 # hit paid HF inference, so they shouldn't be reachable by anonymous traffic
@@ -47,3 +49,29 @@ async def speech_to_text(request: Request) -> dict:
     content_type = request.headers.get("content-type", "audio/webm")
     text = await hf_client.speech_to_text(audio_bytes, content_type)
     return {"text": text}
+
+
+class TutorReplyRequest(BaseModel):
+    target_lang: str
+    native_lang: str
+    level: CEFRLevel
+    interests: list[str] = Field(default_factory=list)
+    prompt: str
+    user_answer: str
+
+
+@router.post("/tutor-reply")
+async def tutor_reply(payload: TutorReplyRequest) -> dict:
+    """Gives the free_conversation_prompt exercise a real, short in-character
+    tutor reply instead of a canned "Correct!"/"Not quite" banner — the same
+    tutor persona used in Talk Live, so a lesson's free-response question
+    feels like part of one ongoing conversation rather than a form field."""
+    system_prompt = build_conversation_system_prompt(
+        payload.target_lang, payload.native_lang, payload.level, payload.interests
+    )
+    history = [
+        {"role": "assistant", "content": payload.prompt},
+        {"role": "user", "content": payload.user_answer},
+    ]
+    reply = await hf_client.conversation_reply(system_prompt, history)
+    return {"reply": reply}

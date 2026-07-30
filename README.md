@@ -12,6 +12,15 @@ methodologies:
   streak freezes, and a weekly leaderboard ranking every learner by XP.
 - **Rosetta Stone-style** immersion: early lessons teach meaning through images
   and audio only, with translations introduced gradually as the learner advances.
+- **Adaptive placement test** at onboarding (`backend/routers/placement.py`) —
+  a short staircase test (start medium, harder after correct, easier after a
+  miss, same mechanic Duolingo's own placement test uses) picks the learner's
+  starting level instead of asking them to self-report it from a dropdown.
+- **50+ languages** in the picker (`frontend/app.js` `LANGS`), each mapped to
+  an MMS-TTS voice (`backend/hf_client.py` `_MMS_LANG_CODES`) — exercise/chat
+  generation itself is language-agnostic and works with any language the chat
+  model knows, so a language missing a TTS mapping still teaches fully via
+  text, just without narrated audio.
 
 On top of that, a Hugging Face model powers three things static courses can't do:
 

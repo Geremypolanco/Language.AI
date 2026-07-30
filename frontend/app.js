@@ -1,11 +1,31 @@
 // Lingua frontend — vanilla JS, no build step (mirrors the rest of this repo's
 // static-HTML deployment style, but as a fully independent app).
 
+// Any language the tutor chat model knows works for exercises/conversation —
+// this list is what's offered in the picker, not a hard backend restriction.
+// Keep in sync with backend/hf_client.py's _MMS_LANG_CODES for TTS voice
+// coverage (a language missing from that map still teaches fully via text/
+// chat, it just falls back to an English voice for audio).
 const LANGS = [
   ["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"],
   ["it", "Italian"], ["pt", "Portuguese"], ["ja", "Japanese"], ["ko", "Korean"],
   ["zh", "Chinese (Mandarin)"], ["ru", "Russian"], ["ar", "Arabic"],
   ["nl", "Dutch"], ["sv", "Swedish"], ["pl", "Polish"], ["tr", "Turkish"], ["hi", "Hindi"],
+  ["id", "Indonesian"], ["vi", "Vietnamese"], ["th", "Thai"], ["uk", "Ukrainian"],
+  ["el", "Greek"], ["he", "Hebrew"], ["cs", "Czech"], ["ro", "Romanian"],
+  ["hu", "Hungarian"], ["fi", "Finnish"], ["da", "Danish"], ["no", "Norwegian"],
+  ["bg", "Bulgarian"], ["sk", "Slovak"], ["hr", "Croatian"], ["sr", "Serbian"],
+  ["lt", "Lithuanian"], ["lv", "Latvian"], ["et", "Estonian"], ["sl", "Slovenian"],
+  ["fa", "Persian (Farsi)"], ["ur", "Urdu"], ["bn", "Bengali"], ["ta", "Tamil"],
+  ["te", "Telugu"], ["mr", "Marathi"], ["gu", "Gujarati"], ["pa", "Punjabi"],
+  ["ml", "Malayalam"], ["kn", "Kannada"], ["ne", "Nepali"], ["si", "Sinhala"],
+  ["my", "Burmese"], ["km", "Khmer"], ["lo", "Lao"], ["ms", "Malay"],
+  ["tl", "Tagalog (Filipino)"], ["sw", "Swahili"], ["am", "Amharic"], ["so", "Somali"],
+  ["ha", "Hausa"], ["yo", "Yoruba"], ["ig", "Igbo"], ["zu", "Zulu"], ["xh", "Xhosa"],
+  ["af", "Afrikaans"], ["is", "Icelandic"], ["ga", "Irish"], ["cy", "Welsh"],
+  ["mt", "Maltese"], ["eu", "Basque"], ["ca", "Catalan"], ["gl", "Galician"],
+  ["az", "Azerbaijani"], ["kk", "Kazakh"], ["uz", "Uzbek"], ["mn", "Mongolian"],
+  ["ka", "Georgian"], ["hy", "Armenian"], ["sq", "Albanian"], ["mk", "Macedonian"],
 ];
 
 const $ = (sel) => document.querySelector(sel);
@@ -50,33 +70,145 @@ function populateLangSelects() {
   target.value = "es";
 }
 
+function readInterests() {
+  return $("#ob-interests").value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+async function createProfileAndEnter(level) {
+  const user = await api("/api/users", {
+    method: "POST",
+    body: JSON.stringify({
+      display_name: $("#ob-name").value.trim() || "Learner",
+      native_lang: $("#ob-native").value,
+      target_lang: $("#ob-target").value,
+      level,
+      interests: readInterests(),
+    }),
+  });
+  state.userId = user.id;
+  await enterApp();
+}
+
+function showOnboardingStep(id) {
+  $$("#screen-onboarding .onboarding-card").forEach((el) => el.classList.add("hidden"));
+  $(id).classList.remove("hidden");
+}
+
 async function handleOnboardingSubmit(e) {
   e.preventDefault();
   const btn = e.target.querySelector("button[type=submit]");
   btn.disabled = true;
   try {
-    const interests = $("#ob-interests").value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const user = await api("/api/users", {
-      method: "POST",
-      body: JSON.stringify({
-        display_name: $("#ob-name").value.trim() || "Learner",
-        native_lang: $("#ob-native").value,
-        target_lang: $("#ob-target").value,
-        level: $("#ob-level").value,
-        interests,
-      }),
-    });
-    state.userId = user.id;
-    await enterApp();
+    await startPlacementTest();
   } catch (err) {
-    alert("Could not create profile: " + err.message);
+    alert("Could not start placement test: " + err.message);
   } finally {
     btn.disabled = false;
   }
 }
+
+// ---------- Adaptive placement test ----------
+
+const PLACEMENT_TOTAL = 6;
+const placement = { history: [], current: null };
+
+async function startPlacementTest() {
+  placement.history = [];
+  showOnboardingStep("#onboarding-step-placement");
+  await fetchNextPlacementQuestion();
+}
+
+async function fetchNextPlacementQuestion() {
+  const el = $("#placement-exercise");
+  el.innerHTML = "<p>Preparing your next question…</p>";
+  const data = await api("/api/placement", {
+    method: "POST",
+    body: JSON.stringify({
+      native_lang: $("#ob-native").value,
+      target_lang: $("#ob-target").value,
+      interests: readInterests(),
+      history: placement.history,
+    }),
+  });
+  if (data.done) {
+    await finishPlacementTest(data.recommended_level);
+    return;
+  }
+  placement.current = data;
+  $("#placement-progress").textContent = `Question ${data.question_number} of ${PLACEMENT_TOTAL}`;
+  $("#placement-progress-bar").style.width = `${Math.round(((data.question_number - 1) / PLACEMENT_TOTAL) * 100)}%`;
+  renderPlacementQuestion(data.exercise, data.level, el);
+}
+
+function renderPlacementQuestion(ex, level, container) {
+  container.innerHTML = "";
+
+  const prompt = document.createElement("div");
+  prompt.className = "exercise-prompt";
+  prompt.textContent = ex.prompt || ex.target_text;
+  container.appendChild(prompt);
+
+  if (ex.native_text) {
+    const hint = document.createElement("p");
+    hint.className = "subtitle";
+    hint.textContent = ex.native_text;
+    container.appendChild(hint);
+  }
+
+  const target = document.createElement("div");
+  target.className = "exercise-prompt";
+  target.textContent = ex.target_text;
+  container.appendChild(target);
+
+  const submit = (answer) => {
+    const correct = normalize(answer) === normalize(ex.correct_answer);
+    placement.history.push({ level, correct });
+    fetchNextPlacementQuestion();
+  };
+
+  if (ex.options && ex.options.length) {
+    const opts = document.createElement("div");
+    opts.className = "exercise-options";
+    for (const choice of ex.options) {
+      const btn = document.createElement("button");
+      btn.className = "option-btn";
+      btn.textContent = choice;
+      btn.addEventListener("click", () => submit(choice));
+      opts.appendChild(btn);
+    }
+    container.appendChild(opts);
+  } else {
+    const row = document.createElement("div");
+    row.className = "exercise-input-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Type your answer…";
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary";
+    btn.textContent = "Check";
+    row.append(input, btn);
+    container.appendChild(row);
+    const go = () => submit(input.value);
+    btn.addEventListener("click", go);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") go();
+    });
+  }
+}
+
+async function finishPlacementTest(recommendedLevel) {
+  $("#placement-progress-bar").style.width = "100%";
+  $("#placement-result-level").textContent = recommendedLevel;
+  showOnboardingStep("#onboarding-step-result");
+  $("#placement-continue").onclick = () => createProfileAndEnter(recommendedLevel).catch((err) => alert(err.message));
+}
+
+$("#ob-skip-fluent").addEventListener("click", () => {
+  createProfileAndEnter("NATIVE").catch((err) => alert("Could not create profile: " + err.message));
+});
 
 // ---------- Sign-in (Google) ----------
 
@@ -145,25 +277,17 @@ async function loadProgress() {
 
 // ---------- Dashboard (Progress tab) ----------
 
-function showTooltip(target, text) {
-  const tip = $("#chart-tooltip");
-  tip.textContent = text;
-  tip.style.top = `${target.getBoundingClientRect().top}px`;
-  tip.classList.remove("hidden");
-
-  // Center on the target, then clamp so the tooltip's own width (only known
-  // once it's rendered, hence measuring after unhiding) never pushes it past
-  // the viewport edge — otherwise the last heat-strip cell's tooltip clips.
-  const rect = target.getBoundingClientRect();
-  const margin = 8;
-  const half = tip.offsetWidth / 2;
-  let center = rect.left + rect.width / 2;
-  center = Math.max(half + margin, Math.min(center, window.innerWidth - half - margin));
-  tip.style.left = `${center}px`;
-}
-
-function hideTooltip() {
-  $("#chart-tooltip").classList.add("hidden");
+function animateCountUp(el, target) {
+  const duration = 500;
+  const start = performance.now();
+  const from = 0;
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(from + (target - from) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 }
 
 function renderStatRow(data) {
@@ -184,12 +308,16 @@ function renderStatRow(data) {
     iconEl.textContent = icon;
     const valueEl = document.createElement("span");
     valueEl.className = "stat-value";
-    valueEl.textContent = value;
     const labelEl = document.createElement("span");
     labelEl.className = "stat-label";
     labelEl.textContent = label;
     tile.append(iconEl, valueEl, labelEl);
     row.appendChild(tile);
+    if (typeof value === "number") {
+      animateCountUp(valueEl, value);
+    } else {
+      valueEl.textContent = value;
+    }
   }
 }
 
@@ -238,57 +366,90 @@ function renderDueCard(data) {
   }
 }
 
+function isDarkMode() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+const charts = {};
+function renderChart(canvasId, config) {
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart($(`#${canvasId}`), config);
+  return charts[canvasId];
+}
+
 function renderActivity(data) {
-  const el = $("#dash-activity");
-  el.innerHTML = "";
-  const maxCount = Math.max(1, ...data.activity.map((d) => d.lessons_completed));
+  const dark = isDarkMode();
+  const gridColor = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const tickColor = dark ? "#a8b3ba" : "#898781";
   const todayStr = new Date().toISOString().slice(0, 10);
-  data.activity.forEach((day) => {
-    const cell = document.createElement("div");
-    cell.className = "activity-cell";
-    if (day.date === todayStr) cell.classList.add("today");
-    if (day.lessons_completed > 0) {
-      const intensity = day.lessons_completed / maxCount;
-      const step = intensity > 0.66 ? "700" : intensity > 0.33 ? "500" : "300";
-      cell.style.background = `var(--seq-${step})`;
-    }
-    const label = `${day.lessons_completed} lesson${day.lessons_completed === 1 ? "" : "s"} on ${day.date}`;
-    cell.setAttribute("tabindex", "0");
-    cell.setAttribute("aria-label", label);
-    cell.addEventListener("pointerenter", () => showTooltip(cell, label));
-    cell.addEventListener("focus", () => showTooltip(cell, label));
-    cell.addEventListener("pointerleave", hideTooltip);
-    cell.addEventListener("blur", hideTooltip);
-    el.appendChild(cell);
+  const labels = data.activity.map((d) =>
+    new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric" })
+  );
+  const values = data.activity.map((d) => d.lessons_completed);
+  const barColor = data.activity.map((d) => (d.date === todayStr ? "#1489c4" : "#1cb0f6"));
+
+  renderChart("dash-activity-chart", {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: barColor, borderRadius: 5, maxBarThickness: 22 }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => data.activity[items[0].dataIndex].date,
+            label: (item) => `${item.raw} lesson${item.raw === 1 ? "" : "s"}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: tickColor, font: { size: 10 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, color: tickColor }, grid: { color: gridColor } },
+      },
+    },
   });
 }
 
 function renderMasteryChart(data) {
-  const el = $("#dash-mastery");
-  el.innerHTML = "";
-  for (const entry of data.mastery_by_level) {
-    const row = document.createElement("div");
-    row.className = "mastery-row" + (entry.level === data.level ? " current" : "");
+  const dark = isDarkMode();
+  const gridColor = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const tickColor = dark ? "#a8b3ba" : "#898781";
+  const entries = data.mastery_by_level;
+  const labels = entries.map((e) => e.level);
+  const pct = entries.map((e) => (e.total ? Math.round((e.mastered / e.total) * 100) : 0));
+  const colors = entries.map((e) => (e.level === data.level ? "#1cb0f6" : dark ? "#2c5490" : "#9ec5f4"));
 
-    const levelEl = document.createElement("div");
-    levelEl.className = "mastery-level";
-    levelEl.textContent = entry.level;
-
-    const track = document.createElement("div");
-    track.className = "meter-track";
-    const fill = document.createElement("div");
-    fill.className = "meter-fill";
-    const pct = entry.total ? Math.round((entry.mastered / entry.total) * 100) : 0;
-    fill.style.width = `${pct}%`;
-    track.appendChild(fill);
-
-    const countEl = document.createElement("div");
-    countEl.className = "mastery-count";
-    countEl.textContent = `${entry.mastered}/${entry.total}`;
-
-    row.append(levelEl, track, countEl);
-    el.appendChild(row);
-  }
+  renderChart("dash-mastery-chart", {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ data: pct, backgroundColor: colors, borderRadius: 6, maxBarThickness: 26 }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const e = entries[item.dataIndex];
+              return `${e.mastered}/${e.total} units mastered`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { min: 0, max: 100, ticks: { display: false }, grid: { color: gridColor } },
+        y: { grid: { display: false }, ticks: { color: tickColor, font: { weight: "bold" } } },
+      },
+    },
+  });
 }
 
 function renderRecentLessons(data) {
@@ -325,16 +486,21 @@ function renderRecentLessons(data) {
 
 async function loadDashboard() {
   const data = await api(`/api/progress/${state.userId}/dashboard`);
-  refreshTopbar(data);
-  renderStatRow(data);
-  renderMascot(data);
-  renderLeaderboard(data);
-  renderLevelMeter(data);
-  renderDueCard(data);
-  renderActivity(data);
-  renderMasteryChart(data);
-  renderRecentLessons(data);
-  setupShop(data);
+  // Each section renders independently — a failure in one (e.g. the charts'
+  // CDN script blocked by a network/ad-blocker) must not blank out the rest
+  // of the dashboard.
+  const sections = [
+    refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
+    renderLevelMeter, renderDueCard, renderActivity, renderMasteryChart,
+    renderRecentLessons, setupShop,
+  ];
+  for (const render of sections) {
+    try {
+      render(data);
+    } catch (err) {
+      console.error(`Dashboard section "${render.name}" failed to render`, err);
+    }
+  }
 }
 
 function renderMascot(data) {
@@ -566,10 +732,20 @@ async function recordAnswer(exercise, correct) {
   }
 }
 
-function showFeedback(container, correct, extra) {
+const PRAISE = ["Correct! 🎉", "Nice one! ✨", "Great job! 👏", "You've got it! 🙌", "Exactly right! 💪"];
+const MISS_LEADIN = ["Not quite.", "Close, but not quite.", "Almost!"];
+
+function showFeedback(container, correct, extra, customMessage) {
   const banner = document.createElement("div");
   banner.className = `feedback-banner ${correct ? "correct" : "incorrect"}`;
-  banner.textContent = correct ? "Correct! 🎉" : `Not quite. ${extra || ""}`;
+  if (customMessage) {
+    banner.textContent = customMessage;
+  } else if (correct) {
+    banner.textContent = PRAISE[Math.floor(Math.random() * PRAISE.length)];
+  } else {
+    const leadIn = MISS_LEADIN[Math.floor(Math.random() * MISS_LEADIN.length)];
+    banner.textContent = `${leadIn} ${extra || ""}`;
+  }
   container.appendChild(banner);
   const next = document.createElement("button");
   next.className = "btn btn-primary";
@@ -795,11 +971,32 @@ function renderFreeConversation(ex, container) {
   container.appendChild(row);
 
   submit.addEventListener("click", async () => {
-    const correct = input.value.trim().length > 0;
+    const answer = input.value.trim();
+    const correct = answer.length > 0;
     submit.disabled = true;
     input.disabled = true;
     await recordAnswer(ex, correct);
-    showFeedback(container, correct, correct ? "" : "Try writing a short answer next time.");
+    if (!correct) {
+      showFeedback(container, correct, "Try writing a short answer next time.");
+      return;
+    }
+    submit.textContent = "…";
+    try {
+      const { reply } = await api("/api/content/tutor-reply", {
+        method: "POST",
+        body: JSON.stringify({
+          target_lang: state.user.target_lang,
+          native_lang: state.user.native_lang,
+          level: state.user.level,
+          interests: state.user.interests,
+          prompt: ex.prompt,
+          user_answer: answer,
+        }),
+      });
+      showFeedback(container, true, "", reply);
+    } catch {
+      showFeedback(container, true);
+    }
   });
 }
 

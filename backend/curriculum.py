@@ -87,6 +87,10 @@ _EXERCISE_MIX: dict[CEFRLevel, list[ExerciseType]] = {
         ExerciseType.TRANSLATE_TO_NATIVE,
         ExerciseType.FILL_BLANK,
         ExerciseType.SPEAK_REPEAT,
+        # A taste of free-form conversation this early (rather than waiting
+        # until B1) keeps lessons feeling like a real exchange, not just a
+        # quiz — kept short/scaffolded since the learner is still early.
+        ExerciseType.FREE_CONVERSATION_PROMPT,
     ],
     CEFRLevel.B1: [
         ExerciseType.TRANSLATE_TO_TARGET,
