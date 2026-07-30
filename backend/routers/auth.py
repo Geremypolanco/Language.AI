@@ -20,7 +20,7 @@ router = APIRouter(tags=["auth"])
 @router.get("/auth/google/login")
 async def google_login() -> RedirectResponse:
     if not settings.google_configured:
-        raise HTTPException(status_code=503, detail="Google Sign-In is not configured on this deployment")
+        raise HTTPException(status_code=503, detail="El inicio de sesión con Google no está configurado en este despliegue")
     state = auth.make_state()
     resp = RedirectResponse(auth.google_authorize_url(state), status_code=307)
     resp.set_cookie(
@@ -111,7 +111,7 @@ def dev_login(email: str = Query(...), name: str = Query("")) -> RedirectRespons
     disabled automatically once real GOOGLE_CLIENT_ID/SECRET are set, unless
     explicitly re-enabled via LINGUA_ALLOW_DEV_LOGIN=1."""
     if not settings.dev_login_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="No encontrado")
 
     email = email.strip().lower()
     with db.cursor() as cur:

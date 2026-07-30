@@ -7,26 +7,72 @@
 // coverage (a language missing from that map still teaches fully via text/
 // chat, it just falls back to an English voice for audio).
 const LANGS = [
-  ["en", "English"], ["es", "Spanish"], ["fr", "French"], ["de", "German"],
-  ["it", "Italian"], ["pt", "Portuguese"], ["ja", "Japanese"], ["ko", "Korean"],
-  ["zh", "Chinese (Mandarin)"], ["ru", "Russian"], ["ar", "Arabic"],
-  ["nl", "Dutch"], ["sv", "Swedish"], ["pl", "Polish"], ["tr", "Turkish"], ["hi", "Hindi"],
-  ["id", "Indonesian"], ["vi", "Vietnamese"], ["th", "Thai"], ["uk", "Ukrainian"],
-  ["el", "Greek"], ["he", "Hebrew"], ["cs", "Czech"], ["ro", "Romanian"],
-  ["hu", "Hungarian"], ["fi", "Finnish"], ["da", "Danish"], ["no", "Norwegian"],
-  ["bg", "Bulgarian"], ["sk", "Slovak"], ["hr", "Croatian"], ["sr", "Serbian"],
-  ["lt", "Lithuanian"], ["lv", "Latvian"], ["et", "Estonian"], ["sl", "Slovenian"],
-  ["fa", "Persian (Farsi)"], ["ur", "Urdu"], ["bn", "Bengali"], ["ta", "Tamil"],
-  ["te", "Telugu"], ["mr", "Marathi"], ["gu", "Gujarati"], ["pa", "Punjabi"],
-  ["ml", "Malayalam"], ["kn", "Kannada"], ["ne", "Nepali"], ["si", "Sinhala"],
-  ["my", "Burmese"], ["km", "Khmer"], ["lo", "Lao"], ["ms", "Malay"],
-  ["tl", "Tagalog (Filipino)"], ["sw", "Swahili"], ["am", "Amharic"], ["so", "Somali"],
-  ["ha", "Hausa"], ["yo", "Yoruba"], ["ig", "Igbo"], ["zu", "Zulu"], ["xh", "Xhosa"],
-  ["af", "Afrikaans"], ["is", "Icelandic"], ["ga", "Irish"], ["cy", "Welsh"],
-  ["mt", "Maltese"], ["eu", "Basque"], ["ca", "Catalan"], ["gl", "Galician"],
-  ["az", "Azerbaijani"], ["kk", "Kazakh"], ["uz", "Uzbek"], ["mn", "Mongolian"],
-  ["ka", "Georgian"], ["hy", "Armenian"], ["sq", "Albanian"], ["mk", "Macedonian"],
+  ["en", "Inglés"], ["es", "Español"], ["fr", "Francés"], ["de", "Alemán"],
+  ["it", "Italiano"], ["pt", "Portugués"], ["ja", "Japonés"], ["ko", "Coreano"],
+  ["zh", "Chino (mandarín)"], ["ru", "Ruso"], ["ar", "Árabe"],
+  ["nl", "Neerlandés"], ["sv", "Sueco"], ["pl", "Polaco"], ["tr", "Turco"], ["hi", "Hindi"],
+  ["id", "Indonesio"], ["vi", "Vietnamita"], ["th", "Tailandés"], ["uk", "Ucraniano"],
+  ["el", "Griego"], ["he", "Hebreo"], ["cs", "Checo"], ["ro", "Rumano"],
+  ["hu", "Húngaro"], ["fi", "Finlandés"], ["da", "Danés"], ["no", "Noruego"],
+  ["bg", "Búlgaro"], ["sk", "Eslovaco"], ["hr", "Croata"], ["sr", "Serbio"],
+  ["lt", "Lituano"], ["lv", "Letón"], ["et", "Estonio"], ["sl", "Esloveno"],
+  ["fa", "Persa (farsi)"], ["ur", "Urdu"], ["bn", "Bengalí"], ["ta", "Tamil"],
+  ["te", "Telugu"], ["mr", "Maratí"], ["gu", "Guyaratí"], ["pa", "Panyabí"],
+  ["ml", "Malabar"], ["kn", "Canarés"], ["ne", "Nepalí"], ["si", "Cingalés"],
+  ["my", "Birmano"], ["km", "Jemer"], ["lo", "Lao"], ["ms", "Malayo"],
+  ["tl", "Tagalo (filipino)"], ["sw", "Suajili"], ["am", "Amárico"], ["so", "Somalí"],
+  ["ha", "Hausa"], ["yo", "Yoruba"], ["ig", "Igbo"], ["zu", "Zulú"], ["xh", "Xhosa"],
+  ["af", "Afrikáans"], ["is", "Islandés"], ["ga", "Irlandés"], ["cy", "Galés"],
+  ["mt", "Maltés"], ["eu", "Euskera"], ["ca", "Catalán"], ["gl", "Gallego"],
+  ["az", "Azerbaiyano"], ["kk", "Kazajo"], ["uz", "Uzbeko"], ["mn", "Mongol"],
+  ["ka", "Georgiano"], ["hy", "Armenio"], ["sq", "Albanés"], ["mk", "Macedonio"],
 ];
+
+// Curriculum topic names (backend/curriculum.py _TOPICS_BY_LEVEL) are stable
+// English keys used internally and as LLM context — this maps them to the
+// Spanish label actually shown in the UI (skill path, recent lessons).
+const TOPIC_ES = {
+  "Greetings & introductions": "Saludos y presentaciones",
+  "Numbers & counting": "Números y conteo",
+  "Family": "Familia",
+  "Food & drink": "Comida y bebida",
+  "Colors & shapes": "Colores y formas",
+  "Everyday objects": "Objetos cotidianos",
+  "Days & time": "Días y horas",
+  "Daily routines": "Rutinas diarias",
+  "Shopping": "De compras",
+  "Directions & places in town": "Direcciones y lugares en la ciudad",
+  "Weather": "El clima",
+  "Hobbies": "Pasatiempos",
+  "Past tense: simple stories": "Pasado: historias sencillas",
+  "Making plans": "Hacer planes",
+  "Travel & transportation": "Viajes y transporte",
+  "Health & the body": "Salud y el cuerpo",
+  "Work & school": "Trabajo y escuela",
+  "Opinions & preferences": "Opiniones y preferencias",
+  "Describing people": "Describir personas",
+  "Telling a past experience": "Contar una experiencia pasada",
+  "Free conversation: small talk": "Conversación libre: charla informal",
+  "News & current events": "Noticias y actualidad",
+  "Emotions & relationships": "Emociones y relaciones",
+  "Giving advice": "Dar consejos",
+  "Hypotheticals": "Hipótesis",
+  "Debating opinions": "Debatir opiniones",
+  "Free conversation: everyday problems": "Conversación libre: problemas cotidianos",
+  "Idioms & colloquialisms": "Modismos y coloquialismos",
+  "Nuanced arguments": "Argumentos matizados",
+  "Professional communication": "Comunicación profesional",
+  "Humor & wordplay": "Humor y juegos de palabras",
+  "Free conversation: abstract topics": "Conversación libre: temas abstractos",
+  "Regional accents & slang": "Acentos regionales y jerga",
+  "Literary & rhetorical language": "Lenguaje literario y retórico",
+  "Rapid native-speed conversation": "Conversación a velocidad nativa",
+  "Free conversation: any topic, native pace": "Conversación libre: cualquier tema, ritmo nativo",
+  "Open conversation practice": "Práctica de conversación abierta",
+};
+function topicEs(topic) {
+  return TOPIC_ES[topic] || topic;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -66,8 +112,8 @@ function populateLangSelects() {
     native.add(new Option(name, code));
     target.add(new Option(name, code));
   }
-  native.value = "en";
-  target.value = "es";
+  native.value = "es";
+  target.value = "en";
 }
 
 function readInterests() {
@@ -81,7 +127,7 @@ async function createProfileAndEnter(level) {
   const user = await api("/api/users", {
     method: "POST",
     body: JSON.stringify({
-      display_name: $("#ob-name").value.trim() || "Learner",
+      display_name: $("#ob-name").value.trim() || "Estudiante",
       native_lang: $("#ob-native").value,
       target_lang: $("#ob-target").value,
       level,
@@ -104,7 +150,7 @@ async function handleOnboardingSubmit(e) {
   try {
     await startPlacementTest();
   } catch (err) {
-    alert("Could not start placement test: " + err.message);
+    alert("No se pudo iniciar la prueba de nivel: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -123,7 +169,7 @@ async function startPlacementTest() {
 
 async function fetchNextPlacementQuestion() {
   const el = $("#placement-exercise");
-  el.innerHTML = "<p>Preparing your next question…</p>";
+  el.innerHTML = "<p>Preparando tu siguiente pregunta…</p>";
   const data = await api("/api/placement", {
     method: "POST",
     body: JSON.stringify({
@@ -138,7 +184,7 @@ async function fetchNextPlacementQuestion() {
     return;
   }
   placement.current = data;
-  $("#placement-progress").textContent = `Question ${data.question_number} of ${PLACEMENT_TOTAL}`;
+  $("#placement-progress").textContent = `Pregunta ${data.question_number} de ${PLACEMENT_TOTAL}`;
   $("#placement-progress-bar").style.width = `${Math.round(((data.question_number - 1) / PLACEMENT_TOTAL) * 100)}%`;
   renderPlacementQuestion(data.exercise, data.level, el);
 }
@@ -185,10 +231,10 @@ function renderPlacementQuestion(ex, level, container) {
     row.className = "exercise-input-row";
     const input = document.createElement("input");
     input.type = "text";
-    input.placeholder = "Type your answer…";
+    input.placeholder = "Escribe tu respuesta…";
     const btn = document.createElement("button");
     btn.className = "btn btn-primary";
-    btn.textContent = "Check";
+    btn.textContent = "Comprobar";
     row.append(input, btn);
     container.appendChild(row);
     const go = () => submit(input.value);
@@ -207,7 +253,7 @@ async function finishPlacementTest(recommendedLevel) {
 }
 
 $("#ob-skip-fluent").addEventListener("click", () => {
-  createProfileAndEnter("NATIVE").catch((err) => alert("Could not create profile: " + err.message));
+  createProfileAndEnter("NATIVE").catch((err) => alert("No se pudo crear el perfil: " + err.message));
 });
 
 // ---------- Sign-in (Google) ----------
@@ -231,7 +277,7 @@ async function checkSession() {
   const params = new URLSearchParams(location.search);
   if (params.get("auth_error")) {
     const err = $("#auth-error");
-    err.textContent = "Sign-in failed — please try again.";
+    err.textContent = "No se pudo iniciar sesión — inténtalo de nuevo.";
     err.classList.remove("hidden");
   }
 }
@@ -292,11 +338,11 @@ function animateCountUp(el, target) {
 
 function renderStatRow(data) {
   const tiles = [
-    ["🔥", data.streak_days, "Day streak", "fire"],
-    ["💎", data.gems, "Gems", "gem"],
-    ["❤️", data.hearts, "Hearts", "heart"],
+    ["🔥", data.streak_days, "Racha", "fire"],
+    ["💎", data.gems, "Gemas", "gem"],
+    ["❤️", data.hearts, "Vidas", "heart"],
     ["⭐", data.xp, "XP", "xp"],
-    ["🏅", data.level, "Level", "level"],
+    ["🏅", data.level, "Nivel", "level"],
   ];
   const row = $("#dash-stat-row");
   row.innerHTML = "";
@@ -327,7 +373,7 @@ function renderLevelMeter(data) {
   if (!data.next_level) {
     const maxed = document.createElement("p");
     maxed.className = "level-meter-maxed";
-    maxed.textContent = `You've reached ${data.level} — full native-level polish unlocked.`;
+    maxed.textContent = `Has alcanzado ${data.level} — perfeccionamiento a nivel nativo desbloqueado.`;
     el.appendChild(maxed);
     return;
   }
@@ -351,7 +397,7 @@ function renderLevelMeter(data) {
 
   const caption = document.createElement("p");
   caption.className = "level-meter-caption";
-  caption.textContent = `${data.units_mastered_current_level} of ${required} units mastered to unlock ${data.next_level}`;
+  caption.textContent = `${data.units_mastered_current_level} de ${required} unidades dominadas para desbloquear ${data.next_level}`;
 
   el.append(row, track, caption);
 }
@@ -360,7 +406,7 @@ function renderDueCard(data) {
   const card = $("#dash-due-card");
   if (data.due_reviews > 0) {
     card.classList.remove("hidden");
-    $("#dash-due-headline").textContent = `${data.due_reviews} word${data.due_reviews === 1 ? "" : "s"} due for review`;
+    $("#dash-due-headline").textContent = `${data.due_reviews} palabra${data.due_reviews === 1 ? "" : "s"} para repasar`;
   } else {
     card.classList.add("hidden");
   }
@@ -383,7 +429,7 @@ function renderActivity(data) {
   const tickColor = dark ? "#a8b3ba" : "#898781";
   const todayStr = new Date().toISOString().slice(0, 10);
   const labels = data.activity.map((d) =>
-    new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric" })
+    new Date(d.date + "T00:00:00").toLocaleDateString("es", { weekday: "short", day: "numeric" })
   );
   const values = data.activity.map((d) => d.lessons_completed);
   const barColor = data.activity.map((d) => (d.date === todayStr ? "#1489c4" : "#1cb0f6"));
@@ -402,7 +448,7 @@ function renderActivity(data) {
         tooltip: {
           callbacks: {
             title: (items) => data.activity[items[0].dataIndex].date,
-            label: (item) => `${item.raw} lesson${item.raw === 1 ? "" : "s"}`,
+            label: (item) => `${item.raw} lección${item.raw === 1 ? "" : "es"}`,
           },
         },
       },
@@ -439,7 +485,7 @@ function renderMasteryChart(data) {
           callbacks: {
             label: (item) => {
               const e = entries[item.dataIndex];
-              return `${e.mastered}/${e.total} units mastered`;
+              return `${e.mastered}/${e.total} unidades dominadas`;
             },
           },
         },
@@ -458,7 +504,7 @@ function renderRecentLessons(data) {
   if (data.recent_lessons.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-note";
-    empty.textContent = "Complete a lesson to see it here.";
+    empty.textContent = "Completa una lección para verla aquí.";
     el.appendChild(empty);
     return;
   }
@@ -469,10 +515,10 @@ function renderRecentLessons(data) {
     const left = document.createElement("div");
     const topic = document.createElement("div");
     topic.className = "recent-topic";
-    topic.textContent = lesson.topic;
+    topic.textContent = topicEs(lesson.topic);
     const date = document.createElement("div");
     date.className = "recent-date";
-    date.textContent = new Date(lesson.completed_at).toLocaleDateString();
+    date.textContent = new Date(lesson.completed_at).toLocaleDateString("es");
     left.append(topic, date);
 
     const score = document.createElement("span");
@@ -503,6 +549,10 @@ async function loadDashboard() {
   }
 }
 
+function diaWord(n) {
+  return n === 1 ? "día" : "días";
+}
+
 function renderMascot(data) {
   const card = $("#mascot-card");
   const badge = $("#mascot-badge");
@@ -511,26 +561,27 @@ function renderMascot(data) {
   if (data.hearts === 0) {
     card.classList.add("mood-sad");
     badge.textContent = "💔";
-    message.textContent = "Out of hearts! Refill them in the gem shop or wait for tomorrow.";
+    message.textContent = "¡Sin vidas! Recárgalas en la tienda de gemas o espera hasta mañana.";
   } else if (data.streak_freezes > 0) {
     card.classList.add("mood-cool");
     badge.textContent = "🧊";
-    message.textContent = `${data.streak_freezes} streak freeze${data.streak_freezes === 1 ? "" : "s"} banked — your streak is protected if you miss a day.`;
+    const freezeWord = data.streak_freezes === 1 ? "congelación de racha guardada" : "congelaciones de racha guardadas";
+    message.textContent = `${data.streak_freezes} ${freezeWord} — tu racha está protegida si faltas un día.`;
   } else if (data.streak_days >= 7) {
     card.classList.add("mood-fire");
     badge.textContent = "🔥";
-    message.textContent = `${data.streak_days}-day streak! You're on fire — keep it going.`;
+    message.textContent = `¡Racha de ${data.streak_days} días! Estás que ardes — sigue así.`;
   } else if (data.due_reviews > 0) {
     card.classList.add("mood-curious");
     badge.textContent = "🧐";
-    message.textContent = `${data.due_reviews} word${data.due_reviews === 1 ? "" : "s"} ready for review in your next lesson.`;
+    message.textContent = `${data.due_reviews} palabra${data.due_reviews === 1 ? "" : "s"} lista${data.due_reviews === 1 ? "" : "s"} para repasar en tu próxima lección.`;
   } else if (data.streak_days > 0) {
     card.classList.add("mood-happy");
     badge.textContent = "😊";
-    message.textContent = `${data.streak_days} day streak — nice work, don't break it!`;
+    message.textContent = `Racha de ${data.streak_days} ${diaWord(data.streak_days)} — ¡buen trabajo, no la rompas!`;
   } else {
     badge.textContent = "👋";
-    message.textContent = "Ready for your first lesson today?";
+    message.textContent = "¿Listo para tu primera lección de hoy?";
   }
 }
 
@@ -550,7 +601,7 @@ function renderLeaderboard(data) {
   if (data.leaderboard.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-note";
-    empty.textContent = "Complete a lesson this week to join the leaderboard.";
+    empty.textContent = "Completa una lección esta semana para unirte a la liga.";
     el.appendChild(empty);
     return;
   }
@@ -570,7 +621,7 @@ function renderLeaderboard(data) {
 
     const name = document.createElement("span");
     name.className = "leaderboard-name";
-    name.textContent = entry.is_you ? `${entry.display_name} (you)` : entry.display_name;
+    name.textContent = entry.is_you ? `${entry.display_name} (tú)` : entry.display_name;
 
     const xp = document.createElement("span");
     xp.className = "leaderboard-xp";
@@ -582,7 +633,7 @@ function renderLeaderboard(data) {
   if (data.your_rank && data.your_rank > data.leaderboard.length) {
     const you = document.createElement("div");
     you.className = "leaderboard-row is-you";
-    you.innerHTML = `<span class="leaderboard-rank">#${data.your_rank}</span><span class="leaderboard-avatar" style="background:${avatarColor("You")}">${initials("You")}</span><span class="leaderboard-name">You</span><span class="leaderboard-xp">${data.your_weekly_xp} XP</span>`;
+    you.innerHTML = `<span class="leaderboard-rank">#${data.your_rank}</span><span class="leaderboard-avatar" style="background:${avatarColor("Tú")}">${initials("Tú")}</span><span class="leaderboard-name">Tú</span><span class="leaderboard-xp">${data.your_weekly_xp} XP</span>`;
     el.appendChild(you);
   }
 }
@@ -604,7 +655,7 @@ function setupShop(data) {
   freezeBtn.onclick = async () => {
     try {
       await api(`/api/shop/${state.userId}/streak-freeze`, { method: "POST" });
-      showToast("🧊 Streak freeze purchased!");
+      showToast("🧊 ¡Congelación de racha comprada!");
       await loadDashboard();
     } catch (err) {
       showToast(err.message);
@@ -613,7 +664,7 @@ function setupShop(data) {
   heartBtn.onclick = async () => {
     try {
       await api(`/api/shop/${state.userId}/heart-refill`, { method: "POST" });
-      showToast("❤️ Hearts refilled!");
+      showToast("❤️ ¡Vidas rellenadas!");
       await loadDashboard();
     } catch (err) {
       showToast(err.message);
@@ -630,13 +681,13 @@ async function loadPath() {
     if (unit.level !== lastLevel) {
       const heading = document.createElement("div");
       heading.className = "level-heading";
-      heading.textContent = `Level ${unit.level}`;
+      heading.textContent = `Nivel ${unit.level}`;
       container.appendChild(heading);
       lastLevel = unit.level;
     }
     const btn = document.createElement("button");
     btn.className = `unit-node ${unit.state}`;
-    btn.textContent = unit.topic;
+    btn.textContent = topicEs(unit.topic);
     btn.disabled = unit.state === "locked";
     btn.addEventListener("click", () => startLesson(unit.id));
     container.appendChild(btn);
@@ -662,14 +713,14 @@ function setupTabs() {
 
 async function startLesson(unitId) {
   showScreen("#screen-lesson");
-  $("#exercise-container").innerHTML = "<p>Preparing your personalized lesson…</p>";
+  $("#exercise-container").innerHTML = "<p>Preparando tu lección personalizada…</p>";
   try {
     const exercises = await api(`/api/lessons/${state.userId}/unit/${unitId}`);
     state.lesson = { exercises, index: 0, correctCount: 0, unitId };
     $("#lesson-hearts-count").textContent = state.user.hearts;
     renderCurrentExercise();
   } catch (err) {
-    $("#exercise-container").innerHTML = `<p>Could not load lesson: ${err.message}</p>`;
+    $("#exercise-container").innerHTML = `<p>No se pudo cargar la lección: ${err.message}</p>`;
   }
 }
 
@@ -732,8 +783,8 @@ async function recordAnswer(exercise, correct) {
   }
 }
 
-const PRAISE = ["Correct! 🎉", "Nice one! ✨", "Great job! 👏", "You've got it! 🙌", "Exactly right! 💪"];
-const MISS_LEADIN = ["Not quite.", "Close, but not quite.", "Almost!"];
+const PRAISE = ["¡Correcto! 🎉", "¡Muy bien! ✨", "¡Gran trabajo! 👏", "¡Lo lograste! 🙌", "¡Exactamente! 💪"];
+const MISS_LEADIN = ["No es correcto.", "Cerca, pero no es correcto.", "¡Casi!"];
 
 function showFeedback(container, correct, extra, customMessage) {
   const banner = document.createElement("div");
@@ -749,7 +800,7 @@ function showFeedback(container, correct, extra, customMessage) {
   container.appendChild(banner);
   const next = document.createElement("button");
   next.className = "btn btn-primary";
-  next.textContent = "Continue";
+  next.textContent = "Continuar";
   next.style.marginTop = "8px";
   next.addEventListener("click", () => {
     state.lesson.index += 1;
@@ -771,7 +822,7 @@ function renderCurrentExercise() {
 
   const promptEl = document.createElement("div");
   promptEl.className = "exercise-prompt";
-  promptEl.textContent = ex.prompt || "Translate / answer:";
+  promptEl.textContent = ex.prompt || "Traduce / responde:";
   container.appendChild(promptEl);
 
   const targetLang = state.user.target_lang;
@@ -808,7 +859,7 @@ function renderImageMatch(ex, container, targetLang) {
       btn.classList.add(correct ? "correct" : "incorrect");
       opts.querySelectorAll("button").forEach((b) => (b.disabled = true));
       await recordAnswer(ex, correct);
-      showFeedback(container, correct, `Answer: ${ex.correct_answer}`);
+      showFeedback(container, correct, `Respuesta: ${ex.correct_answer}`);
     });
     opts.appendChild(btn);
   }
@@ -828,7 +879,7 @@ function renderMultipleChoice(ex, container) {
       btn.classList.add(correct ? "correct" : "incorrect");
       opts.querySelectorAll("button").forEach((b) => (b.disabled = true));
       await recordAnswer(ex, correct);
-      showFeedback(container, correct, `Answer: ${ex.correct_answer}`);
+      showFeedback(container, correct, `Respuesta: ${ex.correct_answer}`);
     });
     opts.appendChild(btn);
   }
@@ -861,10 +912,10 @@ function renderTextInput(ex, container) {
   row.className = "exercise-input-row";
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = "Type your answer…";
+  input.placeholder = "Escribe tu respuesta…";
   const submit = document.createElement("button");
   submit.className = "btn btn-primary";
-  submit.textContent = "Check";
+  submit.textContent = "Comprobar";
   row.appendChild(input);
   row.appendChild(submit);
   container.appendChild(row);
@@ -874,7 +925,7 @@ function renderTextInput(ex, container) {
     submit.disabled = true;
     input.disabled = true;
     await recordAnswer(ex, correct);
-    showFeedback(container, correct, `Answer: ${ex.correct_answer}`);
+    showFeedback(container, correct, `Respuesta: ${ex.correct_answer}`);
   };
   submit.addEventListener("click", submitAnswer);
   input.addEventListener("keydown", (e) => {
@@ -897,7 +948,7 @@ function renderSpeakRepeat(ex, container, targetLang) {
 
   const recordBtn = document.createElement("button");
   recordBtn.className = "btn btn-primary";
-  recordBtn.textContent = "🎙️ Hold & repeat";
+  recordBtn.textContent = "🎙️ Mantén presionado y repite";
   container.appendChild(recordBtn);
 
   const heard = document.createElement("div");
@@ -914,12 +965,12 @@ function renderSpeakRepeat(ex, container, targetLang) {
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (ev) => chunks.push(ev.data);
     recorder.start();
-    recordBtn.textContent = "Recording…";
+    recordBtn.textContent = "Grabando…";
   };
   const stop = async () => {
     if (!recorder || recorder.state === "inactive") return;
     recorder.stop();
-    recordBtn.textContent = "🎙️ Hold & repeat";
+    recordBtn.textContent = "🎙️ Mantén presionado y repite";
     await new Promise((resolve) => (recorder.onstop = resolve));
     const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
     const res = await fetch("/api/content/stt", {
@@ -928,16 +979,16 @@ function renderSpeakRepeat(ex, container, targetLang) {
       body: blob,
     });
     const data = await res.json().catch(() => ({ text: "" }));
-    heard.textContent = data.text ? `We heard: "${data.text}"` : "Could not transcribe — self-check below.";
+    heard.textContent = data.text ? `Escuchamos: "${data.text}"` : "No se pudo transcribir — verifica tú mismo abajo.";
 
     const selfCheck = document.createElement("div");
     selfCheck.className = "exercise-options";
     const yes = document.createElement("button");
     yes.className = "option-btn";
-    yes.textContent = "I said it correctly";
+    yes.textContent = "Lo dije correctamente";
     const no = document.createElement("button");
     no.className = "option-btn";
-    no.textContent = "Need more practice";
+    no.textContent = "Necesito más práctica";
     selfCheck.appendChild(yes);
     selfCheck.appendChild(no);
     container.appendChild(selfCheck);
@@ -962,10 +1013,10 @@ function renderFreeConversation(ex, container) {
   row.className = "exercise-input-row";
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = "Write a few sentences in response…";
+  input.placeholder = "Escribe unas frases en respuesta…";
   const submit = document.createElement("button");
   submit.className = "btn btn-primary";
-  submit.textContent = "Done";
+  submit.textContent = "Listo";
   row.appendChild(input);
   row.appendChild(submit);
   container.appendChild(row);
@@ -977,7 +1028,7 @@ function renderFreeConversation(ex, container) {
     input.disabled = true;
     await recordAnswer(ex, correct);
     if (!correct) {
-      showFeedback(container, correct, "Try writing a short answer next time.");
+      showFeedback(container, correct, "Intenta escribir una respuesta corta la próxima vez.");
       return;
     }
     submit.textContent = "…";
@@ -1010,13 +1061,13 @@ async function finishLesson() {
   $("#complete-xp-pill").textContent = result.xp_gained;
   $("#complete-gems-pill").textContent = result.gems_gained;
   $("#complete-streak").textContent = result.streak_freeze_used
-    ? `🧊 Streak freeze used — your ${result.streak_days}-day streak is safe!`
-    : `🔥 ${result.streak_days} day streak`;
+    ? `🧊 Congelación de racha usada — ¡tu racha de ${result.streak_days} ${diaWord(result.streak_days)} está a salvo!`
+    : `🔥 Racha de ${result.streak_days} ${diaWord(result.streak_days)}`;
   $("#complete-level").textContent = result.leveled_up
-    ? `🎊 Level up! You're now at ${result.leveled_up}.`
+    ? `🎊 ¡Subiste de nivel! Ahora estás en ${result.leveled_up}.`
     : result.mastered
-      ? "Unit mastered!"
-      : "Keep practicing this unit to master it.";
+      ? "¡Unidad dominada!"
+      : "Sigue practicando esta unidad para dominarla.";
   $("#complete-mascot").classList.toggle("mood-fire", !!result.leveled_up);
   $("#complete-mascot-badge").textContent = result.leveled_up ? "🎉" : "⭐";
   showScreen("#screen-complete");
@@ -1053,7 +1104,7 @@ function ensureConversationSocket() {
     }
   });
   ws.addEventListener("close", () => {
-    $("#call-status").textContent = "Disconnected — switch tabs back to reconnect.";
+    $("#call-status").textContent = "Desconectado — cambia de pestaña para reconectar.";
   });
 }
 
@@ -1099,7 +1150,7 @@ function setupMic() {
     state.mediaRecorder.ondataavailable = (ev) => state.audioChunks.push(ev.data);
     state.mediaRecorder.start();
     micBtn.classList.add("recording");
-    micBtn.textContent = "🔴 Listening…";
+    micBtn.textContent = "🔴 Escuchando…";
     avatar.classList.add("listening");
   };
 
@@ -1107,7 +1158,7 @@ function setupMic() {
     if (!state.mediaRecorder || state.mediaRecorder.state === "inactive") return;
     state.mediaRecorder.stop();
     micBtn.classList.remove("recording");
-    micBtn.textContent = "🎙️ Hold to talk";
+    micBtn.textContent = "🎙️ Mantén presionado para hablar";
     avatar.classList.remove("listening");
     await new Promise((resolve) => (state.mediaRecorder.onstop = resolve));
     stream.getTracks().forEach((t) => t.stop());

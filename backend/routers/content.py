@@ -25,7 +25,7 @@ class TTSRequest(BaseModel):
 async def text_to_speech(payload: TTSRequest) -> Response:
     audio = await hf_client.text_to_speech(payload.text, payload.target_lang)
     if audio is None:
-        raise HTTPException(status_code=503, detail="Audio unavailable — set HF_TOKEN to enable text-to-speech")
+        raise HTTPException(status_code=503, detail="Audio no disponible — configura HF_TOKEN para activar texto a voz")
     return Response(content=audio, media_type="audio/flac")
 
 
@@ -37,7 +37,7 @@ class ImageRequest(BaseModel):
 async def generate_image(payload: ImageRequest) -> Response:
     image = await hf_client.generate_image(payload.prompt)
     if image is None:
-        raise HTTPException(status_code=503, detail="Image unavailable — set HF_TOKEN to enable image generation")
+        raise HTTPException(status_code=503, detail="Imagen no disponible — configura HF_TOKEN para activar la generación de imágenes")
     return Response(content=image, media_type="image/jpeg")
 
 

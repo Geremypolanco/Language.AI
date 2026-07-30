@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lingua — Learn a language, talk like a native</title>
+<title>Lingua — Aprende un idioma, habla como un nativo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
@@ -16,16 +16,16 @@
     <section id="screen-login" class="screen">
       <div class="card onboarding-card">
         <h1>🗣️ Lingua</h1>
-        <p class="subtitle">Beginner to native — personalized lessons, real conversations.</p>
+        <p class="subtitle">De principiante a nativo — lecciones personalizadas, conversaciones reales.</p>
         <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
-          <span class="g-icon">G</span> Sign in with Google
+          <span class="g-icon">G</span> Iniciar sesión con Google
         </a>
         <p id="auth-error" class="auth-error hidden"></p>
         <div id="dev-login-block" class="dev-login hidden">
-          <p class="subtitle">Google Sign-In isn't configured on this deployment yet — dev login:</p>
+          <p class="subtitle">El inicio de sesión con Google aún no está configurado — acceso de prueba:</p>
           <form id="dev-login-form">
-            <input type="email" id="dev-login-email" placeholder="you@example.com" required />
-            <button type="submit" class="btn btn-primary">Continue</button>
+            <input type="email" id="dev-login-email" placeholder="tucorreo@ejemplo.com" required />
+            <button type="submit" class="btn btn-primary">Continuar</button>
           </form>
         </div>
       </div>
@@ -35,32 +35,32 @@
     <section id="screen-onboarding" class="screen hidden">
       <div class="card onboarding-card" id="onboarding-step-profile">
         <h1>🗣️ Lingua</h1>
-        <p class="subtitle">Tell us about your goals — this personalizes every lesson.</p>
+        <p class="subtitle">Cuéntanos tus objetivos — esto personaliza cada lección.</p>
         <form id="onboarding-form">
-          <label>Your name
+          <label>Tu nombre
             <input type="text" id="ob-name" required placeholder="Alex" />
           </label>
-          <label>I already speak
+          <label>Ya hablo
             <select id="ob-native"></select>
           </label>
-          <label>I want to learn
+          <label>Quiero aprender
             <select id="ob-target"></select>
           </label>
-          <label>Interests (comma-separated, personalizes your lessons)
-            <input type="text" id="ob-interests" placeholder="football, cooking, movies" />
+          <label>Intereses (separados por comas, personaliza tus lecciones)
+            <input type="text" id="ob-interests" placeholder="fútbol, cocina, películas" />
           </label>
-          <button type="submit" class="btn btn-primary">Find my level</button>
+          <button type="submit" class="btn btn-primary">Encontrar mi nivel</button>
         </form>
-        <button type="button" id="ob-skip-fluent" class="btn-link">I'm already fluent — skip the placement test</button>
+        <button type="button" id="ob-skip-fluent" class="btn-link">Ya tengo un nivel avanzado — omitir la prueba de nivel</button>
       </div>
 
       <div class="card onboarding-card hidden" id="onboarding-step-placement">
         <div class="placement-header">
-          <h2>Let's find your level</h2>
-          <span class="placement-progress" id="placement-progress">Question 1 of 6</span>
+          <h2>Vamos a encontrar tu nivel</h2>
+          <span class="placement-progress" id="placement-progress">Pregunta 1 de 6</span>
         </div>
         <div class="lesson-progress placement-bar"><div id="placement-progress-bar"></div></div>
-        <p class="subtitle">Answer as best you can — questions adjust to you as you go, just like a real placement test.</p>
+        <p class="subtitle">Responde lo mejor que puedas — las preguntas se ajustan a ti a medida que avanzas, como una prueba de nivel real.</p>
         <div id="placement-exercise" class="placement-exercise"></div>
       </div>
 
@@ -84,9 +84,9 @@
             <ellipse cx="94" cy="78" rx="9" ry="16" fill="#1075ab" transform="rotate(16 94 78)" />
           </svg>
         </div>
-        <h2>You're at level <span id="placement-result-level">A2</span>!</h2>
-        <p class="subtitle" id="placement-result-note">We'll start your path there — it adapts further as you go.</p>
-        <button type="button" id="placement-continue" class="btn btn-primary">Start learning</button>
+        <h2>¡Estás en el nivel <span id="placement-result-level">A2</span>!</h2>
+        <p class="subtitle" id="placement-result-note">Empezarás tu camino ahí — se sigue ajustando mientras avanzas.</p>
+        <button type="button" id="placement-continue" class="btn btn-primary">Empezar a aprender</button>
       </div>
     </section>
 
@@ -95,17 +95,17 @@
       <header class="topbar">
         <div class="brand">🗣️ Lingua</div>
         <div class="stats">
-          <span title="Streak">🔥 <b id="stat-streak">0</b></span>
-          <span title="Gems">💎 <b id="stat-gems">0</b></span>
-          <span title="Hearts">❤️ <b id="stat-hearts">5</b></span>
+          <span title="Racha">🔥 <b id="stat-streak">0</b></span>
+          <span title="Gemas">💎 <b id="stat-gems">0</b></span>
+          <span title="Vidas">❤️ <b id="stat-hearts">5</b></span>
           <span title="XP">⭐ <b id="stat-xp">0</b></span>
-          <span title="Level" id="stat-level">A1</span>
+          <span title="Nivel" id="stat-level">A1</span>
         </div>
         <nav class="tabs">
-          <button class="tab-btn active" data-tab="path">Path</button>
-          <button class="tab-btn" data-tab="talk">Talk Live</button>
-          <button class="tab-btn" data-tab="progress">Progress</button>
-          <button class="tab-btn" id="switch-user-btn" title="Sign out">⏻</button>
+          <button class="tab-btn active" data-tab="path">Camino</button>
+          <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
+          <button class="tab-btn" data-tab="progress">Progreso</button>
+          <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión">⏻</button>
         </nav>
       </header>
 
@@ -118,14 +118,14 @@
           <div class="call-frame">
             <div class="avatar-tile">
               <div id="avatar" class="avatar">🧑‍🏫</div>
-              <div id="call-status" class="call-status">Connecting…</div>
+              <div id="call-status" class="call-status">Conectando…</div>
             </div>
             <div id="transcript" class="transcript"></div>
             <div class="call-controls">
-              <button id="mic-btn" class="mic-btn">🎙️ Hold to talk</button>
+              <button id="mic-btn" class="mic-btn">🎙️ Mantén presionado para hablar</button>
               <form id="text-fallback-form" class="text-fallback">
-                <input type="text" id="text-fallback-input" placeholder="…or type instead" />
-                <button type="submit">Send</button>
+                <input type="text" id="text-fallback-input" placeholder="…o escribe en su lugar" />
+                <button type="submit">Enviar</button>
               </form>
             </div>
           </div>
@@ -156,7 +156,7 @@
                 <span id="mascot-badge" class="mascot-badge"></span>
               </div>
               <div class="mascot-bubble">
-                <p id="mascot-message" class="mascot-message">Loading your progress…</p>
+                <p id="mascot-message" class="mascot-message">Cargando tu progreso…</p>
               </div>
             </div>
 
@@ -164,14 +164,14 @@
 
             <div class="card league-card">
               <div class="card-title-row">
-                <h2 class="card-title">🏆 Weekly leaderboard</h2>
-                <span class="subtitle" id="league-reset-note">Resets Monday</span>
+                <h2 class="card-title">🏆 Liga semanal</h2>
+                <span class="subtitle" id="league-reset-note">Se reinicia el lunes</span>
               </div>
               <div id="dash-leaderboard" class="leaderboard-list"></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Level progress</h2>
+              <h2 class="card-title">Progreso de nivel</h2>
               <div id="dash-level-meter"></div>
             </div>
 
@@ -179,41 +179,41 @@
               <span class="due-icon">⏰</span>
               <div>
                 <div class="due-headline" id="dash-due-headline"></div>
-                <p class="subtitle">These words will come back around in your next lesson.</p>
+                <p class="subtitle">Estas palabras volverán a aparecer en tu próxima lección.</p>
               </div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">💎 Gem shop</h2>
-              <p class="subtitle">Earn gems by finishing lessons. Spend them here — no real money, ever.</p>
+              <h2 class="card-title">💎 Tienda de gemas</h2>
+              <p class="subtitle">Gana gemas terminando lecciones. Gástalas aquí — nunca con dinero real.</p>
               <div class="shop-grid">
                 <div class="shop-item">
                   <div class="shop-item-icon" style="background: rgba(28,176,246,0.14)">🧊</div>
-                  <div class="shop-item-name">Streak Freeze</div>
-                  <p class="shop-item-desc">Auto-protects your streak the next time you miss a day.</p>
+                  <div class="shop-item-name">Congelar racha</div>
+                  <p class="shop-item-desc">Protege tu racha automáticamente la próxima vez que faltes un día.</p>
                   <button id="buy-streak-freeze" class="btn btn-shop">200 💎</button>
                 </div>
                 <div class="shop-item">
                   <div class="shop-item-icon" style="background: rgba(255,75,75,0.14)">❤️</div>
-                  <div class="shop-item-name">Refill Hearts</div>
-                  <p class="shop-item-desc">Instantly restore all 5 hearts.</p>
+                  <div class="shop-item-name">Rellenar vidas</div>
+                  <p class="shop-item-desc">Restaura al instante tus 5 vidas.</p>
                   <button id="buy-heart-refill" class="btn btn-shop">100 💎</button>
                 </div>
               </div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Last 14 days</h2>
+              <h2 class="card-title">Últimos 14 días</h2>
               <div class="chart-frame chart-frame-activity"><canvas id="dash-activity-chart"></canvas></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Mastery by level</h2>
+              <h2 class="card-title">Dominio por nivel</h2>
               <div class="chart-frame chart-frame-mastery"><canvas id="dash-mastery-chart"></canvas></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Recent lessons</h2>
+              <h2 class="card-title">Lecciones recientes</h2>
               <div id="dash-recent" class="recent-list"></div>
             </div>
 
@@ -260,14 +260,14 @@
           </svg>
           <span id="complete-mascot-badge" class="mascot-badge"></span>
         </div>
-        <h2 id="complete-title">Lesson complete! 🎉</h2>
+        <h2 id="complete-title">¡Lección completada! 🎉</h2>
         <div class="complete-rewards">
           <span class="reward-pill">⭐ <b id="complete-xp-pill">0</b> XP</span>
-          <span class="reward-pill">💎 <b id="complete-gems-pill">0</b> gems</span>
+          <span class="reward-pill">💎 <b id="complete-gems-pill">0</b> gemas</span>
         </div>
         <p id="complete-streak"></p>
         <p id="complete-level"></p>
-        <button id="complete-continue" class="btn btn-primary">Continue</button>
+        <button id="complete-continue" class="btn btn-primary">Continuar</button>
       </div>
     </section>
 

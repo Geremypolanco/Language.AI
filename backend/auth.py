@@ -165,7 +165,7 @@ def get_session(request: Request) -> dict | None:
 def require_session(request: Request) -> dict:
     session = get_session(request)
     if not session:
-        raise HTTPException(status_code=401, detail="Sign in with Google first")
+        raise HTTPException(status_code=401, detail="Inicia sesión con Google primero")
     return session
 
 
@@ -174,5 +174,5 @@ def require_owner(user_id: str, request: Request) -> dict:
     session must belong to the same user whose data is being requested."""
     session = require_session(request)
     if session["user_id"] != user_id:
-        raise HTTPException(status_code=403, detail="Not your profile")
+        raise HTTPException(status_code=403, detail="Este no es tu perfil")
     return session

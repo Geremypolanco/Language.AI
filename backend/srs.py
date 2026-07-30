@@ -242,7 +242,7 @@ def buy_streak_freeze(user_id: str) -> dict:
         cur.execute("SELECT gems, streak_freezes FROM users WHERE id=?", (user_id,))
         row = cur.fetchone()
         if row["gems"] < GEM_STREAK_FREEZE_COST:
-            raise ShopError("Not enough gems for a streak freeze")
+            raise ShopError("No tienes suficientes gemas para una congelación de racha")
         new_gems = row["gems"] - GEM_STREAK_FREEZE_COST
         new_freezes = row["streak_freezes"] + 1
         cur.execute("UPDATE users SET gems=?, streak_freezes=? WHERE id=?", (new_gems, new_freezes, user_id))
@@ -254,9 +254,9 @@ def buy_heart_refill(user_id: str) -> dict:
         cur.execute("SELECT gems, hearts FROM users WHERE id=?", (user_id,))
         row = cur.fetchone()
         if row["hearts"] >= MAX_HEARTS:
-            raise ShopError("Hearts are already full")
+            raise ShopError("Tus vidas ya están completas")
         if row["gems"] < GEM_HEART_REFILL_COST:
-            raise ShopError("Not enough gems for a heart refill")
+            raise ShopError("No tienes suficientes gemas para rellenar vidas")
         new_gems = row["gems"] - GEM_HEART_REFILL_COST
         cur.execute("UPDATE users SET gems=?, hearts=? WHERE id=?", (new_gems, MAX_HEARTS, user_id))
         return {"gems": new_gems, "hearts": MAX_HEARTS}

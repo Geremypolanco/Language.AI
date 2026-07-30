@@ -53,14 +53,14 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
     session = auth.verify_session(websocket.cookies.get(auth.SESSION_COOKIE))
     if not session or session["user_id"] != user_id:
-        await websocket.send_json({"type": "error", "message": "Sign in with Google first"})
+        await websocket.send_json({"type": "error", "message": "Inicia sesión con Google primero"})
         await websocket.close(code=4401)
         return
 
     try:
         user = get_user_by_id_or_404(user_id)
     except Exception:
-        await websocket.send_json({"type": "error", "message": "Unknown user"})
+        await websocket.send_json({"type": "error", "message": "Usuario desconocido"})
         await websocket.close()
         return
 
@@ -69,8 +69,12 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
     await websocket.send_json(
         {
+            # target_lang/native_lang are stored as ISO codes ("en", "es"), not
+            # display names — the level + language-code badge avoids awkwardly
+            # interpolating a raw code into a Spanish sentence (e.g. the "en"
+            # code colliding with the Spanish word "en").
             "type": "ready",
-            "message": f"Conversation ready — practicing {user.target_lang} at level {user.level.value}.",
+            "message": f"Conversación lista — nivel {user.level.value} ({user.target_lang.upper()}).",
         }
     )
 
@@ -80,7 +84,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
-                await websocket.send_json({"type": "error", "message": "Invalid message"})
+                await websocket.send_json({"type": "error", "message": "Mensaje inválido"})
                 continue
 
             msg_type = msg.get("type")
@@ -90,7 +94,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 transcript = await hf_client.speech_to_text(audio_bytes, content_type)
                 if not transcript:
                     await websocket.send_json(
-                        {"type": "error", "message": "Could not transcribe audio — try again or type instead."}
+                        {"type": "error", "message": "No se pudo transcribir el audio — intenta de nuevo o escribe en su lugar."}
                     )
                     continue
             elif msg_type == "text":
@@ -98,7 +102,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 if not transcript:
                     continue
             else:
-                await websocket.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
+                await websocket.send_json({"type": "error", "message": f"Tipo de mensaje desconocido: {msg_type}"})
                 continue
 
             await websocket.send_json({"type": "transcript", "text": transcript})

@@ -55,9 +55,9 @@ async def get_lesson_exercises(
     user = get_user_by_id_or_404(user_id)
     unit = get_unit(unit_id)
     if unit is None:
-        raise HTTPException(status_code=404, detail="Unit not found")
+        raise HTTPException(status_code=404, detail="Unidad no encontrada")
     if unit.level.rank > user.level.rank:
-        raise HTTPException(status_code=403, detail="Unit is locked")
+        raise HTTPException(status_code=403, detail="La unidad está bloqueada")
 
     req = LessonRequest(
         unit=unit,

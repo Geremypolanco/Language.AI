@@ -70,6 +70,56 @@ _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
     ],
 }
 
+# Spanish label for each topic key above — used only for the no-HF_TOKEN
+# template fallback's placeholder text (backend/hf_client.py's
+# _fallback_exercises); the frontend's skill path/recent-lessons UI has its
+# own copy of this map (frontend/app.js TOPIC_ES) since there's no shared
+# JS/Python module in this repo.
+_TOPIC_ES: dict[str, str] = {
+    "Greetings & introductions": "Saludos y presentaciones",
+    "Numbers & counting": "Números y conteo",
+    "Family": "Familia",
+    "Food & drink": "Comida y bebida",
+    "Colors & shapes": "Colores y formas",
+    "Everyday objects": "Objetos cotidianos",
+    "Days & time": "Días y horas",
+    "Daily routines": "Rutinas diarias",
+    "Shopping": "De compras",
+    "Directions & places in town": "Direcciones y lugares en la ciudad",
+    "Weather": "El clima",
+    "Hobbies": "Pasatiempos",
+    "Past tense: simple stories": "Pasado: historias sencillas",
+    "Making plans": "Hacer planes",
+    "Travel & transportation": "Viajes y transporte",
+    "Health & the body": "Salud y el cuerpo",
+    "Work & school": "Trabajo y escuela",
+    "Opinions & preferences": "Opiniones y preferencias",
+    "Describing people": "Describir personas",
+    "Telling a past experience": "Contar una experiencia pasada",
+    "Free conversation: small talk": "Conversación libre: charla informal",
+    "News & current events": "Noticias y actualidad",
+    "Emotions & relationships": "Emociones y relaciones",
+    "Giving advice": "Dar consejos",
+    "Hypotheticals": "Hipótesis",
+    "Debating opinions": "Debatir opiniones",
+    "Free conversation: everyday problems": "Conversación libre: problemas cotidianos",
+    "Idioms & colloquialisms": "Modismos y coloquialismos",
+    "Nuanced arguments": "Argumentos matizados",
+    "Professional communication": "Comunicación profesional",
+    "Humor & wordplay": "Humor y juegos de palabras",
+    "Free conversation: abstract topics": "Conversación libre: temas abstractos",
+    "Regional accents & slang": "Acentos regionales y jerga",
+    "Literary & rhetorical language": "Lenguaje literario y retórico",
+    "Rapid native-speed conversation": "Conversación a velocidad nativa",
+    "Free conversation: any topic, native pace": "Conversación libre: cualquier tema, ritmo nativo",
+    "Open conversation practice": "Práctica de conversación abierta",
+}
+
+
+def topic_es(topic: str) -> str:
+    return _TOPIC_ES.get(topic, topic)
+
+
 # Exercise mix per level — early levels lean on image/audio immersion
 # (Rosetta Stone), later levels lean on translation, production, and free
 # conversation (Duolingo's later skill tree + real dialogue practice).

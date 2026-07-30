@@ -18,7 +18,7 @@ import re
 import httpx
 
 from .config import settings
-from .curriculum import LessonRequest, build_exercise_generation_prompt
+from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_es
 from .models import Exercise, ExerciseType
 
 logger = logging.getLogger("lingua.hf_client")
@@ -167,8 +167,8 @@ class HFClient:
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         if not settings.hf_configured:
             return (
-                "(demo mode — set HF_TOKEN to enable the real AI tutor) "
-                "That's great, tell me more!"
+                "(modo demo — configura HF_TOKEN para activar al tutor de IA real) "
+                "¡Qué bien, cuéntame más!"
             )
         messages = [{"role": "system", "content": system_prompt}, *history]
         return await self.chat(messages, max_tokens=300, temperature=0.8)
@@ -272,19 +272,20 @@ def _fallback_exercises(req: LessonRequest) -> list[Exercise]:
     from .curriculum import exercise_mix_for
 
     mix = exercise_mix_for(req.unit.level)
+    topic = topic_es(req.unit.topic)
     exercises = []
     for i, ex_type in enumerate(mix):
         word = f"{req.unit.topic.split()[0].lower()}_{i}"
-        target = f"[{req.target_lang}] {req.unit.topic} example {i + 1}"
-        native = f"[{req.native_lang}] {req.unit.topic} example {i + 1}"
+        target = f"[{req.target_lang}] {topic}, ejemplo {i + 1}"
+        native = f"[{req.native_lang}] {topic}, ejemplo {i + 1}"
         exercises.append(
             Exercise(
                 id=f"ex-{i}-{word}",
                 type=ex_type,
-                prompt=f"Practice: {req.unit.topic}",
+                prompt=f"Practica: {topic}",
                 target_text=target,
                 native_text=native if req.unit.level.uses_translation else "",
-                options=[target, f"{target} (alt A)", f"{target} (alt B)"]
+                options=[target, f"{target} (opción A)", f"{target} (opción B)"]
                 if ex_type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH)
                 else [],
                 correct_answer=target,

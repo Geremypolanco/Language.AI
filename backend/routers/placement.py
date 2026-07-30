@@ -56,7 +56,7 @@ def _level_index(history: list[PlacementAnswer]) -> int:
 @router.post("", response_model=PlacementResponse)
 async def next_placement_question(payload: PlacementRequest, request: Request) -> PlacementResponse:
     if not auth.verify_pending(request.cookies.get(auth.PENDING_COOKIE)):
-        raise HTTPException(status_code=401, detail="Sign in with Google first")
+        raise HTTPException(status_code=401, detail="Inicia sesión con Google primero")
 
     idx = _level_index(payload.history)
     if len(payload.history) >= _MAX_QUESTIONS:

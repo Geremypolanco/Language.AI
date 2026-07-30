@@ -26,7 +26,7 @@ def get_user_by_id_or_404(user_id: str) -> UserProfile:
         cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
         row = db.row_to_dict(cur.fetchone())
     if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return UserProfile(**row)
 
 
@@ -53,7 +53,7 @@ class CreateUserRequest(BaseModel):
 def create_user(payload: CreateUserRequest, request: Request, response: Response) -> UserProfile:
     pending = auth.verify_pending(request.cookies.get(auth.PENDING_COOKIE))
     if not pending:
-        raise HTTPException(status_code=401, detail="Sign in with Google first")
+        raise HTTPException(status_code=401, detail="Inicia sesión con Google primero")
     email = pending["email"]
 
     with db.cursor() as cur:
