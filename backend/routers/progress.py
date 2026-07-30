@@ -36,12 +36,13 @@ def get_progress(user_id: str, session: dict = Depends(auth.require_owner)) -> P
         user_id=user_id,
         xp=user.xp,
         streak_days=user.streak_days,
-        hearts=user.hearts,
         gems=user.gems,
         streak_freezes=user.streak_freezes,
         level=user.level,
         due_reviews=srs.due_review_count(user_id),
         units_mastered=mastered,
+        daily_goal_minutes=user.daily_goal_minutes,
+        today_minutes=srs.today_practice_minutes(user_id),
     )
 
 
@@ -113,7 +114,6 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
         user_id=user_id,
         xp=user.xp,
         streak_days=user.streak_days,
-        hearts=user.hearts,
         gems=user.gems,
         streak_freezes=user.streak_freezes,
         level=user.level,
@@ -122,6 +122,8 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
         units_mastered_current_level=units_mastered_current,
         units_total_current_level=units_total_current,
         units_required_for_next_level=min(srs.UNITS_TO_UNLOCK_NEXT_LEVEL, units_total_current or 1),
+        daily_goal_minutes=user.daily_goal_minutes,
+        today_minutes=srs.today_practice_minutes(user_id),
         mastery_by_level=mastery_by_level,
         activity=activity,
         recent_lessons=recent_lessons,

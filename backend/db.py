@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS users (
     interests TEXT NOT NULL DEFAULT '[]',
     xp INTEGER NOT NULL DEFAULT 0,
     streak_days INTEGER NOT NULL DEFAULT 0,
-    hearts INTEGER NOT NULL DEFAULT 5,
     gems INTEGER NOT NULL DEFAULT 0,
     streak_freezes INTEGER NOT NULL DEFAULT 0,
+    daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS lesson_history (
     user_id TEXT NOT NULL,
     unit_id TEXT NOT NULL,
     score REAL NOT NULL,
-    completed_at TEXT NOT NULL
+    completed_at TEXT NOT NULL,
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS unit_mastery (
@@ -103,9 +104,9 @@ CREATE TABLE IF NOT EXISTS users (
     interests TEXT NOT NULL DEFAULT '[]',
     xp INTEGER NOT NULL DEFAULT 0,
     streak_days INTEGER NOT NULL DEFAULT 0,
-    hearts INTEGER NOT NULL DEFAULT 5,
     gems INTEGER NOT NULL DEFAULT 0,
     streak_freezes INTEGER NOT NULL DEFAULT 0,
+    daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -127,7 +128,8 @@ CREATE TABLE IF NOT EXISTS lesson_history (
     user_id TEXT NOT NULL,
     unit_id TEXT NOT NULL,
     score REAL NOT NULL,
-    completed_at TEXT NOT NULL
+    completed_at TEXT NOT NULL,
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS unit_mastery (
@@ -213,7 +215,13 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN gems INTEGER NOT NULL DEFAULT 0")
     if "streak_freezes" not in existing_cols:
         conn.execute("ALTER TABLE users ADD COLUMN streak_freezes INTEGER NOT NULL DEFAULT 0")
+    if "daily_goal_minutes" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
+
+    lesson_cols = {row[1] for row in conn.execute("PRAGMA table_info(lesson_history)").fetchall()}
+    if "elapsed_seconds" not in lesson_cols:
+        conn.execute("ALTER TABLE lesson_history ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
@@ -224,6 +232,8 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freezes INTEGER NOT NULL DEFAULT 0")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
+        cur.execute("ALTER TABLE lesson_history ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()
 

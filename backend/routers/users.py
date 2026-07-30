@@ -47,6 +47,7 @@ class CreateUserRequest(BaseModel):
     target_lang: str
     level: CEFRLevel = CEFRLevel.A1
     interests: list[str] = Field(default_factory=list)
+    daily_goal_minutes: int = 15
 
 
 @router.post("", response_model=UserProfile)
@@ -71,8 +72,8 @@ def create_user(payload: CreateUserRequest, request: Request, response: Response
         cur.execute(
             """INSERT INTO users
                (id, email, display_name, native_lang, target_lang, level, interests, xp, streak_days,
-                hearts, created_at, last_active_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 5, ?, ?)""",
+                daily_goal_minutes, created_at, last_active_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)""",
             (
                 user_id,
                 email,
@@ -81,6 +82,7 @@ def create_user(payload: CreateUserRequest, request: Request, response: Response
                 payload.target_lang,
                 payload.level.value,
                 json.dumps(payload.interests),
+                max(1, payload.daily_goal_minutes),
                 now,
                 "",  # last_active_date starts empty, not today — it tracks actual
                 # activity (lesson completion), not account creation. Seeding it to
@@ -108,6 +110,7 @@ def get_user(user_id: str, session: dict = Depends(auth.require_owner)) -> UserP
 class UpdateUserRequest(BaseModel):
     interests: list[str] | None = None
     level: CEFRLevel | None = None
+    daily_goal_minutes: int | None = None
 
 
 @router.patch("/{user_id}", response_model=UserProfile)
@@ -119,4 +122,8 @@ def update_user(
             cur.execute("UPDATE users SET interests=? WHERE id=?", (json.dumps(payload.interests), user_id))
         if payload.level is not None:
             cur.execute("UPDATE users SET level=? WHERE id=?", (payload.level.value, user_id))
+        if payload.daily_goal_minutes is not None:
+            cur.execute(
+                "UPDATE users SET daily_goal_minutes=? WHERE id=?", (max(1, payload.daily_goal_minutes), user_id)
+            )
     return get_user_by_id_or_404(user_id)

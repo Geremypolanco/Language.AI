@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import auth, db, srs
-from ..curriculum import LessonRequest, all_units, get_unit
+from ..curriculum import LessonRequest, all_units, get_unit, units_for_level
 from ..hf_client import hf_client
-from ..models import CEFRLevel, Exercise
+from ..models import CEFRLevel, Exercise, ExerciseType
 from .users import get_user_by_id_or_404
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
@@ -19,13 +19,15 @@ class UnitNode(BaseModel):
     topic: str
     level: CEFRLevel
     order: int
-    state: str  # "locked" | "available" | "mastered"
+    state: str  # "available" | "mastered" — nothing is ever locked; the
+    # learner decides what to practice first, the level/order is only a
+    # suggested default ordering, not a gate.
     best_score: float = 0.0
 
 
 @router.get("/{user_id}/path", response_model=list[UnitNode])
 def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[UnitNode]:
-    user = get_user_by_id_or_404(user_id)
+    get_user_by_id_or_404(user_id)
     with db.cursor() as cur:
         cur.execute("SELECT unit_id, best_score, mastered FROM unit_mastery WHERE user_id=?", (user_id,))
         mastery = {r["unit_id"]: r for r in cur.fetchall()}
@@ -34,14 +36,7 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
     for unit in all_units():
         m = mastery.get(unit.id)
         best = m["best_score"] if m else 0.0
-        if m and m["mastered"]:
-            state = "mastered"
-        elif unit.level.rank < user.level.rank:
-            state = "mastered"  # fully passed levels show as complete
-        elif unit.level.rank > user.level.rank:
-            state = "locked"
-        else:
-            state = "available"
+        state = "mastered" if m and m["mastered"] else "available"
         nodes.append(
             UnitNode(id=unit.id, topic=unit.topic, level=unit.level, order=unit.order, state=state, best_score=best)
         )
@@ -56,8 +51,6 @@ async def get_lesson_exercises(
     unit = get_unit(unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
-    if unit.level.rank > user.level.rank:
-        raise HTTPException(status_code=403, detail="La unidad está bloqueada")
 
     req = LessonRequest(
         unit=unit,
@@ -69,6 +62,46 @@ async def get_lesson_exercises(
     return await hf_client.generate_exercises(req)
 
 
+PRACTICE_UNIT_PREFIX = "practice"
+
+
+class PracticeRequest(BaseModel):
+    exercise_type: ExerciseType
+    level: CEFRLevel | None = None
+
+
+class PracticeResponse(BaseModel):
+    unit_id: str
+    exercises: list[Exercise]
+
+
+@router.post("/{user_id}/practice", response_model=PracticeResponse)
+async def get_practice_exercises(
+    user_id: str, payload: PracticeRequest, session: dict = Depends(auth.require_owner)
+) -> PracticeResponse:
+    """Free-form skill practice: the learner picks the modality (reading/
+    writing, listening, speaking, images, conversation) instead of following
+    a unit's fixed exercise mix. Uses a stable synthetic unit id so /complete
+    can still award XP/gems/streak through the normal path."""
+    user = get_user_by_id_or_404(user_id)
+    level = payload.level or user.level
+    units = units_for_level(level)
+    if not units:
+        raise HTTPException(status_code=404, detail="No hay unidades para ese nivel")
+    unit = units[0]
+
+    req = LessonRequest(
+        unit=unit,
+        native_lang=user.native_lang,
+        target_lang=user.target_lang,
+        interests=user.interests,
+        recent_mistakes=srs.recent_mistakes(user_id),
+    )
+    exercises = await hf_client.generate_exercises(req, mix_override=[payload.exercise_type] * 5)
+    synthetic_unit_id = f"{PRACTICE_UNIT_PREFIX}-{payload.exercise_type.value}-{level.value}"
+    return PracticeResponse(unit_id=synthetic_unit_id, exercises=exercises)
+
+
 class AnswerRequest(BaseModel):
     vocab_key: str = ""
     correct: bool
@@ -76,37 +109,28 @@ class AnswerRequest(BaseModel):
 
 
 class AnswerResult(BaseModel):
-    hearts: int
     srs: dict = Field(default_factory=dict)
 
 
 @router.post("/{user_id}/answer", response_model=AnswerResult)
 def submit_answer(user_id: str, payload: AnswerRequest, session: dict = Depends(auth.require_owner)) -> AnswerResult:
     get_user_by_id_or_404(user_id)
-    hearts = None
-    if not payload.correct:
-        hearts = srs.lose_heart(user_id)
-
     schedule = {}
     if payload.vocab_key:
         quality = srs.grade_to_quality(payload.correct, payload.attempts_before_correct)
         schedule = srs.schedule_review(user_id, payload.vocab_key, quality)
-
-    if hearts is None:
-        with db.cursor() as cur:
-            cur.execute("SELECT hearts FROM users WHERE id=?", (user_id,))
-            hearts = cur.fetchone()["hearts"]
-
-    return AnswerResult(hearts=hearts, srs=schedule)
+    return AnswerResult(srs=schedule)
 
 
 class CompleteLessonRequest(BaseModel):
     unit_id: str
     score: float  # 0.0 - 1.0
+    elapsed_seconds: int = 0
 
 
 @router.post("/{user_id}/complete")
 def complete_lesson(user_id: str, payload: CompleteLessonRequest, session: dict = Depends(auth.require_owner)) -> dict:
     get_user_by_id_or_404(user_id)
-    srs.regen_hearts_if_due(user_id)
-    return srs.record_lesson_result(user_id, payload.unit_id, max(0.0, min(1.0, payload.score)))
+    return srs.record_lesson_result(
+        user_id, payload.unit_id, max(0.0, min(1.0, payload.score)), max(0, payload.elapsed_seconds)
+    )

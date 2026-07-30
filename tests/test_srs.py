@@ -14,8 +14,8 @@ def _make_user(
         cur.execute(
             """INSERT INTO users
                (id, display_name, native_lang, target_lang, level, interests, xp, streak_days,
-                hearts, gems, streak_freezes, created_at, last_active_date)
-               VALUES (?, 'Test', 'en', 'es', ?, '[]', 0, ?, 5, ?, ?, ?, ?)""",
+                gems, streak_freezes, created_at, last_active_date)
+               VALUES (?, 'Test', 'en', 'es', ?, '[]', 0, ?, ?, ?, ?, ?)""",
             (user_id, level.value, streak_days, gems, streak_freezes, db.now_iso(), last_active_date),
         )
 
@@ -77,13 +77,6 @@ def test_record_lesson_result_levels_up_after_enough_mastered_units():
     assert result["leveled_up"] == CEFRLevel.A2.value
 
 
-def test_lose_heart_floors_at_zero():
-    _make_user()
-    for _ in range(10):
-        hearts = srs.lose_heart("u1")
-    assert hearts == 0
-
-
 def test_record_lesson_result_awards_gems():
     _make_user()
     result = srs.record_lesson_result("u1", "A1-0", score=1.0)
@@ -139,22 +132,11 @@ def test_buy_streak_freeze_fails_without_enough_gems():
         pass
 
 
-def test_buy_heart_refill_fails_when_hearts_already_full():
-    _make_user(gems=500)
-    try:
-        srs.buy_heart_refill("u1")
-        assert False, "expected ShopError"
-    except srs.ShopError:
-        pass
-
-
-def test_buy_heart_refill_succeeds_when_missing_hearts():
-    _make_user(gems=500)
-    srs.lose_heart("u1")
-    srs.lose_heart("u1")
-    result = srs.buy_heart_refill("u1")
-    assert result["hearts"] == srs.MAX_HEARTS
-    assert result["gems"] == 400
+def test_today_practice_minutes_sums_elapsed_seconds_for_today():
+    _make_user()
+    srs.record_lesson_result("u1", "A1-0", score=1.0, elapsed_seconds=90)
+    srs.record_lesson_result("u1", "A1-1", score=1.0, elapsed_seconds=150)
+    assert srs.today_practice_minutes("u1") == 4  # (90+150)/60 = 4
 
 
 def test_weekly_leaderboard_ranks_by_xp_and_marks_you():

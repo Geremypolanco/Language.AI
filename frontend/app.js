@@ -91,7 +91,8 @@ const state = {
   ws: null,
   mediaRecorder: null,
   audioChunks: [],
-  lesson: null, // { exercises, index, correctCount, unitId }
+  lesson: null, // { exercises, index, correctCount, unitId, startedAt }
+  lessonTimerHandle: null,
 };
 
 async function api(path, opts = {}) {
@@ -140,6 +141,7 @@ async function createProfileAndEnter(level) {
       target_lang: $("#ob-target").value,
       level,
       interests: readInterests(),
+      daily_goal_minutes: parseInt($("#ob-daily-goal").value, 10) || 15,
     }),
   });
   state.userId = user.id;
@@ -318,7 +320,6 @@ async function enterApp() {
 function refreshTopbar(progress) {
   $("#stat-xp").textContent = progress.xp;
   $("#stat-streak").textContent = progress.streak_days;
-  $("#stat-hearts").textContent = progress.hearts;
   $("#stat-gems").textContent = progress.gems;
   $("#stat-level").textContent = progress.level;
 }
@@ -348,7 +349,6 @@ function renderStatRow(data) {
   const tiles = [
     ["flame", data.streak_days, "Racha", "fire"],
     ["gem", data.gems, "Gemas", "gem"],
-    ["heart", data.hearts, "Vidas", "heart"],
     ["star", data.xp, "XP", "xp"],
     ["medal", data.level, "Nivel", "level"],
   ];
@@ -408,6 +408,56 @@ function renderLevelMeter(data) {
   caption.textContent = `${data.units_mastered_current_level} de ${required} unidades dominadas para desbloquear ${data.next_level}`;
 
   el.append(row, track, caption);
+}
+
+function renderDailyGoal(data) {
+  const el = $("#dash-daily-goal");
+  el.innerHTML = "";
+  const goal = data.daily_goal_minutes || 15;
+  const today = data.today_minutes || 0;
+
+  const row = document.createElement("div");
+  row.className = "daily-goal-row";
+  const label = document.createElement("span");
+  label.textContent = `${today} de ${goal} min hoy`;
+  row.appendChild(label);
+  if (today >= goal) {
+    const done = document.createElement("span");
+    done.className = "daily-goal-done";
+    done.innerHTML = `<svg class="icon"><use href="#icon-check"/></svg> ¡Cumplida!`;
+    row.appendChild(done);
+  }
+
+  const track = document.createElement("div");
+  track.className = "meter-track";
+  const fill = document.createElement("div");
+  fill.className = "meter-fill";
+  fill.style.width = `${Math.min(100, Math.round((today / goal) * 100))}%`;
+  track.appendChild(fill);
+
+  el.append(row, track);
+
+  const select = $("#daily-goal-select");
+  select.value = String(goal);
+}
+
+function setupDailyGoalEditor() {
+  const btn = $("#daily-goal-edit-btn");
+  const select = $("#daily-goal-select");
+  if (btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () => {
+    select.classList.toggle("hidden");
+  });
+  select.addEventListener("change", async () => {
+    const daily_goal_minutes = parseInt(select.value, 10);
+    await api(`/api/users/${state.userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ daily_goal_minutes }),
+    });
+    select.classList.add("hidden");
+    loadDashboard();
+  });
 }
 
 function renderDueCard(data) {
@@ -545,8 +595,8 @@ async function loadDashboard() {
   // of the dashboard.
   const sections = [
     refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
-    renderLevelMeter, renderDueCard, renderActivity, renderMasteryChart,
-    renderRecentLessons, setupShop,
+    renderLevelMeter, renderDailyGoal, setupDailyGoalEditor, renderDueCard,
+    renderActivity, renderMasteryChart, renderRecentLessons, setupShop,
   ];
   for (const render of sections) {
     try {
@@ -565,11 +615,11 @@ function renderMascot(data) {
   const card = $("#mascot-card");
   const badge = $("#mascot-badge");
   const message = $("#mascot-message");
-  card.classList.remove("mood-sad", "mood-cool", "mood-fire", "mood-curious", "mood-happy");
-  if (data.hearts === 0) {
-    card.classList.add("mood-sad");
-    badge.innerHTML = iconSvg("heart-broken");
-    message.textContent = "¡Sin vidas! Recárgalas en la tienda de gemas o espera hasta mañana.";
+  card.classList.remove("mood-goal", "mood-cool", "mood-fire", "mood-curious", "mood-happy");
+  if (data.daily_goal_minutes > 0 && data.today_minutes >= data.daily_goal_minutes) {
+    card.classList.add("mood-goal");
+    badge.innerHTML = iconSvg("check");
+    message.textContent = `¡Objetivo de hoy cumplido! ${data.today_minutes} de ${data.daily_goal_minutes} min — sigue si quieres, sin límite.`;
   } else if (data.streak_freezes > 0) {
     card.classList.add("mood-cool");
     badge.innerHTML = iconSvg("snowflake");
@@ -661,23 +711,12 @@ function showToast(text, icon) {
 
 function setupShop(data) {
   const freezeBtn = $("#buy-streak-freeze");
-  const heartBtn = $("#buy-heart-refill");
   freezeBtn.disabled = data.gems < 200;
-  heartBtn.disabled = data.gems < 100 || data.hearts >= 5;
 
   freezeBtn.onclick = async () => {
     try {
       await api(`/api/shop/${state.userId}/streak-freeze`, { method: "POST" });
       showToast("¡Congelación de racha comprada!", "snowflake");
-      await loadDashboard();
-    } catch (err) {
-      showToast(err.message);
-    }
-  };
-  heartBtn.onclick = async () => {
-    try {
-      await api(`/api/shop/${state.userId}/heart-refill`, { method: "POST" });
-      showToast("¡Vidas rellenadas!", "heart");
       await loadDashboard();
     } catch (err) {
       showToast(err.message);
@@ -701,9 +740,56 @@ async function loadPath() {
     const btn = document.createElement("button");
     btn.className = `unit-node ${unit.state}`;
     btn.textContent = topicEs(unit.topic);
-    btn.disabled = unit.state === "locked";
     btn.addEventListener("click", () => startLesson(unit.id));
     container.appendChild(btn);
+  }
+}
+
+// ---------- Practice mode (modality-focused, no fixed order) ----------
+
+const PRACTICE_MODALITIES = [
+  { type: "translate_to_target", label: "Traducción", icon: "translate", desc: "Traduce frases a tu idioma meta" },
+  { type: "translate_to_native", label: "Traducción inversa", icon: "translate", desc: "Traduce frases a tu idioma nativo" },
+  { type: "listen_type", label: "Escucha y escribe", icon: "volume", desc: "Escucha el audio y escribe lo que oyes" },
+  { type: "image_match", label: "Imágenes", icon: "image", desc: "Empareja palabras con imágenes" },
+  { type: "multiple_choice", label: "Opción múltiple", icon: "check", desc: "Elige la respuesta correcta" },
+  { type: "fill_blank", label: "Completa la frase", icon: "pencil", desc: "Rellena los espacios en blanco" },
+  { type: "speak_repeat", label: "Habla", icon: "mic", desc: "Repite frases en voz alta" },
+  { type: "free_conversation_prompt", label: "Conversación libre", icon: "chat", desc: "Practica una conversación abierta" },
+];
+
+function setupPractice() {
+  const levelSelect = $("#practice-level-select");
+  if (state.user) levelSelect.value = state.user.level;
+
+  const grid = $("#practice-grid");
+  if (grid.dataset.built) return;
+  grid.dataset.built = "1";
+  for (const modality of PRACTICE_MODALITIES) {
+    const card = document.createElement("button");
+    card.className = "practice-card";
+    card.innerHTML = `
+      <span class="practice-card-icon"><svg class="icon"><use href="#icon-${modality.icon}"/></svg></span>
+      <span class="practice-card-label">${modality.label}</span>
+      <p class="practice-card-desc">${modality.desc}</p>
+    `;
+    card.addEventListener("click", () => startPractice(modality.type));
+    grid.appendChild(card);
+  }
+}
+
+async function startPractice(exerciseType) {
+  const level = $("#practice-level-select").value;
+  showScreen("#screen-lesson");
+  $("#exercise-container").innerHTML = "<p>Preparando tu práctica…</p>";
+  try {
+    const body = await api(`/api/lessons/${state.userId}/practice`, {
+      method: "POST",
+      body: JSON.stringify({ exercise_type: exerciseType, level }),
+    });
+    startLesson(body.unit_id, body.exercises);
+  } catch (err) {
+    $("#exercise-container").innerHTML = `<p>No se pudo preparar la práctica: ${err.message}</p>`;
   }
 }
 
@@ -716,6 +802,7 @@ function setupTabs() {
       btn.classList.add("active");
       $$(".tab-panel").forEach((p) => p.classList.add("hidden"));
       $(`#tab-${btn.dataset.tab}`).classList.remove("hidden");
+      if (btn.dataset.tab === "practice") setupPractice();
       if (btn.dataset.tab === "talk") ensureConversationSocket();
       if (btn.dataset.tab === "progress") loadDashboard();
     });
@@ -724,13 +811,38 @@ function setupTabs() {
 
 // ---------- Lesson flow ----------
 
-async function startLesson(unitId) {
+function startLessonTimer() {
+  stopLessonTimer();
+  const valueEl = $("#lesson-timer-value");
+  const tick = () => {
+    const elapsed = Math.floor((Date.now() - state.lesson.startedAt) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    valueEl.textContent = `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+  tick();
+  state.lessonTimerHandle = setInterval(tick, 1000);
+}
+
+function stopLessonTimer() {
+  if (state.lessonTimerHandle) {
+    clearInterval(state.lessonTimerHandle);
+    state.lessonTimerHandle = null;
+  }
+}
+
+function lessonElapsedSeconds() {
+  if (!state.lesson || !state.lesson.startedAt) return 0;
+  return Math.floor((Date.now() - state.lesson.startedAt) / 1000);
+}
+
+async function startLesson(unitId, preloadedExercises) {
   showScreen("#screen-lesson");
   $("#exercise-container").innerHTML = "<p>Preparando tu lección personalizada…</p>";
   try {
-    const exercises = await api(`/api/lessons/${state.userId}/unit/${unitId}`);
-    state.lesson = { exercises, index: 0, correctCount: 0, unitId };
-    $("#lesson-hearts-count").textContent = state.user.hearts;
+    const exercises = preloadedExercises || (await api(`/api/lessons/${state.userId}/unit/${unitId}`));
+    state.lesson = { exercises, index: 0, correctCount: 0, unitId, startedAt: Date.now() };
+    startLessonTimer();
     renderCurrentExercise();
   } catch (err) {
     $("#exercise-container").innerHTML = `<p>No se pudo cargar la lección: ${err.message}</p>`;
@@ -738,6 +850,7 @@ async function startLesson(unitId) {
 }
 
 $("#lesson-exit").addEventListener("click", async () => {
+  stopLessonTimer();
   state.lesson = null;
   showScreen("#screen-main");
   await loadPath();
@@ -786,11 +899,10 @@ function normalize(s) {
 async function recordAnswer(exercise, correct) {
   state.lesson.correctCount += correct ? 1 : 0;
   try {
-    const result = await api(`/api/lessons/${state.userId}/answer`, {
+    await api(`/api/lessons/${state.userId}/answer`, {
       method: "POST",
       body: JSON.stringify({ vocab_key: exercise.vocab_key, correct, attempts_before_correct: 0 }),
     });
-    $("#lesson-hearts-count").textContent = result.hearts;
   } catch {
     // non-fatal for the demo
   }
@@ -1067,9 +1179,11 @@ function renderFreeConversation(ex, container) {
 async function finishLesson() {
   const { exercises, correctCount, unitId } = state.lesson;
   const score = exercises.length ? correctCount / exercises.length : 0;
+  const elapsedSeconds = lessonElapsedSeconds();
+  stopLessonTimer();
   const result = await api(`/api/lessons/${state.userId}/complete`, {
     method: "POST",
-    body: JSON.stringify({ unit_id: unitId, score }),
+    body: JSON.stringify({ unit_id: unitId, score, elapsed_seconds: elapsedSeconds }),
   });
   $("#complete-xp-pill").textContent = result.xp_gained;
   $("#complete-gems-pill").textContent = result.gems_gained;

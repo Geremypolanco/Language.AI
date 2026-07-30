@@ -24,17 +24,16 @@ def test_full_onboarding_lesson_and_progress_flow():
     with TestClient(app) as client:
         user = _onboard(client)
         user_id = user["id"]
-        assert user["hearts"] == 5
         assert user["xp"] == 0
+        assert user["daily_goal_minutes"] == 15
         assert "email" not in user  # not part of the public UserProfile model
 
         path_res = client.get(f"/api/lessons/{user_id}/path")
         assert path_res.status_code == 200
         units = path_res.json()
+        # Nothing is ever locked — the learner decides what to practice first.
+        assert all(u["state"] in ("available", "mastered") for u in units)
         a1_units = [u for u in units if u["level"] == "A1"]
-        assert all(u["state"] == "available" for u in a1_units)
-        locked_units = [u for u in units if u["level"] != "A1"]
-        assert all(u["state"] == "locked" for u in locked_units)
 
         first_unit_id = a1_units[0]["id"]
         lesson_res = client.get(f"/api/lessons/{user_id}/unit/{first_unit_id}")
@@ -85,12 +84,15 @@ def test_first_ever_lesson_starts_the_streak_at_one():
         assert complete["streak_days"] == 1
 
 
-def test_locked_unit_returns_403():
+def test_any_unit_is_reachable_regardless_of_level():
+    """The learner decides what to master first — a C2 unit must be just as
+    reachable as an A1 one from day one, no level gate."""
     with TestClient(app) as client:
         user = _onboard(client)
-        locked_unit_id = "C2-0"
-        res = client.get(f"/api/lessons/{user['id']}/unit/{locked_unit_id}")
-        assert res.status_code == 403
+        advanced_unit_id = "C2-0"
+        res = client.get(f"/api/lessons/{user['id']}/unit/{advanced_unit_id}")
+        assert res.status_code == 200
+        assert len(res.json()) > 0
 
 
 def test_no_session_returns_401():
@@ -190,13 +192,6 @@ def test_shop_buy_streak_freeze_requires_enough_gems():
         assert res.status_code == 400  # 0 gems on a brand-new account
 
 
-def test_shop_buy_heart_refill_requires_ownership():
-    with TestClient(app) as client:
-        user = _onboard(client, email="shop2@example.com")
-        res = client.post(f"/api/shop/{user['id']}not-mine/heart-refill")
-        assert res.status_code == 403
-
-
 def test_health_endpoint():
     with TestClient(app) as client:
         res = client.get("/api/health")
@@ -282,3 +277,37 @@ def test_tutor_reply_gives_a_demo_mode_reply_when_signed_in():
         )
         assert res.status_code == 200
         assert res.json()["reply"]
+
+
+def test_daily_goal_minutes_is_user_editable_not_a_cap():
+    with TestClient(app) as client:
+        user = _onboard(client, email="goal@example.com")
+        assert user["daily_goal_minutes"] == 15
+
+        res = client.patch(f"/api/users/{user['id']}", json={"daily_goal_minutes": 45})
+        assert res.status_code == 200
+        assert res.json()["daily_goal_minutes"] == 45
+
+
+def test_practice_session_generates_exercises_of_one_type_and_completes_normally():
+    with TestClient(app) as client:
+        user = _onboard(client, email="practice@example.com")
+        res = client.post(
+            f"/api/lessons/{user['id']}/practice",
+            json={"exercise_type": "listen_type", "level": "A1"},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["unit_id"] == "practice-listen_type-A1"
+        assert len(body["exercises"]) == 5
+        assert all(ex["type"] == "listen_type" for ex in body["exercises"])
+
+        complete_res = client.post(
+            f"/api/lessons/{user['id']}/complete",
+            json={"unit_id": body["unit_id"], "score": 1.0, "elapsed_seconds": 120},
+        )
+        assert complete_res.status_code == 200
+        assert complete_res.json()["xp_gained"] == 30
+
+        progress = client.get(f"/api/progress/{user['id']}").json()
+        assert progress["today_minutes"] == 2

@@ -210,10 +210,13 @@ class LessonRequest:
     recent_mistakes: list[str]  # target-language words/phrases the user got wrong recently
 
 
-def build_exercise_generation_prompt(req: LessonRequest) -> str:
+def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> str:
     """Builds the instruction sent to the HF chat model to produce a JSON batch
-    of exercises for this unit, personalized to the learner."""
-    mix = exercise_mix_for(req.unit.level)
+    of exercises for this unit, personalized to the learner. `mix_override` lets
+    a caller force a single exercise type repeated (used by the free-practice
+    mode, where the learner picks the skill — reading/listening/speaking/images/
+    conversation — instead of following the level's default mix)."""
+    mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
     types_list = ", ".join(t.value for t in mix)
     interests = ", ".join(req.interests) if req.interests else "everyday life"
     mistakes = (

@@ -148,8 +148,10 @@ class HFClient:
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
-    async def generate_exercises(self, req: LessonRequest) -> list[Exercise]:
-        prompt = build_exercise_generation_prompt(req)
+    async def generate_exercises(
+        self, req: LessonRequest, mix_override: list[ExerciseType] | None = None
+    ) -> list[Exercise]:
+        prompt = build_exercise_generation_prompt(req, mix_override)
         if settings.hf_configured:
             try:
                 raw = await self.chat(
@@ -162,7 +164,7 @@ class HFClient:
                 return _parse_exercises(raw)
             except Exception:
                 logger.exception("HF exercise generation failed, using offline fallback content")
-        return _fallback_exercises(req)
+        return _fallback_exercises(req, mix_override)
 
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         if not settings.hf_configured:
@@ -265,13 +267,13 @@ def _parse_exercises(raw: str) -> list[Exercise]:
     return exercises
 
 
-def _fallback_exercises(req: LessonRequest) -> list[Exercise]:
+def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> list[Exercise]:
     """Deterministic, network-free content so the app works with no HF_TOKEN
     (useful for local dev/demo/tests). Clearly lower quality than the real
     LLM-generated, personalized content."""
     from .curriculum import exercise_mix_for
 
-    mix = exercise_mix_for(req.unit.level)
+    mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
     topic = topic_es(req.unit.topic)
     exercises = []
     for i, ex_type in enumerate(mix):

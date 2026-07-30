@@ -11,12 +11,9 @@ from .models import CEFRLevel
 
 MASTERY_SCORE_THRESHOLD = 0.8  # avg correctness required to consider a unit mastered
 UNITS_TO_UNLOCK_NEXT_LEVEL = 3  # mastered units at current level before leveling up
-MAX_HEARTS = 5
-HEART_REGEN_MINUTES = 30
 
 GEM_BASE = 5  # gems per completed lesson, plus a score-scaled bonus below
 GEM_STREAK_FREEZE_COST = 200
-GEM_HEART_REFILL_COST = 100
 
 
 class ShopError(Exception):
@@ -113,13 +110,13 @@ def recent_mistakes(user_id: str, limit: int = 5) -> list[str]:
         return [r["vocab_key"] for r in cur.fetchall()]
 
 
-def record_lesson_result(user_id: str, unit_id: str, score: float) -> dict:
-    """Records a completed lesson, updates mastery, and awards XP/streak/hearts.
+def record_lesson_result(user_id: str, unit_id: str, score: float, elapsed_seconds: int = 0) -> dict:
+    """Records a completed lesson, updates mastery, and awards XP/streak/gems.
     Returns a summary the API can hand straight back to the client."""
     with db.cursor() as cur:
         cur.execute(
-            "INSERT INTO lesson_history (user_id, unit_id, score, completed_at) VALUES (?,?,?,?)",
-            (user_id, unit_id, score, db.now_iso()),
+            "INSERT INTO lesson_history (user_id, unit_id, score, completed_at, elapsed_seconds) VALUES (?,?,?,?,?)",
+            (user_id, unit_id, score, db.now_iso(), max(0, elapsed_seconds)),
         )
         cur.execute(
             "SELECT best_score, attempts FROM unit_mastery WHERE user_id=? AND unit_id=?",
@@ -142,7 +139,7 @@ def record_lesson_result(user_id: str, unit_id: str, score: float) -> dict:
         xp_gain = round(10 + score * 20)
         gems_gain = round(GEM_BASE + score * 5)
         cur.execute(
-            "SELECT xp, streak_days, hearts, gems, streak_freezes, last_active_date, level FROM users WHERE id=?",
+            "SELECT xp, streak_days, gems, streak_freezes, last_active_date, level FROM users WHERE id=?",
             (user_id,),
         )
         u = cur.fetchone()
@@ -212,28 +209,6 @@ def _maybe_level_up(cur, user_id: str, current_level: CEFRLevel) -> str | None:
     return None
 
 
-def lose_heart(user_id: str) -> int:
-    with db.cursor() as cur:
-        cur.execute("SELECT hearts FROM users WHERE id=?", (user_id,))
-        hearts = max(0, cur.fetchone()["hearts"] - 1)
-        cur.execute("UPDATE users SET hearts=? WHERE id=?", (hearts, user_id))
-        return hearts
-
-
-def regen_hearts_if_due(user_id: str) -> int:
-    """Refills hearts to full the first time a user is seen on a new calendar day —
-    a simplified stand-in for Duolingo's slow per-heart timer regeneration."""
-    with db.cursor() as cur:
-        cur.execute("SELECT hearts, last_active_date FROM users WHERE id=?", (user_id,))
-        row = cur.fetchone()
-        hearts = row["hearts"]
-        today = db.today_str()
-        if hearts < MAX_HEARTS and row["last_active_date"] != today:
-            hearts = MAX_HEARTS
-            cur.execute("UPDATE users SET hearts=? WHERE id=?", (hearts, user_id))
-        return hearts
-
-
 # ── Gem shop ──────────────────────────────────────────────────────────────
 
 
@@ -249,17 +224,18 @@ def buy_streak_freeze(user_id: str) -> dict:
         return {"gems": new_gems, "streak_freezes": new_freezes}
 
 
-def buy_heart_refill(user_id: str) -> dict:
+# ── Practice time (self-chosen daily goal, never an enforced cap) ──────────
+
+
+def today_practice_minutes(user_id: str) -> int:
+    today = db.today_str()
     with db.cursor() as cur:
-        cur.execute("SELECT gems, hearts FROM users WHERE id=?", (user_id,))
-        row = cur.fetchone()
-        if row["hearts"] >= MAX_HEARTS:
-            raise ShopError("Tus vidas ya están completas")
-        if row["gems"] < GEM_HEART_REFILL_COST:
-            raise ShopError("No tienes suficientes gemas para rellenar vidas")
-        new_gems = row["gems"] - GEM_HEART_REFILL_COST
-        cur.execute("UPDATE users SET gems=?, hearts=? WHERE id=?", (new_gems, MAX_HEARTS, user_id))
-        return {"gems": new_gems, "hearts": MAX_HEARTS}
+        cur.execute(
+            "SELECT COALESCE(SUM(elapsed_seconds), 0) AS total FROM lesson_history "
+            "WHERE user_id=? AND completed_at LIKE ?",
+            (user_id, f"{today}%"),
+        )
+        return round(cur.fetchone()["total"] / 60)
 
 
 # ── Weekly leaderboard ──────────────────────────────────────────────────────

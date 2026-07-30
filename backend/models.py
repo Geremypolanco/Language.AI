@@ -89,9 +89,9 @@ class UserProfile(BaseModel):
     interests: list[str] = Field(default_factory=list)
     xp: int = 0
     streak_days: int = 0
-    hearts: int = 5
     gems: int = 0
     streak_freezes: int = 0
+    daily_goal_minutes: int = 15
     created_at: str = ""
     last_active_date: str = ""
 
@@ -108,12 +108,13 @@ class ProgressSnapshot(BaseModel):
     user_id: str
     xp: int
     streak_days: int
-    hearts: int
     gems: int
     streak_freezes: int
     level: CEFRLevel
     due_reviews: int
     units_mastered: int
+    daily_goal_minutes: int
+    today_minutes: int
 
 
 class LevelMastery(BaseModel):
@@ -145,7 +146,6 @@ class DashboardData(BaseModel):
     user_id: str
     xp: int
     streak_days: int
-    hearts: int
     gems: int
     streak_freezes: int
     level: CEFRLevel
@@ -154,6 +154,8 @@ class DashboardData(BaseModel):
     units_mastered_current_level: int
     units_total_current_level: int
     units_required_for_next_level: int
+    daily_goal_minutes: int
+    today_minutes: int
     mastery_by_level: list[LevelMastery]
     activity: list[ActivityDay]
     recent_lessons: list[RecentLesson]
