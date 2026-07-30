@@ -110,3 +110,37 @@ class ProgressSnapshot(BaseModel):
     level: CEFRLevel
     due_reviews: int
     units_mastered: int
+
+
+class LevelMastery(BaseModel):
+    level: CEFRLevel
+    mastered: int
+    total: int
+
+
+class ActivityDay(BaseModel):
+    date: str
+    lessons_completed: int
+
+
+class RecentLesson(BaseModel):
+    unit_id: str
+    topic: str
+    score: float
+    completed_at: str
+
+
+class DashboardData(BaseModel):
+    user_id: str
+    xp: int
+    streak_days: int
+    hearts: int
+    level: CEFRLevel
+    next_level: CEFRLevel | None
+    due_reviews: int
+    units_mastered_current_level: int
+    units_total_current_level: int
+    units_required_for_next_level: int
+    mastery_by_level: list[LevelMastery]
+    activity: list[ActivityDay]
+    recent_lessons: list[RecentLesson]

@@ -55,6 +55,15 @@ class Settings:
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
 
+    # Durable production storage: a dedicated Supabase Postgres project (never
+    # ARIA's). When set, db.py persists users/progress/sessions-linked state
+    # here instead of the local SQLite file, so a Fly restart or redeploy never
+    # loses data. When unset (local dev, tests), db.py falls back to SQLite —
+    # fully offline, zero external dependency, exactly as before.
+    supabase_db_url: str = field(
+        default_factory=lambda: os.environ.get("SUPABASE_DB_URL", "") or os.environ.get("DATABASE_URL", "")
+    )
+
     host: str = field(default_factory=lambda: os.environ.get("LINGUA_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: int(os.environ.get("LINGUA_PORT", "8100")))
 

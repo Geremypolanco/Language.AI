@@ -29,10 +29,10 @@ On top of that, a Hugging Face model powers three things static courses can't do
 ```
 backend/
   main.py          FastAPI app + static frontend mount
-  config.py         env-based settings (HF_TOKEN, Google OAuth, model IDs, ports)
+  config.py         env-based settings (HF_TOKEN, Google OAuth, Supabase, model IDs, ports)
   auth.py              Google Sign-In + signed session/state cookies (no server-side store)
   models.py          Pydantic/enum domain models (CEFR levels, exercise types)
-  db.py               SQLite persistence (stdlib sqlite3, zero extra deps)
+  db.py               Persistence: Supabase Postgres in production, SQLite fallback locally/in tests
   curriculum.py    language-agnostic skill tree + HF prompt templates
   srs.py               SM-2 spaced repetition + XP/streak/leveling logic
   hf_client.py      HF Inference API wrapper: chat, text-to-image, TTS, STT
@@ -43,12 +43,18 @@ fly.toml, Dockerfile     deploy config for Lingua's own Fly.io app/domain
 .github/workflows/    CI (tests) + deploy-to-Fly, both scoped to this repo only
 ```
 
-### Why SQLite instead of a managed Postgres?
+### Why Supabase, and why it's still safe to test offline
 
-Because this ships as its own product with no external infrastructure
-dependency. Clone the repo and it works — no shared database, no shared
-credentials, nothing to provision beyond an optional Hugging Face token and
-Google OAuth client.
+Sessions/user data need to survive a Fly restart or redeploy, so production
+storage is a dedicated Supabase Postgres project — never ARIA's, never
+shared. `db.py` picks the backend automatically: when `SUPABASE_DB_URL` is
+set it talks to Postgres; when it isn't (local dev without a Supabase
+project, and the entire test suite) it transparently falls back to a local
+SQLite file, so nothing external is required to run or test the app. If a
+configured Supabase connection ever fails at startup, the app logs the error
+and falls back to SQLite for that process rather than crashing — see
+[Supabase setup](#supabase-setup) below for the exact grants a production
+database role needs.
 
 ## Setup
 
@@ -103,6 +109,50 @@ credentials). That fallback disables itself the moment real Google
 credentials are configured, unless you explicitly opt back in with
 `LINGUA_ALLOW_DEV_LOGIN=1` — a real deployment should never ship that on by
 accident.
+
+### Supabase setup
+
+1. Create a project at https://supabase.com/dashboard (own org, not shared
+   with any other product).
+2. Don't use the `postgres` superuser for the app — Supabase blocks
+   `ALTER ROLE postgres` outright, and reusing a superuser is bad practice
+   anyway. Create a dedicated low-privilege role instead, in the SQL Editor:
+
+   ```sql
+   CREATE ROLE lingua_app WITH LOGIN PASSWORD 'a-strong-password'
+     NOSUPERUSER NOCREATEDB NOCREATEROLE;
+
+   GRANT USAGE, CREATE ON SCHEMA public TO lingua_app;
+   GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO lingua_app;
+   GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO lingua_app;
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO lingua_app;
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO lingua_app;
+
+   -- If tables already exist (created by another role), the app also needs
+   -- to own them to run its own migrations (CREATE INDEX/ALTER TABLE need
+   -- ownership, not just row-level privileges):
+   GRANT lingua_app TO postgres; -- lets postgres reassign ownership below
+   ALTER TABLE users OWNER TO lingua_app;
+   ALTER TABLE vocab_progress OWNER TO lingua_app;
+   ALTER TABLE lesson_history OWNER TO lingua_app;
+   ALTER TABLE unit_mastery OWNER TO lingua_app;
+   ALTER TABLE conversation_log OWNER TO lingua_app;
+   ```
+
+   `backend/db.py` creates these 5 tables itself on first connect (same
+   `CREATE TABLE IF NOT EXISTS` schema either way), so you don't need to
+   run the schema by hand — just the role + grants above.
+3. Build the connection string (Session pooler mode — IPv4, suited to a
+   single persistent backend process like this app's):
+
+   ```
+   postgresql://lingua_app.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+   ```
+
+   Find `<project-ref>` and `<region>` on the project's dashboard, or under
+   Settings → Database → Connection string (pick "Session pooler").
+4. Set it as `SUPABASE_DB_URL` in `.env` locally, or as a Fly/GitHub secret
+   in production (see [Domain & deployment](#domain--deployment)).
 
 ### Run
 
@@ -167,7 +217,10 @@ To ship it the first time:
 
 ```bash
 fly volumes create lingua_data --size 1 --region ord --app language-ai-x90j9w
-fly secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... LINGUA_SESSION_SECRET=... HF_TOKEN=... --app language-ai-x90j9w
+fly secrets set \
+  GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... LINGUA_SESSION_SECRET=... \
+  SUPABASE_DB_URL=... HF_TOKEN=... \
+  --app language-ai-x90j9w
 fly deploy --app language-ai-x90j9w --remote-only
 ```
 
@@ -177,7 +230,8 @@ registered in Google Cloud Console to match — they must always agree.
 
 For CI-driven deploys, set these repo secrets (Settings → Secrets and
 variables → Actions): `FLY_API_TOKEN`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `LINGUA_SESSION_SECRET`, and optionally `HF_TOKEN`.
+`GOOGLE_CLIENT_SECRET`, `LINGUA_SESSION_SECRET`, `SUPABASE_DB_URL`, and
+optionally `HF_TOKEN`.
 
 ## Independence from ARIA
 
@@ -185,7 +239,8 @@ This app started life as a prototype inside ARIA's monorepo and has since
 moved into this dedicated repository. Nothing is shared going forward:
 
 - Own repo, own git history, own issues/PRs/CI.
-- Own SQLite storage — no Supabase/Postgres dependency.
+- Own Supabase project and database role (local dev/tests still need
+  nothing but SQLite — see [Supabase setup](#supabase-setup)).
 - Own FastAPI app and static frontend.
 - Own Google OAuth client, own session cookies/secret, own domain (see
   [Domain & deployment](#domain--deployment)) — none of it shared with ARIA's

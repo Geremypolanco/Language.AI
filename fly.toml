@@ -19,8 +19,11 @@ primary_region = "ord"
 
 [[mounts]]
   # One-time setup before the first deploy: `fly volumes create lingua_data --size 1 --region ord`
-  # Without this, SQLite data (users, progress, conversation history) does not
-  # survive a redeploy — Fly machines get fresh ephemeral disk each deploy.
+  # With SUPABASE_DB_URL set (see README's Supabase section), user/progress data
+  # lives in Postgres and survives redeploys regardless of this volume — this
+  # mount now only persists the HF media (image/audio) cache across deploys,
+  # so already-generated lessons don't get regenerated for no reason. Without
+  # SUPABASE_DB_URL, this volume is what makes the SQLite fallback durable.
   source = "lingua_data"
   destination = "/app/data"
 

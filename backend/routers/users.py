@@ -82,7 +82,11 @@ def create_user(payload: CreateUserRequest, request: Request, response: Response
                 payload.level.value,
                 json.dumps(payload.interests),
                 now,
-                db.today_str(),
+                "",  # last_active_date starts empty, not today — it tracks actual
+                # activity (lesson completion), not account creation. Seeding it to
+                # today would make srs.record_lesson_result's `!= today` check false
+                # on the user's very first lesson, so their first-day streak would
+                # never tick up from 0.
             ),
         )
 

@@ -46,6 +46,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           LINGUA_SESSION_SECRET: ${{ secrets.LINGUA_SESSION_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           args=()
           add() { if [ -n "$2" ]; then args+=("$1=$2"); fi; }
@@ -53,6 +54,7 @@ jobs:
           add GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
           add GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
           add LINGUA_SESSION_SECRET "$LINGUA_SESSION_SECRET"
+          add SUPABASE_DB_URL "$SUPABASE_DB_URL"
           if [ ${#args[@]} -gt 0 ]; then
             flyctl secrets set "${args[@]}" --app "$FLY_APP"
           else
@@ -63,9 +65,14 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # --local-only: builds with the Docker daemon already on this runner,
+          # rather than Fly's remote builder — an app-scoped FLY_API_TOKEN (the
+          # kind `fly tokens create deploy -a <app>` gives you) can't provision
+          # the org-level remote builder and will hang on "Waiting for depot
+          # builder" until it times out. Building locally sidesteps that.
           flyctl deploy \
             --app "$FLY_APP" \
-            --remote-only \
+            --local-only \
             --strategy "${{ github.event.inputs.strategy || 'rolling' }}" \
             --wait-timeout 300
 

@@ -66,6 +66,25 @@ def test_full_onboarding_lesson_and_progress_flow():
         assert progress["units_mastered"] == 1
 
 
+def test_first_ever_lesson_starts_the_streak_at_one():
+    """Regression: a freshly-onboarded user's `last_active_date` must NOT be
+    pre-seeded to today, or record_lesson_result's `last_active_date != today`
+    check never fires on their actual first day of activity and the streak
+    stays stuck at 0 instead of becoming 1."""
+    with TestClient(app) as client:
+        user = _onboard(client, email="streak@example.com")
+        assert user["streak_days"] == 0
+
+        path = client.get(f"/api/lessons/{user['id']}/path").json()
+        first_unit_id = next(u["id"] for u in path if u["level"] == "A1")
+        complete = client.post(
+            f"/api/lessons/{user['id']}/complete",
+            json={"unit_id": first_unit_id, "score": 1.0},
+        ).json()
+
+        assert complete["streak_days"] == 1
+
+
 def test_locked_unit_returns_403():
     with TestClient(app) as client:
         user = _onboard(client)
@@ -108,6 +127,44 @@ def test_creating_profile_without_login_is_rejected():
             json={"display_name": "Ghost", "native_lang": "English", "target_lang": "Spanish", "level": "A1"},
         )
         assert res.status_code == 401
+
+
+def test_dashboard_reflects_completed_lesson():
+    with TestClient(app) as client:
+        user = _onboard(client, email="dash@example.com")
+        user_id = user["id"]
+
+        path = client.get(f"/api/lessons/{user_id}/path").json()
+        first_unit_id = next(u["id"] for u in path if u["level"] == "A1")
+        client.post(f"/api/lessons/{user_id}/complete", json={"unit_id": first_unit_id, "score": 1.0})
+
+        res = client.get(f"/api/progress/{user_id}/dashboard")
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["level"] == "A1"
+        assert data["next_level"] == "A2"
+        assert data["units_mastered_current_level"] == 1
+        assert data["units_total_current_level"] > 0
+
+        a1_entry = next(m for m in data["mastery_by_level"] if m["level"] == "A1")
+        assert a1_entry["mastered"] == 1
+        levels_in_order = [m["level"] for m in data["mastery_by_level"]]
+        assert levels_in_order == ["A1", "A2", "B1", "B2", "C1", "C2", "NATIVE"]
+
+        assert len(data["activity"]) == 14
+        assert data["activity"][-1]["lessons_completed"] == 1  # today, last entry
+
+        assert len(data["recent_lessons"]) == 1
+        assert data["recent_lessons"][0]["unit_id"] == first_unit_id
+        assert data["recent_lessons"][0]["score"] == 1.0
+
+
+def test_dashboard_requires_ownership():
+    with TestClient(app) as client:
+        user = _onboard(client, email="dash2@example.com")
+        res = client.get(f"/api/progress/{user['id']}not-mine/dashboard")
+        assert res.status_code == 403
 
 
 def test_health_endpoint():

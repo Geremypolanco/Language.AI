@@ -139,20 +139,197 @@ function refreshTopbar(progress) {
 async function loadProgress() {
   const progress = await api(`/api/progress/${state.userId}`);
   refreshTopbar(progress);
-  const grid = $("#progress-grid");
-  grid.innerHTML = "";
-  const stats = [
-    ["XP", progress.xp], ["Day streak", progress.streak_days],
-    ["Hearts", progress.hearts], ["Level", progress.level],
-    ["Due reviews", progress.due_reviews], ["Units mastered", progress.units_mastered],
-  ];
-  for (const [label, value] of stats) {
-    const box = document.createElement("div");
-    box.className = "stat-box";
-    box.innerHTML = `<b>${value}</b>${label}`;
-    grid.appendChild(box);
-  }
   return progress;
+}
+
+// ---------- Dashboard (Progress tab) ----------
+
+function showTooltip(target, text) {
+  const tip = $("#chart-tooltip");
+  tip.textContent = text;
+  tip.style.top = `${target.getBoundingClientRect().top}px`;
+  tip.classList.remove("hidden");
+
+  // Center on the target, then clamp so the tooltip's own width (only known
+  // once it's rendered, hence measuring after unhiding) never pushes it past
+  // the viewport edge — otherwise the last heat-strip cell's tooltip clips.
+  const rect = target.getBoundingClientRect();
+  const margin = 8;
+  const half = tip.offsetWidth / 2;
+  let center = rect.left + rect.width / 2;
+  center = Math.max(half + margin, Math.min(center, window.innerWidth - half - margin));
+  tip.style.left = `${center}px`;
+}
+
+function hideTooltip() {
+  $("#chart-tooltip").classList.add("hidden");
+}
+
+function renderStatRow(data) {
+  const tiles = [
+    ["⭐", data.xp, "XP"],
+    ["🔥", data.streak_days, "Day streak"],
+    ["❤️", data.hearts, "Hearts"],
+    ["🏅", data.level, "Level"],
+  ];
+  const row = $("#dash-stat-row");
+  row.innerHTML = "";
+  for (const [icon, value, label] of tiles) {
+    const tile = document.createElement("div");
+    tile.className = "stat-tile";
+    const iconEl = document.createElement("div");
+    iconEl.className = "stat-icon";
+    iconEl.textContent = icon;
+    const valueEl = document.createElement("span");
+    valueEl.className = "stat-value";
+    valueEl.textContent = value;
+    const labelEl = document.createElement("span");
+    labelEl.className = "stat-label";
+    labelEl.textContent = label;
+    tile.append(iconEl, valueEl, labelEl);
+    row.appendChild(tile);
+  }
+}
+
+function renderLevelMeter(data) {
+  const el = $("#dash-level-meter");
+  el.innerHTML = "";
+  if (!data.next_level) {
+    const maxed = document.createElement("p");
+    maxed.className = "level-meter-maxed";
+    maxed.textContent = `You've reached ${data.level} — full native-level polish unlocked.`;
+    el.appendChild(maxed);
+    return;
+  }
+  const row = document.createElement("div");
+  row.className = "level-meter-row";
+  const badge = document.createElement("span");
+  badge.className = "level-badge";
+  badge.textContent = data.level;
+  const target = document.createElement("span");
+  target.textContent = `→ ${data.next_level}`;
+  row.append(badge, target);
+
+  const track = document.createElement("div");
+  track.className = "meter-track";
+  const fill = document.createElement("div");
+  fill.className = "meter-fill";
+  const required = data.units_required_for_next_level || 1;
+  const pct = Math.min(100, Math.round((data.units_mastered_current_level / required) * 100));
+  fill.style.width = `${pct}%`;
+  track.appendChild(fill);
+
+  const caption = document.createElement("p");
+  caption.className = "level-meter-caption";
+  caption.textContent = `${data.units_mastered_current_level} of ${required} units mastered to unlock ${data.next_level}`;
+
+  el.append(row, track, caption);
+}
+
+function renderDueCard(data) {
+  const card = $("#dash-due-card");
+  if (data.due_reviews > 0) {
+    card.classList.remove("hidden");
+    $("#dash-due-headline").textContent = `${data.due_reviews} word${data.due_reviews === 1 ? "" : "s"} due for review`;
+  } else {
+    card.classList.add("hidden");
+  }
+}
+
+function renderActivity(data) {
+  const el = $("#dash-activity");
+  el.innerHTML = "";
+  const maxCount = Math.max(1, ...data.activity.map((d) => d.lessons_completed));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  data.activity.forEach((day) => {
+    const cell = document.createElement("div");
+    cell.className = "activity-cell";
+    if (day.date === todayStr) cell.classList.add("today");
+    if (day.lessons_completed > 0) {
+      const intensity = day.lessons_completed / maxCount;
+      const step = intensity > 0.66 ? "700" : intensity > 0.33 ? "500" : "300";
+      cell.style.background = `var(--seq-${step})`;
+    }
+    const label = `${day.lessons_completed} lesson${day.lessons_completed === 1 ? "" : "s"} on ${day.date}`;
+    cell.setAttribute("tabindex", "0");
+    cell.setAttribute("aria-label", label);
+    cell.addEventListener("pointerenter", () => showTooltip(cell, label));
+    cell.addEventListener("focus", () => showTooltip(cell, label));
+    cell.addEventListener("pointerleave", hideTooltip);
+    cell.addEventListener("blur", hideTooltip);
+    el.appendChild(cell);
+  });
+}
+
+function renderMasteryChart(data) {
+  const el = $("#dash-mastery");
+  el.innerHTML = "";
+  for (const entry of data.mastery_by_level) {
+    const row = document.createElement("div");
+    row.className = "mastery-row" + (entry.level === data.level ? " current" : "");
+
+    const levelEl = document.createElement("div");
+    levelEl.className = "mastery-level";
+    levelEl.textContent = entry.level;
+
+    const track = document.createElement("div");
+    track.className = "meter-track";
+    const fill = document.createElement("div");
+    fill.className = "meter-fill";
+    const pct = entry.total ? Math.round((entry.mastered / entry.total) * 100) : 0;
+    fill.style.width = `${pct}%`;
+    track.appendChild(fill);
+
+    const countEl = document.createElement("div");
+    countEl.className = "mastery-count";
+    countEl.textContent = `${entry.mastered}/${entry.total}`;
+
+    row.append(levelEl, track, countEl);
+    el.appendChild(row);
+  }
+}
+
+function renderRecentLessons(data) {
+  const el = $("#dash-recent");
+  el.innerHTML = "";
+  if (data.recent_lessons.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-note";
+    empty.textContent = "Complete a lesson to see it here.";
+    el.appendChild(empty);
+    return;
+  }
+  for (const lesson of data.recent_lessons) {
+    const row = document.createElement("div");
+    row.className = "recent-row";
+
+    const left = document.createElement("div");
+    const topic = document.createElement("div");
+    topic.className = "recent-topic";
+    topic.textContent = lesson.topic;
+    const date = document.createElement("div");
+    date.className = "recent-date";
+    date.textContent = new Date(lesson.completed_at).toLocaleDateString();
+    left.append(topic, date);
+
+    const score = document.createElement("span");
+    score.className = "recent-score " + (lesson.score >= 0.8 ? "high" : "low");
+    score.textContent = `${Math.round(lesson.score * 100)}%`;
+
+    row.append(left, score);
+    el.appendChild(row);
+  }
+}
+
+async function loadDashboard() {
+  const data = await api(`/api/progress/${state.userId}/dashboard`);
+  refreshTopbar(data);
+  renderStatRow(data);
+  renderLevelMeter(data);
+  renderDueCard(data);
+  renderActivity(data);
+  renderMasteryChart(data);
+  renderRecentLessons(data);
 }
 
 async function loadPath() {
@@ -187,7 +364,7 @@ function setupTabs() {
       $$(".tab-panel").forEach((p) => p.classList.add("hidden"));
       $(`#tab-${btn.dataset.tab}`).classList.remove("hidden");
       if (btn.dataset.tab === "talk") ensureConversationSocket();
-      if (btn.dataset.tab === "progress") loadProgress();
+      if (btn.dataset.tab === "progress") loadDashboard();
     });
   });
 }

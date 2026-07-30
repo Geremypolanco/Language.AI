@@ -103,12 +103,43 @@
         </div>
 
         <div id="tab-progress" class="tab-panel hidden">
-          <div class="card">
-            <h2>Your progress</h2>
-            <div id="progress-grid" class="progress-grid"></div>
+          <div class="dashboard">
+
+            <div class="card stat-row" id="dash-stat-row"></div>
+
+            <div class="card">
+              <h2 class="card-title">Level progress</h2>
+              <div id="dash-level-meter"></div>
+            </div>
+
+            <div id="dash-due-card" class="card due-card hidden">
+              <span class="due-icon">⏰</span>
+              <div>
+                <div class="due-headline" id="dash-due-headline"></div>
+                <p class="subtitle">These words will come back around in your next lesson.</p>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">Last 14 days</h2>
+              <div id="dash-activity" class="activity-strip"></div>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">Mastery by level</h2>
+              <div id="dash-mastery" class="mastery-chart"></div>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">Recent lessons</h2>
+              <div id="dash-recent" class="recent-list"></div>
+            </div>
+
           </div>
         </div>
       </main>
+
+      <div id="chart-tooltip" class="chart-tooltip hidden" role="tooltip"></div>
     </section>
 
     <!-- Lesson overlay -->

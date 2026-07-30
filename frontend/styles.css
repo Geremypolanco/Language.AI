@@ -8,6 +8,17 @@
   --text: #3c3c3c;
   --danger: #ff4b4b;
   --radius: 16px;
+
+  /* Sequential blue ramp (dataviz skill, validated) — single hue for
+     magnitude: meters, bars, the activity heat-strip. Dark mode gets its
+     own steps below, not these left unchanged. */
+  --seq-100: #cde2fb;
+  --seq-200: #9ec5f4;
+  --seq-300: #6da7ec;
+  --seq-400: #3987e5;
+  --seq-500: #256abf;
+  --seq-600: #184f95;
+  --seq-700: #0d366b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +26,16 @@
     --gray-bg: #131f24;
     --gray-border: #2b3940;
     --text: #e7e7e7;
+    /* Dark-mode steps for the sequential ramp — its own values against the
+       dark surface, not the light steps left unchanged (an unfilled track at
+       light-mode #cde2fb reads as a bright, out-of-place band on a dark card). */
+    --seq-100: #1c2f4a;
+    --seq-200: #24406b;
+    --seq-300: #2c5490;
+    --seq-400: #3987e5;
+    --seq-500: #5598e7;
+    --seq-600: #86b6ef;
+    --seq-700: #b7d3f6;
   }
   body { background: #0f171b; }
   .card, .lesson-frame, .exercise-container { background: #1b2b32 !important; color: var(--text); }
@@ -121,9 +142,76 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .unit-node.mastered { background: var(--gold); box-shadow: 0 6px 0 #cc9f00; }
 .unit-node.locked { background: #ccc; box-shadow: 0 6px 0 #a9a9a9; cursor: not-allowed; }
 
-.progress-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-.progress-grid .stat-box { background: var(--gray-bg); border-radius: 12px; padding: 16px; text-align: center; }
-.progress-grid .stat-box b { display: block; font-size: 1.6rem; }
+/* ── Dashboard (Progress tab) ─────────────────────────────────────────
+   Sequential blue ramp (defined in the base :root above, with its own dark-
+   mode steps) — single hue for magnitude (meters, bars, heat-strip). Status
+   colors (green/gold/red) stay reserved for icon+label stat tiles, never
+   used as adjacent chart marks a reader would have to tell apart by hue alone. */
+
+.dashboard { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.dashboard .card { margin: 0; max-width: none; }
+.card-title { font-size: 1rem; font-weight: 800; margin: 0 0 14px; }
+
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 20px 12px; }
+.stat-tile { text-align: center; }
+.stat-tile .stat-icon { font-size: 1.3rem; }
+.stat-tile .stat-value { display: block; font-size: 1.4rem; font-weight: 800; margin-top: 4px; }
+.stat-tile .stat-label { display: block; font-size: 0.72rem; color: #898781; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+.level-meter-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-weight: 700; }
+.level-meter-row .level-badge { color: var(--blue); }
+.meter-track { height: 14px; border-radius: 8px; background: var(--seq-100); overflow: hidden; }
+.meter-fill { height: 100%; background: var(--seq-400); border-radius: 8px; transition: width 0.4s ease; }
+.level-meter-caption { margin-top: 8px; font-size: 0.85rem; color: #898781; }
+.level-meter-maxed { font-weight: 700; color: var(--green-dark); }
+
+.due-card { display: flex; align-items: center; gap: 14px; background: rgba(28,176,246,0.08); border: 1px solid rgba(28,176,246,0.25); }
+.due-icon { font-size: 1.6rem; }
+.due-headline { font-weight: 800; }
+
+.activity-strip { display: flex; gap: 6px; justify-content: space-between; }
+.activity-cell {
+  flex: 1;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--gray-border);
+  cursor: default;
+  min-width: 0;
+}
+.activity-cell.today { box-shadow: 0 0 0 2px var(--blue) inset; }
+
+.mastery-chart { display: flex; flex-direction: column; gap: 12px; }
+.mastery-row { display: flex; align-items: center; gap: 10px; }
+.mastery-row .mastery-level { width: 48px; font-weight: 800; font-size: 0.85rem; flex-shrink: 0; }
+.mastery-row .meter-track { flex: 1; height: 18px; background: var(--seq-100); }
+.mastery-row .meter-fill { background: var(--seq-500); }
+.mastery-row .mastery-count { width: 42px; text-align: right; font-size: 0.8rem; color: #898781; flex-shrink: 0; }
+.mastery-row.current .mastery-level { color: var(--blue); }
+.mastery-row.current .meter-fill { background: var(--blue); }
+
+.recent-list { display: flex; flex-direction: column; gap: 2px; }
+.recent-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--gray-border); }
+.recent-row:last-child { border-bottom: none; }
+.recent-topic { font-weight: 700; }
+.recent-date { font-size: 0.78rem; color: #898781; }
+.recent-score { font-weight: 800; padding: 2px 10px; border-radius: 20px; font-size: 0.8rem; }
+.recent-score.high { background: rgba(88,204,2,0.15); color: var(--green-dark); }
+.recent-score.low { background: rgba(255,75,75,0.12); color: var(--danger); }
+.empty-note { color: #898781; font-size: 0.9rem; text-align: center; padding: 12px 0; }
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 50;
+  background: #0b0b0b;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  pointer-events: none;
+  transform: translate(-50%, -130%);
+  white-space: nowrap;
+}
 
 .call-frame { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 .avatar-tile {
