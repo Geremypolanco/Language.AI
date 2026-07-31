@@ -279,6 +279,17 @@ def test_tutor_reply_gives_a_demo_mode_reply_when_signed_in():
         assert res.json()["reply"]
 
 
+def test_image_endpoint_falls_back_to_503_when_no_image_source_configured():
+    # Neither GOOGLE_CSE_API_KEY/GOOGLE_CSE_CX nor HF_TOKEN are set in tests —
+    # confirms the Google-image-search-first, AI-generation-fallback chain
+    # in the /api/content/image route degrades to a clear error instead of
+    # a broken/empty response when nothing is configured.
+    with TestClient(app) as client:
+        _onboard(client, email="imagefallback@example.com")
+        res = client.post("/api/content/image", json={"prompt": "a red apple"})
+        assert res.status_code == 503
+
+
 def test_daily_goal_minutes_is_user_editable_not_a_cap():
     with TestClient(app) as client:
         user = _onboard(client, email="goal@example.com")

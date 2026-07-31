@@ -83,6 +83,14 @@ class Settings:
     google_client_id: str = field(default_factory=lambda: os.environ.get("GOOGLE_CLIENT_ID", ""))
     google_client_secret: str = field(default_factory=lambda: os.environ.get("GOOGLE_CLIENT_SECRET", ""))
 
+    # ── Google Image Search (vocabulary flashcards) ─────────────────────
+    # A simpler, free alternative to AI image generation: real photos via
+    # Google's Custom Search JSON API (free up to 100 queries/day). Fully
+    # optional — see image_search.py and README.md for one-time setup. When
+    # unset, the app falls back to the existing FLUX.1-schnell generation.
+    google_cse_api_key: str = field(default_factory=lambda: os.environ.get("GOOGLE_CSE_API_KEY", ""))
+    google_cse_cx: str = field(default_factory=lambda: os.environ.get("GOOGLE_CSE_CX", ""))
+
     # Public origin this app is served from — drives the OAuth redirect_uri.
     # Defaults to the Fly domain declared in fly.toml; override for local dev
     # (e.g. http://localhost:8100) or a custom domain.
@@ -110,6 +118,10 @@ class Settings:
     @property
     def google_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def google_images_configured(self) -> bool:
+        return bool(self.google_cse_api_key and self.google_cse_cx)
 
     @property
     def cookie_secure(self) -> bool:

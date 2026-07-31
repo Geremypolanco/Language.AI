@@ -1,12 +1,13 @@
-"""Media generation endpoints: TTS audio, vocab-illustration images, and
-short topic-explainer videos."""
+"""Media generation endpoints: TTS audio, vocab-illustration images (free
+Google Image Search first, AI generation as fallback — see image_search.py),
+and short topic-explainer videos."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from .. import auth
+from .. import auth, image_search
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
@@ -36,9 +37,17 @@ class ImageRequest(BaseModel):
 
 @router.post("/image")
 async def generate_image(payload: ImageRequest) -> Response:
-    image = await hf_client.generate_image(payload.prompt)
+    # Real free photos first (cheaper and often clearer for a vocabulary
+    # flashcard than an AI illustration) — falls straight through to the
+    # existing AI generation when Google Image Search isn't configured.
+    image = await image_search.search_image(payload.prompt)
     if image is None:
-        raise HTTPException(status_code=503, detail="Imagen no disponible — configura HF_TOKEN para activar la generación de imágenes")
+        image = await hf_client.generate_image(payload.prompt)
+    if image is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Imagen no disponible — configura GOOGLE_CSE_API_KEY/GOOGLE_CSE_CX o HF_TOKEN para activar imágenes",
+        )
     return Response(content=image, media_type="image/jpeg")
 
 

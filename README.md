@@ -198,6 +198,24 @@ with dev data.
 | Vocabulary illustrations          | `black-forest-labs/FLUX.1-schnell`  |
 | Speech-to-text (conversation mode)| `openai/whisper-large-v3`           |
 | Text-to-speech                    | `facebook/mms-tts-<lang>` (per target language) |
+| Academy topic videos              | `damo-vilab/text-to-video-ms-1.7b`  |
+
+### Vocabulary flashcard images: free Google Image Search (optional)
+
+By default, flashcard images come from AI generation (FLUX.1-schnell above).
+`backend/image_search.py` adds a simpler, cheaper alternative — real photos
+via Google's Custom Search JSON API, free up to 100 queries/day — tried
+first when configured, with AI generation as the automatic fallback:
+
+1. Create a search engine at https://programmablesearchengine.google.com/
+   with "Search the entire web" and "Image search" turned on, and copy its
+   Search engine ID.
+2. Create an API key with the "Custom Search API" enabled at
+   https://console.cloud.google.com/apis/credentials.
+3. Set `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_CX`.
+
+Leave both unset to keep using AI-generated images only — nothing else
+changes.
 
 ## How personalization actually works
 
