@@ -8,10 +8,13 @@ Providers as the primary engine after that account's free monthly credits
 ran out (HTTP 402) and, separately, after Hugging Face retired the old
 api-inference.huggingface.co host outright. Chat falls back to Hugging Face
 (if configured) when Pollinations' small anonymous budget is exhausted.
-TTS, speech-to-text, and video generation all stay on the optional Hugging
-Face path (settings.hf_token) — Pollinations' image generation is solid and
-free, but it no longer offers keyless TTS or transcription, and video is a
-lower-stakes best-effort extra — so those three gracefully degrade to
+Text-to-speech runs on Piper (see piper_tts.py) — a self-hosted neural TTS
+engine that synthesizes audio locally in this container, so it's free and
+unlimited for the ~53 languages it has a voice for, then falls back to the
+optional Hugging Face MMS-TTS path for the rest. Speech-to-text and video
+generation stay on the optional Hugging Face path only (settings.hf_token)
+— Pollinations doesn't offer either for free, and self-hosting either one
+is a much bigger lift than TTS was — so those two gracefully degrade to
 "unavailable" with no token/credits, same as before. Nothing here uses
 mocked "success" responses; a failure is always a real failure, never
 faked.
@@ -254,6 +257,10 @@ class HFClient:
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, field.name)
+        if not context:
+            # Wikipedia covers every field, including the humanities/arts/
+            # business/clinical ones arXiv has no real content for.
+            context = await rag.fetch_wikipedia_context(field.name)
         prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
         if context:
             prompt = f"{context}\n\n{prompt}"
@@ -305,6 +312,8 @@ class HFClient:
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, course_title)
+        if not context:
+            context = await rag.fetch_wikipedia_context(course_title)
         prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
         if context:
             prompt = f"{context}\n\n{prompt}"
@@ -608,19 +617,38 @@ class HFClient:
 
     # ── Text-to-speech ──────────────────────────────────────────────────
 
-    async def text_to_speech(self, text: str, target_lang: str) -> bytes | None:
-        """Stays on the Hugging Face path — Pollinations' TTS moved behind a
-        paid API key (its old keyless audio endpoint now 404s: "Model not
-        found: openai-audio... visit https://enter.pollinations.ai"), so
-        there's no free keyless TTS option to swap in right now. Best-effort
-        by design, same as before: no HF_TOKEN/credits just means no audio,
-        gracefully, not a broken request."""
+    async def text_to_speech(self, text: str, target_lang: str) -> tuple[bytes, str] | None:
+        """Piper first (self-hosted, free, and genuinely unlimited — see
+        piper_tts.py — for the ~53 languages it covers), falling back to the
+        Hugging Face MMS-TTS path for everything else, or if Piper's
+        synthesis itself fails. Pollinations isn't in this rotation at all:
+        its old keyless audio endpoint now 404s ("Model not found:
+        openai-audio... visit https://enter.pollinations.ai") — there's no
+        free keyless TTS on that side to use. Returns (audio_bytes,
+        media_type) rather than bare bytes because the two engines produce
+        different containers (Piper: WAV, HF/MMS: FLAC) and callers need to
+        label the response correctly rather than guessing."""
+        from . import piper_tts
+
+        piper_voice = piper_tts.voice_key_for(target_lang)
+        if piper_voice is not None:
+            cache_path = self._cache_path("tts-piper", f"{piper_voice}:{text}", "wav")
+            if os.path.exists(cache_path):
+                with open(cache_path, "rb") as f:
+                    return f.read(), "audio/wav"
+            if not settings.testing:
+                audio = await piper_tts.synthesize(text, target_lang)
+                if audio is not None:
+                    with open(cache_path, "wb") as f:
+                        f.write(audio)
+                    return audio, "audio/wav"
+
         lang_code = _MMS_LANG_CODES.get(target_lang.lower()[:2], "eng")
         model = f"{settings.tts_model_prefix}-{lang_code}"
         cache_path = self._cache_path("tts", f"{model}:{text}", "flac")
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
-                return f.read()
+                return f.read(), "audio/flac"
         if not settings.hf_configured:
             return None
         try:
@@ -632,7 +660,7 @@ class HFClient:
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
-                return resp.content
+                return resp.content, "audio/flac"
             logger.warning("HF TTS HTTP %s (%s): %s", resp.status_code, model, resp.text[:200])
         except Exception:
             logger.exception("HF TTS failed")

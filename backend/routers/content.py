@@ -25,10 +25,11 @@ class TTSRequest(BaseModel):
 
 @router.post("/tts")
 async def text_to_speech(payload: TTSRequest) -> Response:
-    audio = await hf_client.text_to_speech(payload.text, payload.target_lang)
-    if audio is None:
+    result = await hf_client.text_to_speech(payload.text, payload.target_lang)
+    if result is None:
         raise HTTPException(status_code=503, detail="Audio no disponible en este momento — inténtalo de nuevo")
-    return Response(content=audio, media_type="audio/flac")
+    audio, media_type = result
+    return Response(content=audio, media_type=media_type)
 
 
 class ImageRequest(BaseModel):
@@ -38,9 +39,13 @@ class ImageRequest(BaseModel):
 @router.post("/image")
 async def generate_image(payload: ImageRequest) -> Response:
     # Real free photos first (cheaper and often clearer for a vocabulary
-    # flashcard than an AI illustration) — falls straight through to the
-    # existing AI generation when Google Image Search isn't configured.
+    # flashcard than an AI illustration): Google Image Search if configured
+    # (best relevance), then Wikimedia Commons (needs no setup at all, so
+    # every install gets real photos even without configuring Google CSE),
+    # finally AI generation as the last resort.
     image = await image_search.search_image(payload.prompt)
+    if image is None:
+        image = await image_search.search_wikimedia_commons(payload.prompt)
     if image is None:
         image = await hf_client.generate_image(payload.prompt)
     if image is None:

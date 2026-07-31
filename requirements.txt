@@ -10,5 +10,10 @@ python-multipart==0.0.32
 # Durable production storage (Supabase Postgres) — see backend/db.py
 psycopg[binary]==3.2.3
 
+# Self-hosted, free, unlimited TTS — see backend/piper_tts.py for why 1.6.0
+# specifically (GPL-3.0-or-later; the last MIT release has no Linux/py3.12
+# wheel for its phonemizer dependency, so it doesn't install on this image).
+piper-tts==1.6.0
+
 # Test suite
 pytest==8.3.3

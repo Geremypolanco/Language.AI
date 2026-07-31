@@ -115,14 +115,16 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            audio = await hf_client.text_to_speech(reply_text, user.target_lang)
-            audio_b64 = base64.b64encode(audio).decode() if audio else None
+            tts_result = await hf_client.text_to_speech(reply_text, user.target_lang)
+            audio_b64 = base64.b64encode(tts_result[0]).decode() if tts_result else None
+            audio_mime = tts_result[1] if tts_result else None
 
             await websocket.send_json(
                 {
                     "type": "reply",
                     "text": reply_text,
                     "audio_base64": audio_b64,
+                    "audio_mime": audio_mime,
                 }
             )
     except WebSocketDisconnect:

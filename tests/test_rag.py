@@ -9,6 +9,7 @@ from backend.rag import (
     ARXIV_CATEGORY_FOR_FIELD,
     _format_arxiv_context,
     fetch_arxiv_context,
+    fetch_wikipedia_context,
     parse_arxiv_atom,
 )
 
@@ -66,4 +67,11 @@ def test_every_arxiv_mapped_field_id_is_a_plausible_slug():
 def test_fetch_arxiv_context_returns_empty_for_unmapped_field_without_network():
     # "music" has no arXiv coverage — must short-circuit before any request
     result = asyncio.run(fetch_arxiv_context("music", "Music theory basics"))
+    assert result == ""
+
+
+def test_fetch_wikipedia_context_returns_empty_in_test_env_without_network():
+    # settings.testing (LINGUA_TESTING=1, set by conftest.py) must short-
+    # circuit before any real request to Wikipedia.
+    result = asyncio.run(fetch_wikipedia_context("Nursing"))
     assert result == ""

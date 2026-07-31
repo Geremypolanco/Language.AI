@@ -1971,7 +1971,7 @@ function ensureConversationSocket() {
     } else if (msg.type === "reply") {
       addTranscriptBubble("assistant", msg.text);
       if (msg.audio_base64) {
-        playConversationAudio(msg.audio_base64);
+        playConversationAudio(msg.audio_base64, msg.audio_mime || "audio/flac");
       }
     } else if (msg.type === "error") {
       $("#call-status").textContent = msg.message;
@@ -1990,12 +1990,12 @@ function addTranscriptBubble(role, text) {
   $("#transcript").scrollTop = $("#transcript").scrollHeight;
 }
 
-function playConversationAudio(base64) {
+function playConversationAudio(base64, mimeType) {
   const avatar = $("#avatar");
   const bytes = atob(base64);
   const arr = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  const blob = new Blob([arr], { type: "audio/flac" });
+  const blob = new Blob([arr], { type: mimeType });
   const audio = new Audio(URL.createObjectURL(blob));
   avatar.classList.add("speaking");
   audio.addEventListener("ended", () => avatar.classList.remove("speaking"));

@@ -1,17 +1,28 @@
 """Free image search for vocabulary flashcards — a simpler, cheaper
-alternative to the FLUX.1-schnell AI generation in hf_client.py. Uses
-Google's Custom Search JSON API (image search), which is free up to 100
-queries/day. Requires one-time setup:
+alternative to the FLUX.1-schnell/Pollinations AI generation in
+hf_client.py. Two real-photo sources, tried in order, both optional-vs-
+always-on in a specific way:
 
-1. https://programmablesearchengine.google.com/ — create a search engine,
-   turn on "Search the entire web" and "Image search", copy its Search
-   engine ID (cx).
-2. https://console.cloud.google.com/apis/credentials — create an API key
-   with the "Custom Search API" enabled.
-3. Set GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX.
+1. Google's Custom Search JSON API (image search) — free up to 100
+   queries/day, but needs one-time setup:
+     a. https://programmablesearchengine.google.com/ — create a search
+        engine, turn on "Search the entire web" and "Image search", copy
+        its Search engine ID (cx).
+     b. https://console.cloud.google.com/apis/credentials — create an API
+        key with the "Custom Search API" enabled.
+     c. Set GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX.
+   With neither set, search_image() always returns None immediately.
 
-Entirely optional: with neither set, search_image() always returns None and
-callers fall back to AI generation, exactly as before this existed.
+2. Wikimedia Commons' own public search API — needs no key, no setup, no
+   quota at all, so it's a genuinely free-out-of-the-box fallback for
+   installs that never configure Google CSE. Lower average relevance than
+   Google's general image search (it only searches Commons' own media
+   library, an encyclopedia's illustration set — great for concrete nouns
+   like "apple" or "hospital", weaker for very abstract vocabulary), which
+   is exactly why it's second, not first.
+
+Both fall through to AI generation (hf_client.generate_image) when they
+return nothing — see routers/content.py's /image endpoint for the order.
 """
 
 from __future__ import annotations
@@ -28,22 +39,29 @@ from .config import settings
 logger = logging.getLogger("lingua.image_search")
 
 _SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+_COMMONS_ENDPOINT = "https://commons.wikimedia.org/w/api.php"
+# Wikimedia's API etiquette policy requires a descriptive User-Agent
+# identifying the app and a contact point; a generic/blank one (httpx's
+# default is just "python-httpx/<version>") gets a flat HTTP 403.
+# https://meta.wikimedia.org/wiki/User-Agent_policy
+_WIKIMEDIA_USER_AGENT = "Lingua-LanguageApp/1.0 (https://language-ai-x90j9w.fly.dev; vocab flashcard images)"
 _http = httpx.AsyncClient(timeout=15.0, follow_redirects=True)
+_commons_http = httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers={"User-Agent": _WIKIMEDIA_USER_AGENT})
 
 
-def _cache_path(query: str) -> str:
+def _cache_path(namespace: str, query: str) -> str:
     digest = hashlib.sha256(query.encode()).hexdigest()[:32]
-    return os.path.join(settings.cache_dir, f"gimg-{digest}.jpg")
+    return os.path.join(settings.cache_dir, f"{namespace}-{digest}.jpg")
 
 
-async def _get_with_retry(url: str, **kwargs) -> httpx.Response:
+async def _get_with_retry(url: str, *, client: httpx.AsyncClient = _http, **kwargs) -> httpx.Response:
     """One retry on a transient network failure — the same DNS-blip
     (httpx.ConnectError: "No address associated with hostname") seen on
     hf_client's calls has hit any outbound host on this machine, not just
     huggingface.co, so this source gets the same one-retry treatment."""
     for attempt in range(2):
         try:
-            return await _http.get(url, **kwargs)
+            return await client.get(url, **kwargs)
         except httpx.TransportError:
             if attempt == 1:
                 raise
@@ -52,13 +70,14 @@ async def _get_with_retry(url: str, **kwargs) -> httpx.Response:
 
 
 async def search_image(query: str) -> bytes | None:
-    """Returns the bytes of the first safe-search image result for `query`,
-    cached to disk thereafter (same pattern as hf_client's media caches).
-    Never raises — any failure just means "no image from this source"."""
+    """Returns the bytes of the first safe-search Google image result for
+    `query`, cached to disk thereafter (same pattern as hf_client's media
+    caches). Never raises — any failure just means "no image from this
+    source"."""
     if not settings.google_images_configured:
         return None
 
-    cache_path = _cache_path(query)
+    cache_path = _cache_path("gimg", query)
     if os.path.exists(cache_path):
         with open(cache_path, "rb") as f:
             return f.read()
@@ -92,4 +111,57 @@ async def search_image(query: str) -> bytes | None:
         return image_resp.content
     except Exception:
         logger.exception("Google image search failed")
+        return None
+
+
+async def search_wikimedia_commons(query: str) -> bytes | None:
+    """Returns the bytes of a matching image from Wikimedia Commons'
+    own media library, cached to disk thereafter. Needs no API key and has
+    no quota, so unlike search_image() above this always runs — the
+    fallback that's actually free out of the box, no setup required. Never
+    raises — any failure just means "no image from this source"."""
+    cache_path = _cache_path("wmimg", query)
+    if os.path.exists(cache_path):
+        with open(cache_path, "rb") as f:
+            return f.read()
+    if settings.testing:
+        return None
+
+    try:
+        resp = await _get_with_retry(
+            _COMMONS_ENDPOINT,
+            client=_commons_http,
+            params={
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": f"filetype:bitmap {query}",
+                "gsrnamespace": 6,  # the File: namespace
+                "gsrlimit": 1,
+                "prop": "imageinfo",
+                "iiprop": "url|mime",
+                "iiurlwidth": 800,
+                "format": "json",
+            },
+        )
+        if resp.status_code != 200:
+            logger.warning("Wikimedia Commons search HTTP %s: %s", resp.status_code, resp.text[:200])
+            return None
+        pages = (resp.json().get("query") or {}).get("pages") or {}
+        infos = [p["imageinfo"][0] for p in pages.values() if p.get("imageinfo")]
+        if not infos:
+            return None
+        info = infos[0]
+        image_url = info.get("thumburl") or info.get("url")
+        if not image_url or not str(info.get("mime", "")).startswith("image"):
+            return None
+
+        image_resp = await _get_with_retry(image_url, client=_commons_http)
+        if image_resp.status_code != 200 or not image_resp.headers.get("content-type", "").startswith("image"):
+            return None
+
+        with open(cache_path, "wb") as f:
+            f.write(image_resp.content)
+        return image_resp.content
+    except Exception:
+        logger.exception("Wikimedia Commons image search failed")
         return None

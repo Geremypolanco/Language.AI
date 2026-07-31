@@ -16,11 +16,12 @@ methodologies:
   a short staircase test (start medium, harder after correct, easier after a
   miss, same mechanic Duolingo's own placement test uses) picks the learner's
   starting level instead of asking them to self-report it from a dropdown.
-- **50+ languages** in the picker (`frontend/app.js` `LANGS`), each mapped to
-  an MMS-TTS voice (`backend/hf_client.py` `_MMS_LANG_CODES`) — exercise/chat
-  generation itself is language-agnostic and works with any language the chat
-  model knows, so a language missing a TTS mapping still teaches fully via
-  text, just without narrated audio.
+- **50+ languages** in the picker (`frontend/app.js` `LANGS`), most mapped to
+  a self-hosted Piper voice (`backend/piper_tts.py` `_PIPER_VOICES`) or a
+  Hugging Face MMS-TTS voice (`backend/hf_client.py` `_MMS_LANG_CODES`) as
+  a fallback — exercise/chat generation itself is language-agnostic and
+  works with any language the chat model knows, so a language missing both
+  TTS mappings still teaches fully via text, just without narrated audio.
 
 On top of that, AI powers three things static courses can't do:
 
@@ -46,7 +47,10 @@ backend/
   db.py               Persistence: Supabase Postgres in production, SQLite fallback locally/in tests
   curriculum.py    language-agnostic skill tree + HF prompt templates
   srs.py               SM-2 spaced repetition + XP/streak/leveling logic
-  hf_client.py      AI client: chat + text-to-image on Pollinations.ai (free, keyless), TTS/STT/video on Hugging Face (optional)
+  hf_client.py      AI client: chat + text-to-image on Pollinations.ai (free, keyless), TTS on self-hosted Piper (free), STT/video on Hugging Face (optional)
+  piper_tts.py       self-hosted neural TTS (see "Text-to-speech" below)
+  image_search.py    free real-photo sources for vocab flashcards (Google CSE, Wikimedia Commons)
+  rag.py                real grounding text for Academy content (arXiv, Wikipedia)
   routers/             auth, users, lessons, content (media), progress, conversation (WebSocket)
 frontend/            vanilla HTML/CSS/JS SPA — no build step
 tests/                  pytest suite (SRS, curriculum, auth, and full API flow)
@@ -76,11 +80,14 @@ cp .env.example .env
 ```
 
 Chat and image generation run on [Pollinations.ai](https://pollinations.ai) —
-free and keyless, no setup required. `HF_TOKEN` is optional: it only enables
-text-to-speech, speech-to-text, and video generation, plus a chat fallback for
-when Pollinations' small anonymous request budget is exhausted. Get one at
-https://huggingface.co/settings/tokens (read access is enough) if you want
-those.
+free and keyless, no setup required. Text-to-speech runs on a self-hosted
+Piper engine (also free, no setup, no external API — see
+[Models and open-source projects used](#models-and-open-source-projects-used)
+below). `HF_TOKEN` is optional: it only enables speech-to-text, video
+generation, a TTS fallback for languages Piper doesn't cover, and a chat
+fallback for when Pollinations' small anonymous request budget is exhausted.
+Get one at https://huggingface.co/settings/tokens (read access is enough)
+if you want those.
 
 ### Google Sign-In setup
 
@@ -177,13 +184,14 @@ uvicorn backend.main:app --reload --port 8100
 
 Then open http://localhost:8100/.
 
-Chat and images (personalized exercises, tutor conversation, vocabulary
-illustrations) work out of the box via Pollinations — no token needed.
-Without `HF_TOKEN` set, there's just no text-to-speech, speech-to-text, or
-video generation, and chat has no fallback if Pollinations' free tier is
-temporarily exhausted (the app degrades gracefully to offline template
-content in that case, never a broken request). Set `HF_TOKEN` for those
-extras.
+Chat, images, and text-to-speech (personalized exercises, tutor
+conversation, vocabulary illustrations, narrated audio) all work out of the
+box with no token needed — Pollinations for chat/images, a self-hosted
+Piper engine for TTS. Without `HF_TOKEN` set, there's just no speech-to-text
+or video generation, no TTS for the ~26 languages outside Piper's voice set,
+and chat has no fallback if Pollinations' free tier is temporarily
+exhausted (the app degrades gracefully to offline template content in that
+case, never a broken request). Set `HF_TOKEN` for those extras.
 
 ### Test
 
@@ -197,41 +205,78 @@ isolated temp SQLite file per test — no real network calls, no shared state
 with dev data (`LINGUA_TESTING=1`, set automatically by `tests/conftest.py`,
 short-circuits every AI call before it reaches the network).
 
-## Models used (overridable via env vars)
+## Models and open-source projects used
 
-| Purpose                             | Provider                    | Default model                       |
-|--------------------------------------|------------------------------|---------------------------------------|
-| Exercise generation / tutor chat     | Pollinations (HF fallback)  | `openai` (Pollinations) / `Qwen/Qwen2.5-7B-Instruct` (HF) |
-| Vocabulary illustrations             | Pollinations                 | `flux`                               |
-| Speech-to-text (conversation mode)   | Hugging Face (optional)     | `openai/whisper-large-v3`           |
-| Text-to-speech                       | Hugging Face (optional)     | `facebook/mms-tts-<lang>` (per target language) |
-| Academy topic videos                 | Hugging Face (optional)     | `damo-vilab/text-to-video-ms-1.7b`  |
+| Purpose                             | Provider / project                              | Default model / notes |
+|--------------------------------------|--------------------------------------------------|--------------------------|
+| Exercise generation / tutor chat     | Pollinations.ai (HF fallback)                    | `openai` (Pollinations) / `Qwen/Qwen2.5-7B-Instruct` (HF) |
+| Vocabulary illustrations             | Pollinations.ai, then Google CSE / Wikimedia Commons | `flux` (image gen); real photos preferred when available |
+| Vocabulary flashcard photos          | Google Custom Search (optional) → Wikimedia Commons (always on, keyless) | see below |
+| Text-to-speech                       | **Piper** (self-hosted, unlimited) → Hugging Face MMS-TTS (optional) | see below |
+| Speech-to-text (conversation mode)   | Hugging Face (optional)                          | `openai/whisper-large-v3` |
+| Academy topic videos                 | Hugging Face (optional)                          | `damo-vilab/text-to-video-ms-1.7b` |
+| Academy course/curriculum grounding  | arXiv (STEM fields) + **Wikipedia** (every field) | `backend/rag.py`, both keyless |
 
-Chat and images run on Pollinations.ai — free, keyless, no signup. Chat falls
-back to Hugging Face (if `HF_TOKEN` is set) when Pollinations' small
-anonymous request budget is temporarily exhausted. TTS, speech-to-text, and
-video generation stay on the optional Hugging Face path: Pollinations'
-image generation is solid and free, but it no longer offers keyless
-transcription or audio (its old free audio endpoint now requires a paid
-`enter.pollinations.ai` API key), so those three features simply aren't
-available without `HF_TOKEN` — gracefully, not as a broken request.
+Chat and image generation run on Pollinations.ai — free, keyless, no signup.
+Chat falls back to Hugging Face (if `HF_TOKEN` is set) when Pollinations'
+small anonymous request budget is temporarily exhausted. Speech-to-text and
+video generation stay on the optional Hugging Face path only — Pollinations
+doesn't offer either for free, and self-hosting either is a much bigger lift
+than TTS turned out to be (see below) — so those two simply aren't available
+without `HF_TOKEN`, gracefully, not as a broken request.
 
-### Vocabulary flashcard images: free Google Image Search (optional)
+### Text-to-speech: self-hosted, free, and unlimited (Piper)
 
-By default, flashcard images come from AI generation (FLUX.1-schnell above).
-`backend/image_search.py` adds a simpler, cheaper alternative — real photos
-via Google's Custom Search JSON API, free up to 100 queries/day — tried
-first when configured, with AI generation as the automatic fallback:
+`backend/piper_tts.py` runs [Piper](https://github.com/OHF-Voice/piper1-gpl)
+— a small, fast neural TTS engine — directly inside this container. No API,
+no billing, no rate limit: it's local computation, so it's the *first*
+choice for the ~53 languages it has a voice for (falling back to the
+optional Hugging Face MMS-TTS path for the rest, or if Piper's synthesis
+itself fails). Voice models (`rhasspy/piper-voices` on Hugging Face, a plain
+static-file download, unaffected by Inference Providers billing) are
+downloaded once per language on first use and cached to disk forever.
 
-1. Create a search engine at https://programmablesearchengine.google.com/
-   with "Search the entire web" and "Image search" turned on, and copy its
-   Search engine ID.
-2. Create an API key with the "Custom Search API" enabled at
-   https://console.cloud.google.com/apis/credentials.
-3. Set `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_CX`.
+License note: `piper-tts` is GPL-3.0-or-later (the original MIT-licensed
+`rhasspy/piper` was archived; development moved to `OHF-Voice/piper1-gpl`,
+and the last MIT release has no Python 3.12 Linux wheel for its phonemizer
+dependency, so it doesn't install on this project's image). This runs only
+as a server-side dependency inside Lingua's own backend and is never
+redistributed, so GPL-3.0's copyleft — which triggers on *distributing* the
+software — doesn't apply here; that's what AGPL is for, and this isn't it.
 
-Leave both unset to keep using AI-generated images only — nothing else
-changes.
+### Vocabulary flashcard images: two free photo sources (optional + always-on)
+
+By default, flashcard images come from AI generation (Pollinations/Flux
+above). `backend/image_search.py` adds two cheaper, often clearer
+alternatives — real photos — tried before AI generation:
+
+1. **Google Custom Search** (best relevance, needs one-time setup, free up
+   to 100 queries/day):
+   1. Create a search engine at https://programmablesearchengine.google.com/
+      with "Search the entire web" and "Image search" turned on, and copy
+      its Search engine ID.
+   2. Create an API key with the "Custom Search API" enabled at
+      https://console.cloud.google.com/apis/credentials.
+   3. Set `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_CX`.
+2. **Wikimedia Commons** (needs no key, no setup, no quota — always on).
+   Lower average relevance than Google's general image search since it only
+   searches Commons' own media library, but that's still real, free photos
+   out of the box for every install, even one that never configures Google
+   CSE.
+
+Leave the Google CSE variables unset to skip straight to Wikimedia Commons,
+then AI generation — nothing else to configure.
+
+### Academy content grounding: real reference material, not just the model's own knowledge
+
+`backend/rag.py` pulls real grounding text into curriculum/course generation
+prompts instead of relying only on the chat model's training data:
+[arXiv](https://arxiv.org)'s public search API for STEM fields, and
+[Wikipedia](https://www.wikipedia.org)'s public REST API as a second source
+covering every other field — humanities, arts, business, clinical fields,
+trades, anything with an encyclopedia article. Both are keyless and free;
+either one returning nothing just means the prompt runs without that extra
+grounding, same as before either existed.
 
 ## How personalization actually works
 
