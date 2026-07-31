@@ -56,8 +56,13 @@ class Settings:
         default_factory=lambda: os.environ.get("LINGUA_VIDEO_MODEL", "damo-vilab/text-to-video-ms-1.7b")
     )
 
-    hf_chat_endpoint: str = "https://api-inference.huggingface.co/v1/chat/completions"
-    hf_models_endpoint: str = "https://api-inference.huggingface.co/models"
+    # Hugging Face retired the old api-inference.huggingface.co host in favor
+    # of a unified router — the old hostname now fails DNS resolution
+    # entirely (confirmed independently from two different networks, not a
+    # transient blip), which silently sent every AI feature in this app
+    # (chat, images, TTS, STT) into offline fallback mode in production.
+    hf_chat_endpoint: str = "https://router.huggingface.co/v1/chat/completions"
+    hf_models_endpoint: str = "https://router.huggingface.co/hf-inference/models"
 
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
