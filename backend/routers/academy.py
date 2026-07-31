@@ -38,8 +38,8 @@ def _course_id(field_id: str, level: AcademicLevel, order: int) -> str:
     return f"{field_id}:{level.value}:{order}"
 
 
-async def _load_curriculum(user_id: str, field: AcademicField, level: AcademicLevel, target_lang: str) -> Curriculum:
-    raw_courses = await hf_client.generate_curriculum(field, level, target_lang)
+async def _load_curriculum(user_id: str, field: AcademicField, level: AcademicLevel, native_lang: str) -> Curriculum:
+    raw_courses = await hf_client.generate_curriculum(field, level, native_lang)
     courses = [
         CourseStub(id=_course_id(field.id, level, i), order=i, title=c["title"], description=c["description"])
         for i, c in enumerate(raw_courses)
@@ -96,7 +96,7 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
         return AcademyProgress(enrollment=None)
 
     enrollment = _build_enrollment(field, level, row["enrolled_at"])
-    curriculum = await _load_curriculum(user_id, field, level, user.target_lang)
+    curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
 
     with db.cursor() as cur:
         cur.execute("SELECT course_id FROM academy_course_progress WHERE user_id=?", (user_id,))
@@ -115,7 +115,7 @@ async def get_curriculum(user_id: str, session: dict = Depends(auth.require_owne
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
-    return await _load_curriculum(user_id, field, level, user.target_lang)
+    return await _load_curriculum(user_id, field, level, user.native_lang)
 
 
 async def _resolve_course(user_id: str, course_id: str):
@@ -128,7 +128,7 @@ async def _resolve_course(user_id: str, course_id: str):
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
 
-    curriculum = await _load_curriculum(user_id, field, level, user.target_lang)
+    curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
     stub = next((c for c in curriculum.courses if c.id == course_id), None)
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
@@ -138,7 +138,7 @@ async def _resolve_course(user_id: str, course_id: str):
 @router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
 async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
     user, field, level, stub = await _resolve_course(user_id, course_id)
-    modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.target_lang)
+    modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.native_lang)
     return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
 
 
@@ -148,7 +148,7 @@ async def get_practice_scenario(user_id: str, course_id: str, session: dict = De
     complement to the theory in get_course, for fields (nursing, engineering,
     business, ...) where reading alone isn't enough."""
     user, field, level, stub = await _resolve_course(user_id, course_id)
-    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, user.target_lang)
+    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, user.native_lang)
     return {"scenario": scenario}
 
 
@@ -162,7 +162,7 @@ async def get_scenario_feedback(
     user_id: str, course_id: str, payload: ScenarioResponseRequest, session: dict = Depends(auth.require_owner)
 ) -> dict:
     user = get_user_by_id_or_404(user_id)
-    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, user.target_lang)
+    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, user.native_lang)
     return {"feedback": feedback}
 
 

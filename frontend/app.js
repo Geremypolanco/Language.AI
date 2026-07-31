@@ -65,26 +65,31 @@ function iconSvg(name, extraClass = "") {
 // Keep in sync with backend/hf_client.py's _MMS_LANG_CODES for TTS voice
 // coverage (a language missing from that map still teaches fully via text/
 // chat, it just falls back to an English voice for audio).
+//
+// Labels are "language's own name for itself / Spanish name" — a picker
+// showing every language only in Spanish is unreadable to anyone who
+// doesn't already know Spanish, including someone choosing Spanish itself
+// isn't a problem, but choosing e.g. "Alemán" when you only read German is.
 const LANGS = [
-  ["en", "Inglés"], ["es", "Español"], ["fr", "Francés"], ["de", "Alemán"],
-  ["it", "Italiano"], ["pt", "Portugués"], ["ja", "Japonés"], ["ko", "Coreano"],
-  ["zh", "Chino (mandarín)"], ["ru", "Ruso"], ["ar", "Árabe"],
-  ["nl", "Neerlandés"], ["sv", "Sueco"], ["pl", "Polaco"], ["tr", "Turco"], ["hi", "Hindi"],
-  ["id", "Indonesio"], ["vi", "Vietnamita"], ["th", "Tailandés"], ["uk", "Ucraniano"],
-  ["el", "Griego"], ["he", "Hebreo"], ["cs", "Checo"], ["ro", "Rumano"],
-  ["hu", "Húngaro"], ["fi", "Finlandés"], ["da", "Danés"], ["no", "Noruego"],
-  ["bg", "Búlgaro"], ["sk", "Eslovaco"], ["hr", "Croata"], ["sr", "Serbio"],
-  ["lt", "Lituano"], ["lv", "Letón"], ["et", "Estonio"], ["sl", "Esloveno"],
-  ["fa", "Persa (farsi)"], ["ur", "Urdu"], ["bn", "Bengalí"], ["ta", "Tamil"],
-  ["te", "Telugu"], ["mr", "Maratí"], ["gu", "Guyaratí"], ["pa", "Panyabí"],
-  ["ml", "Malabar"], ["kn", "Canarés"], ["ne", "Nepalí"], ["si", "Cingalés"],
-  ["my", "Birmano"], ["km", "Jemer"], ["lo", "Lao"], ["ms", "Malayo"],
-  ["tl", "Tagalo (filipino)"], ["sw", "Suajili"], ["am", "Amárico"], ["so", "Somalí"],
-  ["ha", "Hausa"], ["yo", "Yoruba"], ["ig", "Igbo"], ["zu", "Zulú"], ["xh", "Xhosa"],
-  ["af", "Afrikáans"], ["is", "Islandés"], ["ga", "Irlandés"], ["cy", "Galés"],
-  ["mt", "Maltés"], ["eu", "Euskera"], ["ca", "Catalán"], ["gl", "Gallego"],
-  ["az", "Azerbaiyano"], ["kk", "Kazajo"], ["uz", "Uzbeko"], ["mn", "Mongol"],
-  ["ka", "Georgiano"], ["hy", "Armenio"], ["sq", "Albanés"], ["mk", "Macedonio"],
+  ["en", "English / Inglés"], ["es", "Español / Spanish"], ["fr", "Français / Francés"], ["de", "Deutsch / Alemán"],
+  ["it", "Italiano"], ["pt", "Português / Portugués"], ["ja", "日本語 / Japonés"], ["ko", "한국어 / Coreano"],
+  ["zh", "中文 / Chino (mandarín)"], ["ru", "Русский / Ruso"], ["ar", "العربية / Árabe"],
+  ["nl", "Nederlands / Neerlandés"], ["sv", "Svenska / Sueco"], ["pl", "Polski / Polaco"], ["tr", "Türkçe / Turco"], ["hi", "हिन्दी / Hindi"],
+  ["id", "Bahasa Indonesia / Indonesio"], ["vi", "Tiếng Việt / Vietnamita"], ["th", "ไทย / Tailandés"], ["uk", "Українська / Ucraniano"],
+  ["el", "Ελληνικά / Griego"], ["he", "עברית / Hebreo"], ["cs", "Čeština / Checo"], ["ro", "Română / Rumano"],
+  ["hu", "Magyar / Húngaro"], ["fi", "Suomi / Finlandés"], ["da", "Dansk / Danés"], ["no", "Norsk / Noruego"],
+  ["bg", "Български / Búlgaro"], ["sk", "Slovenčina / Eslovaco"], ["hr", "Hrvatski / Croata"], ["sr", "Српски / Serbio"],
+  ["lt", "Lietuvių / Lituano"], ["lv", "Latviešu / Letón"], ["et", "Eesti / Estonio"], ["sl", "Slovenščina / Esloveno"],
+  ["fa", "فارسی / Persa (farsi)"], ["ur", "اردو / Urdu"], ["bn", "বাংলা / Bengalí"], ["ta", "தமிழ் / Tamil"],
+  ["te", "తెలుగు / Telugu"], ["mr", "मराठी / Maratí"], ["gu", "ગુજરાતી / Guyaratí"], ["pa", "ਪੰਜਾਬੀ / Panyabí"],
+  ["ml", "മലയാളം / Malabar"], ["kn", "ಕನ್ನಡ / Canarés"], ["ne", "नेपाली / Nepalí"], ["si", "සිංහල / Cingalés"],
+  ["my", "မြန်မာ / Birmano"], ["km", "ខ្មែរ / Jemer"], ["lo", "ລາວ / Lao"], ["ms", "Bahasa Melayu / Malayo"],
+  ["tl", "Tagalog / Filipino"], ["sw", "Kiswahili / Suajili"], ["am", "አማርኛ / Amárico"], ["so", "Soomaali / Somalí"],
+  ["ha", "Hausa"], ["yo", "Yorùbá / Yoruba"], ["ig", "Igbo"], ["zu", "isiZulu / Zulú"], ["xh", "isiXhosa / Xhosa"],
+  ["af", "Afrikaans"], ["is", "Íslenska / Islandés"], ["ga", "Gaeilge / Irlandés"], ["cy", "Cymraeg / Galés"],
+  ["mt", "Malti / Maltés"], ["eu", "Euskera"], ["ca", "Català / Catalán"], ["gl", "Galego / Gallego"],
+  ["az", "Azərbaycan / Azerbaiyano"], ["kk", "Қазақ / Kazajo"], ["uz", "O'zbek / Uzbeko"], ["mn", "Монгол / Mongol"],
+  ["ka", "ქართული / Georgiano"], ["hy", "Հայերեն / Armenio"], ["sq", "Shqip / Albanés"], ["mk", "Македонски / Macedonio"],
 ];
 
 // Curriculum topic names (backend/curriculum.py _TOPICS_BY_LEVEL) are stable
@@ -163,6 +168,150 @@ function showScreen(id) {
   $(id).classList.remove("hidden");
 }
 
+// ---------- i18n: app shell adapts to the learner's native language ----------
+// A dashboard shown in a language the learner doesn't understand yet is
+// unusable, so the UI chrome (nav, onboarding, placement test, tab intros,
+// dashboard card titles) follows the account's native_lang once known, and
+// a manual toggle on the very first onboarding screen covers the moment
+// before an account exists at all.
+//
+// v1 scope: Spanish (the language every screen is already authored in — no
+// entry needed here, it's just left as the DOM's original text) and English.
+// Any other native_lang falls back to Spanish until it gets its own
+// translation — a deliberate, communicated first pass, not full coverage of
+// every screen (deeper lesson/reader micro-copy is still Spanish-only).
+const I18N = {
+  es: {
+    coach_welcome: "¡Bienvenido a Lingua! Ve a Camino y elige tu primera lección, o toca Practicar si quieres entrenar una destreza específica primero. Si también quieres estudiar una carrera universitaria (en tu propio idioma, mientras aprendes el nuevo) toca Universidad arriba y elige qué te interesa.",
+    coach_due_reviews: (n) => `Tienes ${n} palabra${n === 1 ? "" : "s"} para repasar. Sigue en Camino para reforzarlas antes de avanzar.`,
+    coach_streak: (n, dia) => `¡Racha de ${n} ${dia}! ¿Lista o listo para tu próxima lección?`,
+    coach_welcome_back: "¡Bienvenido de nuevo! ¿Seguimos aprendiendo?",
+    placement_question_progress: (n, total) => `Pregunta ${n} de ${total}`,
+    placement_preparing: "Preparando tu siguiente pregunta…",
+    placement_default_prompt: "Elige la respuesta correcta:",
+  },
+  en: {
+    ob_coach_intro: "Step 1 of 2: tell me about yourself so I can prep your first lessons. At the end I'll ask a few quick questions to place your level — or you can skip it if you're already advanced.",
+    ob_label_name: "Your name",
+    ob_label_native: "I already speak",
+    ob_label_target: "I want to learn",
+    ob_label_interests: "Interests (comma-separated, personalizes your lessons)",
+    ob_label_goal: "How much time do you want to spend per day?",
+    ob_label_goal_hint: "(just a personal guide, never a limit)",
+    ob_submit: "Find my level",
+    ob_skip: "I already have an advanced level — skip the placement test",
+    placement_title: "Let's find your level",
+    placement_subtitle: "Answer as best you can — the questions adjust to you as you go, like a real placement test.",
+    placement_result_level_prefix: "You're at level",
+    placement_result_note: "You'll start your path there — it keeps adjusting as you progress.",
+    placement_result_academy_tip: 'Tip: you can also study a university-style career track — in your own language — from the <strong>University</strong> tab, whenever you want.',
+    placement_continue_btn: "Start learning",
+    nav_path: "Path",
+    nav_practice: "Practice",
+    nav_library: "Library",
+    nav_academy: "University",
+    nav_talk: "Talk live",
+    nav_progress: "Progress",
+    practice_title: "What do you want to master today?",
+    practice_subtitle: "Pick a skill and practice as much as you want — no limits, no fixed order.",
+    practice_level_label: "Practice level",
+    library_title: "Library of 500+ books",
+    library_subtitle: "AI-written stories in the language you're learning — each one is generated the first time you open it.",
+    filter_all_levels: "All levels",
+    academy_disclaimer: 'AI-built, self-paced accelerated study track — <strong>not an accredited program</strong> and does not grant credits, certificates, or official degrees. It’s for learning only; for a real degree you need to enroll in an accredited university.',
+    academy_picker_title: "What do you want to study?",
+    academy_picker_subtitle: "Pick a career track and a depth level — you set the pace.",
+    academy_level_associate: "Technical (Associate-equivalent) — fastest",
+    academy_level_bachelor: "Professional (Bachelor's-equivalent)",
+    academy_level_master: "Advanced (Master's-equivalent)",
+    academy_switch_btn: "Switch career",
+    talk_connecting: "Connecting…",
+    talk_mic_btn: "Hold to talk",
+    talk_text_placeholder: "…or type instead",
+    talk_send_btn: "Send",
+    ai_disclaimer: "AI can give inaccurate answers. Double-check anything important.",
+    dash_league_title: "Weekly league",
+    dash_league_reset: "Resets on Monday",
+    dash_level_progress_title: "Level progress",
+    dash_daily_goal_title: "Daily goal",
+    dash_change_btn: "Change",
+    dash_recommended_title: "Recommended for you",
+    dash_recommended_refresh: "New suggestions",
+    dash_recommended_subtitle: "Books, songs, and more to reinforce what you're learning, outside the app.",
+    dash_shop_title: "Gem shop",
+    dash_shop_subtitle: "Earn gems by finishing lessons. Spend them here — never with real money.",
+    dash_activity_title: "Last 14 days",
+    dash_mastery_title: "Mastery by level",
+    dash_recent_title: "Recent lessons",
+    coach_welcome: "Welcome to Lingua! Go to Path and pick your first lesson, or tap Practice if you'd rather train a specific skill first. If you also want to study a university-style career track (in your own language, while you learn the new one) tap University above and pick what interests you.",
+    coach_due_reviews: (n) => `You have ${n} word${n === 1 ? "" : "s"} to review. Keep going in Path to reinforce them before moving on.`,
+    coach_streak: (n) => `${n}-day streak! Ready for your next lesson?`,
+    coach_welcome_back: "Welcome back! Shall we keep learning?",
+    placement_question_progress: (n, total) => `Question ${n} of ${total}`,
+    placement_preparing: "Preparing your next question…",
+    placement_default_prompt: "Choose the correct answer:",
+  },
+};
+
+function currentUiLang() {
+  return state.uiLang || "es";
+}
+
+// Returns undefined (not a placeholder string) when nothing is translated
+// for this key/lang — callers must leave the DOM's original Spanish text
+// alone in that case rather than overwrite it with a raw key name.
+function t(key, ...args) {
+  const lang = currentUiLang();
+  let entry = I18N[lang] && I18N[lang][key];
+  if (entry === undefined) entry = I18N.es && I18N.es[key];
+  if (typeof entry === "function") return entry(...args);
+  return entry;
+}
+
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const value = t(el.getAttribute("data-i18n"));
+    if (value !== undefined) el.textContent = value;
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    const value = t(el.getAttribute("data-i18n-html"));
+    if (value !== undefined) el.innerHTML = value;
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const value = t(el.getAttribute("data-i18n-placeholder"));
+    if (value !== undefined) el.placeholder = value;
+  });
+  document.documentElement.lang = currentUiLang();
+  $$(".ui-lang-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.uiLang === currentUiLang()));
+}
+
+function setUiLang(lang) {
+  state.uiLang = lang;
+  try { localStorage.setItem("lingua_ui_lang", lang); } catch {}
+  applyI18n();
+}
+
+// Once we know the signed-in user's native_lang (a 2-letter code — see
+// populateLangSelects), that's authoritative over any earlier guess.
+function setUiLangFromNativeCode(code) {
+  setUiLang(code === "en" ? "en" : "es");
+}
+
+function initUiLang() {
+  let guess = "es";
+  try {
+    guess = localStorage.getItem("lingua_ui_lang") || "";
+  } catch {
+    guess = "";
+  }
+  if (!guess) {
+    guess = navigator.language && navigator.language.toLowerCase().startsWith("en") ? "en" : "es";
+  }
+  state.uiLang = guess;
+  applyI18n();
+  $$(".ui-lang-btn").forEach((btn) => btn.addEventListener("click", () => setUiLang(btn.dataset.uiLang)));
+}
+
 // ---------- Onboarding ----------
 
 function populateLangSelects() {
@@ -174,6 +323,10 @@ function populateLangSelects() {
   }
   native.value = "es";
   target.value = "en";
+  // The moment someone tells us their native language, the rest of
+  // onboarding (placement test, result) should already follow it — no need
+  // to wait until the account is created and reloaded.
+  native.addEventListener("change", () => setUiLangFromNativeCode(native.value));
 }
 
 function readInterests() {
@@ -230,7 +383,7 @@ async function startPlacementTest() {
 
 async function fetchNextPlacementQuestion() {
   const el = $("#placement-exercise");
-  el.innerHTML = "<p>Preparando tu siguiente pregunta…</p>";
+  el.textContent = t("placement_preparing");
   const data = await api("/api/placement", {
     method: "POST",
     body: JSON.stringify({
@@ -245,17 +398,22 @@ async function fetchNextPlacementQuestion() {
     return;
   }
   placement.current = data;
-  $("#placement-progress").textContent = `Pregunta ${data.question_number} de ${PLACEMENT_TOTAL}`;
+  $("#placement-progress").textContent = t("placement_question_progress", data.question_number, PLACEMENT_TOTAL);
   $("#placement-progress-bar").style.width = `${Math.round(((data.question_number - 1) / PLACEMENT_TOTAL) * 100)}%`;
   renderPlacementQuestion(data.exercise, data.level, el);
 }
 
 function renderPlacementQuestion(ex, level, container) {
+  // Placement always requests multiple_choice questions (see placement.py),
+  // so this only needs the instruction/prompt, an optional native-language
+  // hint, and the answer options — it must NOT also show ex.target_text on
+  // its own, since for most exercise shapes that field IS the correct
+  // answer and would just give it away before the learner picks.
   container.innerHTML = "";
 
   const prompt = document.createElement("div");
   prompt.className = "exercise-prompt";
-  prompt.textContent = ex.prompt || ex.target_text;
+  prompt.textContent = ex.prompt || t("placement_default_prompt");
   container.appendChild(prompt);
 
   if (ex.native_text) {
@@ -265,45 +423,26 @@ function renderPlacementQuestion(ex, level, container) {
     container.appendChild(hint);
   }
 
-  const target = document.createElement("div");
-  target.className = "exercise-prompt";
-  target.textContent = ex.target_text;
-  container.appendChild(target);
-
-  const submit = (answer) => {
+  const submit = (answer, btn, allButtons) => {
+    allButtons.forEach((b) => (b.disabled = true));
     const correct = normalize(answer) === normalize(ex.correct_answer);
+    btn.classList.add(correct ? "correct" : "incorrect");
     placement.history.push({ level, correct });
-    fetchNextPlacementQuestion();
+    setTimeout(fetchNextPlacementQuestion, 400);
   };
 
-  if (ex.options && ex.options.length) {
-    const opts = document.createElement("div");
-    opts.className = "exercise-options";
-    for (const choice of ex.options) {
-      const btn = document.createElement("button");
-      btn.className = "option-btn";
-      btn.textContent = choice;
-      btn.addEventListener("click", () => submit(choice));
-      opts.appendChild(btn);
-    }
-    container.appendChild(opts);
-  } else {
-    const row = document.createElement("div");
-    row.className = "exercise-input-row";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Escribe tu respuesta…";
+  const opts = document.createElement("div");
+  opts.className = "exercise-options";
+  const choices = ex.options && ex.options.length ? ex.options : [ex.correct_answer];
+  const buttons = choices.map((choice) => {
     const btn = document.createElement("button");
-    btn.className = "btn btn-primary";
-    btn.textContent = "Comprobar";
-    row.append(input, btn);
-    container.appendChild(row);
-    const go = () => submit(input.value);
-    btn.addEventListener("click", go);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") go();
-    });
-  }
+    btn.className = "option-btn";
+    btn.textContent = choice;
+    opts.appendChild(btn);
+    return btn;
+  });
+  buttons.forEach((btn) => btn.addEventListener("click", () => submit(btn.textContent, btn, buttons)));
+  container.appendChild(opts);
 }
 
 async function finishPlacementTest(recommendedLevel) {
@@ -364,6 +503,7 @@ async function signOut() {
 
 async function enterApp() {
   state.user = await api(`/api/users/${state.userId}`);
+  setUiLangFromNativeCode(state.user.native_lang);
   showScreen("#screen-main");
   const [, progress] = await Promise.all([loadPath(), loadProgress()]);
   showCoachGreeting(progress);
@@ -371,15 +511,15 @@ async function enterApp() {
 
 function coachGreetingFor(progress) {
   if (progress.xp === 0 && progress.streak_days === 0) {
-    return "¡Bienvenido a Lingua! Ve a Camino y elige tu primera lección, o toca Practicar si quieres entrenar una destreza específica primero.";
+    return t("coach_welcome");
   }
   if (progress.due_reviews > 0) {
-    return `Tienes ${progress.due_reviews} palabra${progress.due_reviews === 1 ? "" : "s"} para repasar. Sigue en Camino para reforzarlas antes de avanzar.`;
+    return t("coach_due_reviews", progress.due_reviews, diaWord(progress.due_reviews));
   }
   if (progress.streak_days > 0) {
-    return `¡Racha de ${progress.streak_days} ${diaWord(progress.streak_days)}! ¿Lista o listo para tu próxima lección?`;
+    return t("coach_streak", progress.streak_days, diaWord(progress.streak_days));
   }
-  return "¡Bienvenido de nuevo! ¿Seguimos aprendiendo?";
+  return t("coach_welcome_back");
 }
 
 function showCoachGreeting(progress) {
@@ -1807,6 +1947,7 @@ function setupCookieConsent() {
 // ---------- Boot ----------
 
 async function boot() {
+  initUiLang();
   populateLangSelects();
   $("#onboarding-form").addEventListener("submit", handleOnboardingSubmit);
   setupTabs();

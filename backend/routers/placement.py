@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from .. import auth
 from ..curriculum import LessonRequest, units_for_level
 from ..hf_client import hf_client
-from ..models import CEFRLevel, Exercise
+from ..models import CEFRLevel, Exercise, ExerciseType
 
 router = APIRouter(prefix="/api/placement", tags=["placement"])
 
@@ -71,7 +71,14 @@ async def next_placement_question(payload: PlacementRequest, request: Request) -
         interests=payload.interests,
         recent_mistakes=[],
     )
-    exercises = await hf_client.generate_exercises(req)
+    # Always multiple_choice here, regardless of what this level's normal
+    # lesson mix would use — placement runs before an account (and its
+    # target_lang-aware UI) exists, so it can't rely on the mic-recording or
+    # free-text tutor-reply exercise types (renderSpeakRepeat/
+    # renderFreeConversation in the frontend need a signed-in user). This
+    # also keeps every placement question the same clear, answerable format
+    # instead of switching styles as the adaptive level moves around.
+    exercises = await hf_client.generate_exercises(req, mix_override=[ExerciseType.MULTIPLE_CHOICE])
     exercise = exercises[0] if exercises else None
     return PlacementResponse(
         done=False,

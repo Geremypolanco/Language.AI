@@ -9,6 +9,7 @@ HF request when a token is present (no mocked "success" responses).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -137,16 +138,25 @@ class HFClient:
     async def chat(self, messages: list[dict[str, str]], max_tokens: int = 700, temperature: float = 0.7) -> str:
         if not settings.hf_configured:
             raise HFClientError("HF_TOKEN not configured")
-        resp = await self._http.post(
-            settings.hf_chat_endpoint,
-            headers=self._headers(),
-            json={
-                "model": settings.chat_model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-        )
+        payload = {
+            "model": settings.chat_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        # One retry on a transient network failure (DNS blip, connection
+        # reset) before giving up — this was the actual cause of exercises
+        # silently falling back to offline placeholder text in production
+        # (httpx.ConnectError: "No address associated with hostname"),
+        # even though HF_TOKEN was configured and working.
+        for attempt in range(2):
+            try:
+                resp = await self._http.post(settings.hf_chat_endpoint, headers=self._headers(), json=payload)
+                break
+            except httpx.TransportError as exc:
+                if attempt == 1:
+                    raise HFClientError(f"HF chat network error: {exc}") from exc
+                await asyncio.sleep(0.5)
         if resp.status_code != 200:
             raise HFClientError(f"HF chat HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
@@ -255,16 +265,16 @@ class HFClient:
 
     # ── Academy (on-demand AI-generated accelerated study curricula) ────
 
-    async def generate_curriculum(self, field: "AcademicField", level: "AcademicLevel", target_lang: str) -> list[dict]:
+    async def generate_curriculum(self, field: "AcademicField", level: "AcademicLevel", native_lang: str) -> list[dict]:
         """Generates (once) and caches the ordered course list for a
-        (field, academic level, target language) triple — analogous to
-        generate_book_content, but for a curriculum outline instead of a
-        story. Content is written in target_lang (the language the learner
-        is studying), not their native language: this academy is deliberately
-        an immersion tool, not just a knowledge source."""
+        (field, academic level) pair — analogous to generate_book_content,
+        but for a curriculum outline instead of a story. Content is written
+        in native_lang on purpose: the academy exists to teach real subject
+        knowledge, which the learner needs to actually understand — language
+        immersion is handled separately by the Lessons/Library, not here."""
         from .academy import build_curriculum_prompt
 
-        cache_key = f"{field.id}:{level.value}:{target_lang}"
+        cache_key = f"{field.id}:{level.value}:{native_lang}"
         cache_path = self._cache_path("curriculum", cache_key, "json")
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
@@ -276,7 +286,7 @@ class HFClient:
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, field.name)
-        prompt = build_curriculum_prompt(field, level.label_es, level.course_count, target_lang)
+        prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
         if context:
             prompt = f"{context}\n\n{prompt}"
         try:
@@ -312,14 +322,13 @@ class HFClient:
         course_id: str,
         course_title: str,
         course_description: str,
-        target_lang: str,
+        native_lang: str,
     ) -> list[dict]:
         """Generates (once) and caches a course's module content, written in
-        target_lang so studying the academy also reinforces the language
-        being learned."""
+        native_lang — same rationale as generate_curriculum."""
         from .academy import build_course_prompt
 
-        cache_key = f"{course_id}:{target_lang}"
+        cache_key = f"{course_id}:{native_lang}"
         cache_path = self._cache_path("course", cache_key, "json")
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
@@ -341,7 +350,7 @@ class HFClient:
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, course_title)
-        prompt = build_course_prompt(field, level.label_es, course_title, course_description, target_lang)
+        prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
         if context:
             prompt = f"{context}\n\n{prompt}"
         try:
@@ -380,7 +389,7 @@ class HFClient:
         course_id: str,
         course_title: str,
         course_description: str,
-        target_lang: str,
+        native_lang: str,
     ) -> str:
         """Hands-on fields (nursing, engineering, business, ...) need more than
         theory — this generates a realistic case/scenario the learner responds
@@ -388,11 +397,11 @@ class HFClient:
         grade_practice_response). Cached per course like the lesson content;
         this is deliberately a text-based simulation, not real clinical/lab
         practice — the honest, buildable version of "practice, not just
-        theory" for a software-only product. Written in target_lang, same
-        immersion rationale as the rest of the academy."""
+        theory" for a software-only product. Written in native_lang, same
+        rationale as the rest of the academy."""
         from .academy import build_practice_scenario_prompt
 
-        cache_path = self._cache_path("scenario", f"{course_id}:{target_lang}", "txt")
+        cache_path = self._cache_path("scenario", f"{course_id}:{native_lang}", "txt")
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
                 return f.read()
@@ -403,7 +412,7 @@ class HFClient:
                 f'Practica lo aprendido en "{course_title}" resolviendo un caso real una vez actives tu clave de Hugging Face.'
             )
 
-        prompt = build_practice_scenario_prompt(field, level.label_es, course_title, course_description, target_lang)
+        prompt = build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang)
         try:
             content = await self.chat(
                 [
@@ -425,10 +434,10 @@ class HFClient:
             f.write(content)
         return content
 
-    async def grade_practice_response(self, scenario: str, user_response: str, target_lang: str) -> str:
+    async def grade_practice_response(self, scenario: str, user_response: str, native_lang: str) -> str:
         """Feedback on the learner's own answer to a practice scenario — not
         cached, since it depends on what they personally wrote. Written in
-        target_lang, same immersion rationale as the rest of the academy."""
+        native_lang, same rationale as the rest of the academy."""
         if not settings.hf_configured:
             return (
                 "(Modo demo — configura HF_TOKEN para recibir retroalimentación real de IA sobre tu respuesta)"
@@ -436,7 +445,7 @@ class HFClient:
         prompt = (
             f"A student was given this practice scenario:\n\n{scenario}\n\n"
             f"Their response:\n\n{user_response}\n\n"
-            f"Give short, constructive feedback in {target_lang} (3-5 sentences): what they got right, what to "
+            f"Give short, constructive feedback in {native_lang} (3-5 sentences): what they got right, what to "
             f"improve, and one concrete tip. Be encouraging but honest."
         )
         try:
@@ -623,9 +632,11 @@ def _parse_exercises(raw: str) -> list[Exercise]:
 
 
 def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> list[Exercise]:
-    """Deterministic, network-free content so the app works with no HF_TOKEN
-    (useful for local dev/demo/tests). Clearly lower quality than the real
-    LLM-generated, personalized content."""
+    """Deterministic, network-free content used when the AI call isn't
+    available — no HF_TOKEN configured, or a transient failure survived the
+    one retry in chat(). Clearly lower quality than the real LLM-generated,
+    personalized content, and says so directly in the exercise's own prompt
+    text so a user never mistakes this for a broken real exercise."""
     from .curriculum import exercise_mix_for
 
     mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
@@ -633,16 +644,16 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
     exercises = []
     for i, ex_type in enumerate(mix):
         word = f"{req.unit.topic.split()[0].lower()}_{i}"
-        target = f"[{req.target_lang}] {topic}, ejemplo {i + 1}"
-        native = f"[{req.native_lang}] {topic}, ejemplo {i + 1}"
+        target = f"{topic} ({req.target_lang}) #{i + 1}"
+        native = f"{topic} ({req.native_lang}) #{i + 1}"
         exercises.append(
             Exercise(
                 id=f"ex-{i}-{word}",
                 type=ex_type,
-                prompt=f"Practica: {topic}",
+                prompt=f"(Sin conexión con la IA en este momento — contenido de práctica sin conexión) {topic}",
                 target_text=target,
                 native_text=native if req.unit.level.uses_translation else "",
-                options=[target, f"{target} (opción A)", f"{target} (opción B)"]
+                options=[target, f"{topic} ({req.target_lang}) — otra opción", f"{topic} ({req.target_lang}) — otra opción más"]
                 if ex_type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH)
                 else [],
                 correct_answer=target,

@@ -194,6 +194,10 @@
     <section id="screen-onboarding" class="screen hidden">
       <div class="card onboarding-card" id="onboarding-step-profile">
         <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
+        <div class="ui-lang-toggle" id="ui-lang-toggle" role="group" aria-label="App language / Idioma de la app">
+          <button type="button" class="ui-lang-btn" data-ui-lang="es">Español</button>
+          <button type="button" class="ui-lang-btn" data-ui-lang="en">English</button>
+        </div>
         <div class="coach-intro">
           <svg class="grad-avatar coach-avatar-sm" viewBox="0 0 120 120" aria-hidden="true">
             <defs>
@@ -223,22 +227,22 @@
             <path d="M60 32 Q79 37 83 49" stroke="#ffc800" stroke-width="2.2" fill="none" stroke-linecap="round"/>
             <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
           </svg>
-          <p class="coach-message">Paso 1 de 2: cuéntame de ti para preparar tus primeras lecciones. Al final te haré unas preguntas rápidas para ubicar tu nivel — o puedes saltarla si ya eres avanzado.</p>
+          <p class="coach-message" data-i18n="ob_coach_intro">Paso 1 de 2: cuéntame de ti para preparar tus primeras lecciones. Al final te haré unas preguntas rápidas para ubicar tu nivel — o puedes saltarla si ya eres avanzado.</p>
         </div>
         <form id="onboarding-form">
-          <label>Tu nombre
+          <label><span data-i18n="ob_label_name">Tu nombre</span>
             <input type="text" id="ob-name" required placeholder="Alex" />
           </label>
-          <label>Ya hablo
+          <label><span data-i18n="ob_label_native">Ya hablo</span>
             <select id="ob-native"></select>
           </label>
-          <label>Quiero aprender
+          <label><span data-i18n="ob_label_target">Quiero aprender</span>
             <select id="ob-target"></select>
           </label>
-          <label>Intereses (separados por comas, personaliza tus lecciones)
+          <label><span data-i18n="ob_label_interests">Intereses (separados por comas, personaliza tus lecciones)</span>
             <input type="text" id="ob-interests" placeholder="fútbol, cocina, películas" />
           </label>
-          <label>¿Cuánto tiempo quieres dedicarle al día? <span class="subtitle">(solo una guía personal, nunca un límite)</span>
+          <label><span data-i18n="ob_label_goal">¿Cuánto tiempo quieres dedicarle al día?</span> <span class="subtitle" data-i18n="ob_label_goal_hint">(solo una guía personal, nunca un límite)</span>
             <select id="ob-daily-goal">
               <option value="5">5 minutos</option>
               <option value="10">10 minutos</option>
@@ -248,18 +252,18 @@
               <option value="60">60 minutos</option>
             </select>
           </label>
-          <button type="submit" class="btn btn-primary">Encontrar mi nivel</button>
+          <button type="submit" class="btn btn-primary" data-i18n="ob_submit">Encontrar mi nivel</button>
         </form>
-        <button type="button" id="ob-skip-fluent" class="btn-link">Ya tengo un nivel avanzado — omitir la prueba de nivel</button>
+        <button type="button" id="ob-skip-fluent" class="btn-link" data-i18n="ob_skip">Ya tengo un nivel avanzado — omitir la prueba de nivel</button>
       </div>
 
       <div class="card onboarding-card hidden" id="onboarding-step-placement">
         <div class="placement-header">
-          <h2>Vamos a encontrar tu nivel</h2>
+          <h2 data-i18n="placement_title">Vamos a encontrar tu nivel</h2>
           <span class="placement-progress" id="placement-progress">Pregunta 1 de 6</span>
         </div>
         <div class="lesson-progress placement-bar"><div id="placement-progress-bar"></div></div>
-        <p class="subtitle">Responde lo mejor que puedas — las preguntas se ajustan a ti a medida que avanzas, como una prueba de nivel real.</p>
+        <p class="subtitle" data-i18n="placement_subtitle">Responde lo mejor que puedas — las preguntas se ajustan a ti a medida que avanzas, como una prueba de nivel real.</p>
         <div id="placement-exercise" class="placement-exercise"></div>
       </div>
 
@@ -294,9 +298,10 @@
             <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
           </svg>
         </div>
-        <h2>¡Estás en el nivel <span id="placement-result-level">A2</span>!</h2>
-        <p class="subtitle" id="placement-result-note">Empezarás tu camino ahí — se sigue ajustando mientras avanzas.</p>
-        <button type="button" id="placement-continue" class="btn btn-primary">Empezar a aprender</button>
+        <h2><span data-i18n="placement_result_level_prefix">¡Estás en el nivel</span> <span id="placement-result-level">A2</span>!</h2>
+        <p class="subtitle" id="placement-result-note" data-i18n="placement_result_note">Empezarás tu camino ahí — se sigue ajustando mientras avanzas.</p>
+        <p class="subtitle" data-i18n-html="placement_result_academy_tip">Dato: también puedes estudiar una carrera universitaria — en tu propio idioma — desde la pestaña <strong>Universidad</strong>, cuando quieras.</p>
+        <button type="button" id="placement-continue" class="btn btn-primary" data-i18n="placement_continue_btn">Empezar a aprender</button>
       </div>
     </section>
 
@@ -311,12 +316,12 @@
           <span title="Nivel" id="stat-level">A1</span>
         </div>
         <nav class="tabs">
-          <button class="tab-btn active" data-tab="path">Camino</button>
-          <button class="tab-btn" data-tab="practice">Practicar</button>
-          <button class="tab-btn" data-tab="library">Biblioteca</button>
-          <button class="tab-btn" data-tab="academy">Universidad</button>
-          <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
-          <button class="tab-btn" data-tab="progress">Progreso</button>
+          <button class="tab-btn active" data-tab="path" data-i18n="nav_path">Camino</button>
+          <button class="tab-btn" data-tab="practice" data-i18n="nav_practice">Practicar</button>
+          <button class="tab-btn" data-tab="library" data-i18n="nav_library">Biblioteca</button>
+          <button class="tab-btn" data-tab="academy" data-i18n="nav_academy">Universidad</button>
+          <button class="tab-btn" data-tab="talk" data-i18n="nav_talk">Hablar en vivo</button>
+          <button class="tab-btn" data-tab="progress" data-i18n="nav_progress">Progreso</button>
           <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
         </nav>
       </header>
@@ -328,10 +333,10 @@
 
         <div id="tab-practice" class="tab-panel hidden">
           <div class="practice-intro">
-            <h2>¿Qué quieres dominar hoy?</h2>
-            <p class="subtitle">Elige una destreza y practica todo el tiempo que quieras — sin límites ni orden fijo.</p>
+            <h2 data-i18n="practice_title">¿Qué quieres dominar hoy?</h2>
+            <p class="subtitle" data-i18n="practice_subtitle">Elige una destreza y practica todo el tiempo que quieras — sin límites ni orden fijo.</p>
             <label class="practice-level-label">
-              Nivel de práctica
+              <span data-i18n="practice_level_label">Nivel de práctica</span>
               <select id="practice-level-select">
                 <option value="A1">A1</option>
                 <option value="A2">A2</option>
@@ -348,11 +353,11 @@
 
         <div id="tab-library" class="tab-panel hidden">
           <div class="library-intro">
-            <h2><svg class="icon"><use href="#icon-book"/></svg> Biblioteca de más de 500 libros</h2>
-            <p class="subtitle">Historias creadas por IA en el idioma que estás aprendiendo — cada una se genera la primera vez que la abres.</p>
+            <h2><svg class="icon"><use href="#icon-book"/></svg> <span data-i18n="library_title">Biblioteca de más de 500 libros</span></h2>
+            <p class="subtitle" data-i18n="library_subtitle">Historias creadas por IA en el idioma que estás aprendiendo — cada una se genera la primera vez que la abres.</p>
             <div class="library-filters">
               <select id="library-level-filter">
-                <option value="">Todos los niveles</option>
+                <option value="" data-i18n="filter_all_levels">Todos los niveles</option>
                 <option value="A1">A1</option>
                 <option value="A2">A2</option>
                 <option value="B1">B1</option>
@@ -375,18 +380,18 @@
         <div id="tab-academy" class="tab-panel hidden">
           <div class="academy-disclaimer">
             <svg class="icon"><use href="#icon-clock"/></svg>
-            <p>Ruta de estudio acelerada y autodirigida creada por IA — <strong>no es un programa acreditado</strong> ni otorga créditos, certificados ni títulos oficiales. Es solo para aprender; para un título real necesitas inscribirte en una universidad acreditada.</p>
+            <p data-i18n-html="academy_disclaimer">Ruta de estudio acelerada y autodirigida creada por IA — <strong>no es un programa acreditado</strong> ni otorga créditos, certificados ni títulos oficiales. Es solo para aprender; para un título real necesitas inscribirte en una universidad acreditada.</p>
           </div>
 
           <div id="academy-picker">
             <div class="library-intro">
-              <h2>¿Qué quieres estudiar?</h2>
-              <p class="subtitle">Elige una carrera y un nivel de profundidad — tú decides el ritmo.</p>
+              <h2 data-i18n="academy_picker_title">¿Qué quieres estudiar?</h2>
+              <p class="subtitle" data-i18n="academy_picker_subtitle">Elige una carrera y un nivel de profundidad — tú decides el ritmo.</p>
               <div class="library-filters">
                 <select id="academy-level-select">
-                  <option value="ASSOCIATE">Técnico (equivalente a Asociado) — más rápido</option>
-                  <option value="BACHELOR">Profesional (equivalente a Licenciatura)</option>
-                  <option value="MASTER">Avanzado (equivalente a Maestría)</option>
+                  <option value="ASSOCIATE" data-i18n="academy_level_associate">Técnico (equivalente a Asociado) — más rápido</option>
+                  <option value="BACHELOR" data-i18n="academy_level_bachelor">Profesional (equivalente a Licenciatura)</option>
+                  <option value="MASTER" data-i18n="academy_level_master">Avanzado (equivalente a Maestría)</option>
                 </select>
               </div>
             </div>
@@ -403,7 +408,7 @@
                   <p class="subtitle" id="academy-current-tutor"></p>
                 </div>
               </div>
-              <button id="academy-switch-btn" class="link-btn" type="button">Cambiar carrera</button>
+              <button id="academy-switch-btn" class="link-btn" type="button" data-i18n="academy_switch_btn">Cambiar carrera</button>
             </div>
             <div class="meter-track academy-progress-track"><div id="academy-progress-fill" class="meter-fill"></div></div>
             <p class="subtitle" id="academy-progress-caption"></p>
@@ -444,17 +449,17 @@
                   <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
                 </svg>
               </div>
-              <div id="call-status" class="call-status">Conectando…</div>
+              <div id="call-status" class="call-status" data-i18n="talk_connecting">Conectando…</div>
             </div>
             <div id="transcript" class="transcript"></div>
             <div class="call-controls">
-              <button id="mic-btn" class="mic-btn"><svg class="icon"><use href="#icon-mic"/></svg> Mantén presionado para hablar</button>
+              <button id="mic-btn" class="mic-btn"><svg class="icon"><use href="#icon-mic"/></svg> <span data-i18n="talk_mic_btn">Mantén presionado para hablar</span></button>
               <form id="text-fallback-form" class="text-fallback">
-                <input type="text" id="text-fallback-input" placeholder="…o escribe en su lugar" />
-                <button type="submit">Enviar</button>
+                <input type="text" id="text-fallback-input" placeholder="…o escribe en su lugar" data-i18n-placeholder="talk_text_placeholder" />
+                <button type="submit" data-i18n="talk_send_btn">Enviar</button>
               </form>
             </div>
-            <p class="ai-disclaimer-footer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
+            <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
           </div>
         </div>
 
@@ -502,21 +507,21 @@
 
             <div class="card league-card">
               <div class="card-title-row">
-                <h2 class="card-title"><svg class="icon"><use href="#icon-trophy"/></svg> Liga semanal</h2>
-                <span class="subtitle" id="league-reset-note">Se reinicia el lunes</span>
+                <h2 class="card-title"><svg class="icon"><use href="#icon-trophy"/></svg> <span data-i18n="dash_league_title">Liga semanal</span></h2>
+                <span class="subtitle" id="league-reset-note" data-i18n="dash_league_reset">Se reinicia el lunes</span>
               </div>
               <div id="dash-leaderboard" class="leaderboard-list"></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Progreso de nivel</h2>
+              <h2 class="card-title" data-i18n="dash_level_progress_title">Progreso de nivel</h2>
               <div id="dash-level-meter"></div>
             </div>
 
             <div class="card">
               <div class="card-title-row">
-                <h2 class="card-title"><svg class="icon"><use href="#icon-clock"/></svg> Meta diaria</h2>
-                <button id="daily-goal-edit-btn" class="link-btn" type="button">Cambiar</button>
+                <h2 class="card-title"><svg class="icon"><use href="#icon-clock"/></svg> <span data-i18n="dash_daily_goal_title">Meta diaria</span></h2>
+                <button id="daily-goal-edit-btn" class="link-btn" type="button" data-i18n="dash_change_btn">Cambiar</button>
               </div>
               <div id="dash-daily-goal"></div>
               <select id="daily-goal-select" class="hidden">
@@ -540,16 +545,16 @@
 
             <div class="card">
               <div class="card-title-row">
-                <h2 class="card-title"><svg class="icon"><use href="#icon-sparkle"/></svg> Recomendado para ti</h2>
-                <button id="recommendations-refresh-btn" class="link-btn" type="button">Nuevas sugerencias</button>
+                <h2 class="card-title"><svg class="icon"><use href="#icon-sparkle"/></svg> <span data-i18n="dash_recommended_title">Recomendado para ti</span></h2>
+                <button id="recommendations-refresh-btn" class="link-btn" type="button" data-i18n="dash_recommended_refresh">Nuevas sugerencias</button>
               </div>
-              <p class="subtitle">Libros, canciones y más para reforzar lo que aprendes, fuera de la app.</p>
+              <p class="subtitle" data-i18n="dash_recommended_subtitle">Libros, canciones y más para reforzar lo que aprendes, fuera de la app.</p>
               <div id="recommendations-list" class="recommendations-list"></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title"><svg class="icon"><use href="#icon-gem"/></svg> Tienda de gemas</h2>
-              <p class="subtitle">Gana gemas terminando lecciones. Gástalas aquí — nunca con dinero real.</p>
+              <h2 class="card-title"><svg class="icon"><use href="#icon-gem"/></svg> <span data-i18n="dash_shop_title">Tienda de gemas</span></h2>
+              <p class="subtitle" data-i18n="dash_shop_subtitle">Gana gemas terminando lecciones. Gástalas aquí — nunca con dinero real.</p>
               <div class="shop-grid shop-grid-single">
                 <div class="shop-item">
                   <div class="shop-item-icon" style="background: rgba(45,212,191,0.14)"><svg class="icon"><use href="#icon-snowflake"/></svg></div>
@@ -561,17 +566,17 @@
             </div>
 
             <div class="card">
-              <h2 class="card-title">Últimos 14 días</h2>
+              <h2 class="card-title" data-i18n="dash_activity_title">Últimos 14 días</h2>
               <div class="chart-frame chart-frame-activity"><canvas id="dash-activity-chart"></canvas></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Dominio por nivel</h2>
+              <h2 class="card-title" data-i18n="dash_mastery_title">Dominio por nivel</h2>
               <div class="chart-frame chart-frame-mastery"><canvas id="dash-mastery-chart"></canvas></div>
             </div>
 
             <div class="card">
-              <h2 class="card-title">Lecciones recientes</h2>
+              <h2 class="card-title" data-i18n="dash_recent_title">Lecciones recientes</h2>
               <div id="dash-recent" class="recent-list"></div>
             </div>
 
@@ -628,7 +633,7 @@
           <div id="lesson-timer" class="lesson-timer"><svg class="icon"><use href="#icon-clock"/></svg> <span id="lesson-timer-value">0:00</span></div>
         </div>
         <div id="exercise-container" class="exercise-container"></div>
-        <p class="ai-disclaimer-footer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
+        <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
       </div>
     </section>
 

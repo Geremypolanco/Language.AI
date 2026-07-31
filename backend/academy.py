@@ -132,45 +132,39 @@ def get_field(field_id: str) -> AcademicField | None:
     return next((f for f in _FIELDS if f.id == field_id), None)
 
 
-def build_curriculum_prompt(field: AcademicField, level_label: str, course_count: int, target_lang: str) -> str:
+def build_curriculum_prompt(field: AcademicField, level_label: str, course_count: int, native_lang: str) -> str:
     return (
         f"Design a {course_count}-course study curriculum for the academic field \"{field.name}\" "
         f"({field.description}), at a depth roughly equivalent to a {level_label} program. "
         f"Base it on real, standard, well-established course sequences universities actually use for "
         f"this field — do not invent implausible or fictional course topics. "
         f"Order the courses from foundational to advanced. "
-        f"This academy teaches in {target_lang} on purpose, as an immersion tool for students who are "
-        f"learning {target_lang} as a language while also studying this field. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
-        f'{{"title": "course title in {target_lang}", "description": "one sentence, in {target_lang}, on what it covers"}}'
+        f'{{"title": "course title in {native_lang}", "description": "one sentence, in {native_lang}, on what it covers"}}'
     )
 
 
-def build_course_prompt(field: AcademicField, level_label: str, course_title: str, course_description: str, target_lang: str) -> str:
+def build_course_prompt(field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str) -> str:
     return (
-        f"Write self-study course material entirely in {target_lang} for the course \"{course_title}\" "
+        f"Write self-study course material in {native_lang} for the course \"{course_title}\" "
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
         f"{level_label} depth. Structure it as 4 to 6 modules. Each module should teach real, accurate, "
         f"standard content for this topic — the kind of material an actual textbook or course would "
         f"cover — with clear explanations and at least one concrete example per module. "
-        f"This academy is deliberately taught in {target_lang}, the language the student is learning, so "
-        f"they build subject knowledge and language fluency together — use clear, well-structured "
-        f"{target_lang} appropriate for someone with strong reading comprehension in it. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
-        f'{{"title": "module title in {target_lang}", "content": "the module\'s full teaching content in {target_lang}, several paragraphs"}}'
+        f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'
     )
 
 
 def build_practice_scenario_prompt(
-    field: AcademicField, level_label: str, course_title: str, course_description: str, target_lang: str
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str
 ) -> str:
     return (
-        f"Write a short, realistic hands-on practice scenario entirely in {target_lang} for a student "
-        f"studying \"{course_title}\" ({course_description}) in {field.name}, at a {level_label} depth. "
+        f"Write a short, realistic hands-on practice scenario in {native_lang} for a student studying "
+        f"\"{course_title}\" ({course_description}) in {field.name}, at a {level_label} depth. "
         f"Describe a concrete situation the student must respond to — e.g. a case to analyze, a problem "
         f"to solve, a decision to make — appropriate for this field (a clinical-style case for health "
         f"fields, a design/debugging problem for engineering or computer science, a business case for "
         f"business fields, a text/argument to analyze for humanities, etc). End with a direct question "
-        f"asking what the student would do. 2 to 4 short paragraphs. Output ONLY the scenario text, in "
-        f"{target_lang}."
+        f"asking what the student would do. 2 to 4 short paragraphs. Output ONLY the scenario text."
     )

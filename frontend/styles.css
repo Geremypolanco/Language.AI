@@ -103,6 +103,17 @@ h1, h2, h3, .brand, .card-title, .level-meter-row, .stat-value,
 .onboarding-card h1 { margin: 0 0 4px; font-size: 2rem; }
 .subtitle { color: #777; margin-top: 0; }
 
+.ui-lang-toggle { display: flex; gap: 8px; margin: 4px 0 16px; }
+.ui-lang-btn {
+  flex: 1; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--gray-border);
+  background: #fff; color: var(--text); font-weight: 700; font-size: 0.85rem; cursor: pointer;
+}
+.ui-lang-btn.active { border-color: var(--green); color: var(--green-dark); background: rgba(16,185,129,0.08); }
+@media (prefers-color-scheme: dark) {
+  .ui-lang-btn { background: #1b2b32; border-color: rgba(255,255,255,0.12); color: var(--text); }
+  .ui-lang-btn.active { border-color: var(--green); color: var(--blue); background: rgba(16,185,129,0.12); }
+}
+
 .ai-disclaimer-footer {
   margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--gray-border);
   font-size: 0.75rem; color: #999; text-align: center;
