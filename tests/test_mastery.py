@@ -121,6 +121,37 @@ def test_ask_faculty_endpoint_grades_the_turn_and_reports_promotion_state(monkey
         assert res.status_code == 200
 
 
+def test_ask_faculty_emits_a_student_turn_telemetry_event(monkeypatch, caplog):
+    import json as json_module
+
+    from backend import hf_client as hf_client_module
+
+    async def fake_conversation_reply(system_prompt, history, temperature=0.8):
+        return {"spoken_response": "Buena pregunta.", "critique_metrics": dict(_STRONG_METRICS)}
+
+    monkeypatch.setattr(hf_client_module.hf_client, "conversation_reply", fake_conversation_reply)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="faculty-telemetry@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = _course_id(field_id, "ASSOCIATE", 0)
+
+        with caplog.at_level("INFO", logger="lingua.telemetry"):
+            res = client.post(f"/api/academy/{user['id']}/courses/{course_id}/ask", json={"question": "Why?"})
+        assert res.status_code == 200
+
+    student_turn_records = [r for r in caplog.records if r.name == "lingua.telemetry"]
+    assert len(student_turn_records) == 1
+    payload = json_module.loads(student_turn_records[0].message)
+    assert payload["event"] == "student_turn"
+    assert payload["duration_ms"] >= 0
+    assert payload["circuit_breaker_state"] is False
+    # ask_faculty doesn't call text_to_speech itself — no voice tier claim
+    # for a synthesis step that never ran in this transaction.
+    assert payload["voice_tier_utilized"] == "none"
+
+
 def test_ask_faculty_requires_enrollment():
     with TestClient(app) as client:
         user = _onboard(client, email="faculty-ask-noenroll@example.com")

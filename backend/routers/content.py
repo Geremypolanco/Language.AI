@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from .. import auth, personas
+from .. import auth, personas, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
@@ -82,8 +82,15 @@ async def tutor_reply(payload: TutorReplyRequest) -> dict:
         {"role": "assistant", "content": payload.prompt},
         {"role": "user", "content": payload.user_answer},
     ]
-    reply = await hf_client.conversation_reply(
-        system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
+    with telemetry.measure_ms() as timer:
+        reply = await hf_client.conversation_reply(
+            system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
+        )
+    telemetry.log_student_turn(
+        duration_ms=timer["duration_ms"],
+        voice_tier_utilized="none",  # this endpoint returns text only — /tts is a separate call
+        tokens_consumed=(hf_client._last_token_usage or {}).get("total_tokens"),
+        circuit_breaker_state=hf_client.elevenlabs_circuit_breaker_engaged(),
     )
     return {"reply": reply["spoken_response"], "critique_metrics": reply["critique_metrics"]}
 

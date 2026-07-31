@@ -16,7 +16,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db, personas
+from .. import auth, db, personas, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
@@ -114,9 +114,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history.append({"role": "user", "content": transcript})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            reply = await hf_client.conversation_reply(
-                system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
-            )
+            with telemetry.measure_ms() as timer:
+                reply = await hf_client.conversation_reply(
+                    system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
+                )
             reply_text = reply["spoken_response"]
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
@@ -129,6 +130,13 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 persona_id=persona.id if persona else None,
             )
             audio_b64 = base64.b64encode(audio).decode() if audio else None
+
+            telemetry.log_student_turn(
+                duration_ms=timer["duration_ms"],
+                voice_tier_utilized=hf_client._last_voice_tier,
+                tokens_consumed=(hf_client._last_token_usage or {}).get("total_tokens"),
+                circuit_breaker_state=hf_client.elevenlabs_circuit_breaker_engaged(),
+            )
 
             await websocket.send_json(
                 {

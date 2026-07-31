@@ -250,6 +250,17 @@ class HFClient:
         # rather than "retry the same 429 on every single turn."
         self._elevenlabs_circuit_open_until: float = 0.0
 
+        # Side-channel telemetry state (see backend/telemetry.py) — set by
+        # chat()/text_to_speech() on every call, read by router call sites
+        # right after awaiting them. A side-channel rather than widening
+        # those methods' return types, which are already relied on by
+        # existing callers/tests to be a plain string / bytes|None.
+        self._last_token_usage: dict | None = None
+        self._last_voice_tier: str = "none"
+
+    def elevenlabs_circuit_breaker_engaged(self) -> bool:
+        return time.monotonic() < self._elevenlabs_circuit_open_until
+
     async def aclose(self) -> None:
         await self._http.aclose()
 
@@ -319,6 +330,14 @@ class HFClient:
         if resp.status_code != 200:
             raise HFClientError(f"HF chat HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
+        # HF's chat/completions endpoint is OpenAI-compatible, so `usage` —
+        # when the provider actually sends it — has the standard
+        # prompt_tokens/completion_tokens/total_tokens shape. Recorded as a
+        # side-channel (see telemetry state in __init__) rather than
+        # widening this method's return type, which every caller in this
+        # file (generate_exercises, conversation_reply, book/course/
+        # curriculum generation) already relies on being a plain string.
+        self._last_token_usage = data.get("usage")
         return data["choices"][0]["message"]["content"]
 
     async def generate_exercises(
@@ -704,10 +723,12 @@ class HFClient:
         if voice_id and settings.elevenlabs_configured:
             elevenlabs_cache_path = self._cache_path("tts-elevenlabs", f"{voice_id}::{text}", "mp3")
             if os.path.exists(elevenlabs_cache_path):
+                self._last_voice_tier = "elevenlabs"
                 with open(elevenlabs_cache_path, "rb") as f:
                     return f.read()
             audio = await self._call_elevenlabs(text, voice_id)
             if audio:
+                self._last_voice_tier = "elevenlabs"
                 with open(elevenlabs_cache_path, "wb") as f:
                     f.write(audio)
                 return audio
@@ -716,6 +737,7 @@ class HFClient:
         if voice_description and lang_code2 in PARLER_LANGS and settings.hf_configured:
             parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
             if os.path.exists(parler_cache_path):
+                self._last_voice_tier = "parler-direct"
                 with open(parler_cache_path, "rb") as f:
                     return f.read()
 
@@ -733,6 +755,7 @@ class HFClient:
                     json={"inputs": parler_text, "parameters": {"description": voice_description}},
                 )
                 if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                    self._last_voice_tier = "parler-direct"
                     with open(parler_cache_path, "wb") as f:
                         f.write(resp.content)
                     return resp.content
@@ -747,6 +770,7 @@ class HFClient:
             try:
                 audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
                 if audio_bytes:
+                    self._last_voice_tier = "parler-space"
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)
                     return audio_bytes
@@ -757,9 +781,11 @@ class HFClient:
         model = f"{settings.tts_model_prefix}-{lang_code}"
         cache_path = self._cache_path("tts", f"{model}:{text}", "flac")
         if os.path.exists(cache_path):
+            self._last_voice_tier = "mms"
             with open(cache_path, "rb") as f:
                 return f.read()
         if not settings.hf_configured:
+            self._last_voice_tier = "none"
             return None
         try:
             resp = await self._http.post(
@@ -768,12 +794,14 @@ class HFClient:
                 json={"inputs": text},
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                self._last_voice_tier = "mms"
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content
             logger.warning("HF TTS HTTP %s (%s): %s", resp.status_code, model, resp.text[:200])
         except Exception:
             logger.exception("HF TTS failed")
+        self._last_voice_tier = "none"
         return None
 
     # ── Embeddings (OER retrieval-augmented generation, see backend/oer/) ──

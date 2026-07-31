@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .. import academy, auth, db, mastery, personas
+from .. import academy, auth, db, mastery, personas, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import (
@@ -203,8 +203,15 @@ async def ask_faculty(
     system_prompt = build_conversation_system_prompt(
         user.target_lang, user.native_lang, user.level, user.interests, persona=faculty
     )
-    reply = await hf_client.conversation_reply(
-        system_prompt, [{"role": "user", "content": payload.question}], temperature=faculty.sampling_temperature
+    with telemetry.measure_ms() as timer:
+        reply = await hf_client.conversation_reply(
+            system_prompt, [{"role": "user", "content": payload.question}], temperature=faculty.sampling_temperature
+        )
+    telemetry.log_student_turn(
+        duration_ms=timer["duration_ms"],
+        voice_tier_utilized="none",  # text-only endpoint — /api/content/tts is a separate call
+        tokens_consumed=(hf_client._last_token_usage or {}).get("total_tokens"),
+        circuit_breaker_state=hf_client.elevenlabs_circuit_breaker_engaged(),
     )
     promotion = mastery.evaluate_academic_promotion(user_id, course_id, reply["critique_metrics"])
     return CourseQuestionResponse(
