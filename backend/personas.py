@@ -108,12 +108,15 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "recorded with excellent close-up audio quality in a quiet room."
         ),
         portrait_prompt=(
-            "professional editorial headshot portrait of a confident Spanish woman "
-            "in her late 40s, dark hair in a neat low bun, wearing a tailored "
-            "charcoal blazer over a white shirt, composed and attentive expression, "
-            "soft directional studio lighting, neutral warm-gray seamless "
-            "background, shallow depth of field, shot on an 85mm portrait lens, "
-            "photorealistic, natural skin texture, sharp focus on the eyes"
+            "a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            "polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            "photorealistic) of a confident Spanish woman in her late 40s, dark "
+            "hair in a neat low bun rendered with glossy directional highlights, "
+            "wearing a tailored charcoal blazer over a white shirt, oversized "
+            "expressive eyes with bright catchlights, smooth glossy plastic-like "
+            "skin shading, warm composed smile, soft rim lighting, centered "
+            "head-and-shoulders composition, plain white background, high-quality "
+            "3D character-art rendering"
         ),
         sampling_temperature=0.55,
     ),
@@ -150,12 +153,15 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "intonation, recorded with clear, warm audio quality."
         ),
         portrait_prompt=(
-            "professional editorial headshot portrait of a friendly Black man in "
-            "his mid-30s, short textured hair, light stubble, wearing a heather-"
-            "gray crewneck sweater, relaxed genuine smile, soft even studio "
-            "lighting, neutral light-gray seamless background, shallow depth of "
-            "field, shot on an 85mm portrait lens, photorealistic, natural skin "
-            "texture, sharp focus on the eyes"
+            "a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            "polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            "photorealistic) of a friendly Black man in his mid-30s, short "
+            "textured hair with glossy directional highlights, light stubble, "
+            "wearing a heather-gray crewneck sweater, oversized expressive eyes "
+            "with bright catchlights, smooth glossy plastic-like skin shading, "
+            "big genuine grin, soft rim lighting, centered head-and-shoulders "
+            "composition, plain white background, high-quality 3D character-art "
+            "rendering"
         ),
         sampling_temperature=0.9,
     ),
@@ -192,13 +198,15 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "with rich, warm low-end audio quality in a quiet room."
         ),
         portrait_prompt=(
-            "professional editorial headshot portrait of a distinguished Ghanaian "
-            "woman in her early 50s, natural gray-streaked coily hair worn short, "
-            "wearing a deep-navy tailored jacket, calm and authoritative "
-            "expression, soft directional studio lighting, neutral warm-gray "
-            "seamless background, shallow depth of field, shot on an 85mm "
-            "portrait lens, photorealistic, natural skin texture, sharp focus on "
-            "the eyes"
+            "a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            "polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            "photorealistic) of a distinguished Ghanaian woman in her early 50s, "
+            "natural gray-streaked coily hair worn short with glossy highlights, "
+            "wearing a deep-navy tailored jacket and round dark-framed glasses, "
+            "oversized expressive eyes with bright catchlights, smooth glossy "
+            "plastic-like skin shading, calm authoritative smile, soft rim "
+            "lighting, centered head-and-shoulders composition, plain white "
+            "background, high-quality 3D character-art rendering"
         ),
         sampling_temperature=0.6,
     ),
@@ -234,12 +242,14 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "close-up audio quality."
         ),
         portrait_prompt=(
-            "professional editorial headshot portrait of an animated Mexican "
-            "woman in her late 20s, long dark wavy hair, wearing a mustard-yellow "
-            "blouse, bright engaged expression mid-smile, soft even studio "
-            "lighting, neutral light-gray seamless background, shallow depth of "
-            "field, shot on an 85mm portrait lens, photorealistic, natural skin "
-            "texture, sharp focus on the eyes"
+            "a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            "polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            "photorealistic) of an animated Mexican woman in her late 20s, long "
+            "dark wavy hair rendered with glossy directional highlights, wearing "
+            "a mustard-yellow blouse, oversized expressive eyes with bright "
+            "catchlights, smooth glossy plastic-like skin shading, big bright "
+            "smile, soft rim lighting, centered head-and-shoulders composition, "
+            "plain white background, high-quality 3D character-art rendering"
         ),
         sampling_temperature=0.7,
     ),
@@ -275,13 +285,15 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "recorded with rich, clear audio quality."
         ),
         portrait_prompt=(
-            "professional editorial headshot portrait of a French man in his "
-            "early 40s, short dark hair with light gray at the temples, light "
-            "beard, wearing an olive-green textured shirt under a soft brown "
-            "jacket, warm wry half-smile, soft even studio lighting, neutral "
-            "light-gray seamless background, shallow depth of field, shot on an "
-            "85mm portrait lens, photorealistic, natural skin texture, sharp "
-            "focus on the eyes"
+            "a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            "polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            "photorealistic) of a French man in his early 40s, short dark hair "
+            "with light gray at the temples and glossy directional highlights, "
+            "light beard, wearing an olive-green textured shirt under a soft "
+            "brown jacket, oversized expressive eyes with bright catchlights, "
+            "smooth glossy plastic-like skin shading, warm wry half-smile, soft "
+            "rim lighting, centered head-and-shoulders composition, plain white "
+            "background, high-quality 3D character-art rendering"
         ),
         sampling_temperature=0.85,
     ),
@@ -529,12 +541,15 @@ def build_field_faculty(field: "AcademicField") -> TeacherPersona:
             f"audio quality."
         ),
         portrait_prompt=(
-            f"professional editorial headshot portrait of {appearance}, wearing "
-            f"tasteful professional academic attire appropriate to {field.category.lower()}, "
-            f"composed and attentive expression, soft directional studio lighting, "
-            f"neutral warm-gray seamless background, shallow depth of field, shot "
-            f"on an 85mm portrait lens, photorealistic, natural skin texture, sharp "
-            f"focus on the eyes"
+            f"a glossy 3D-rendered cartoon avatar portrait (in the style of a "
+            f"polished 3D character render, like Apple Memoji or Bitmoji — NOT "
+            f"photorealistic) of {appearance}, wearing tasteful professional "
+            f"academic attire appropriate to {field.category.lower()}, oversized "
+            f"expressive eyes with bright catchlights, smooth glossy plastic-like "
+            f"skin shading, glossy directional highlights in the hair, warm "
+            f"composed smile, soft rim lighting, centered head-and-shoulders "
+            f"composition, plain white background, high-quality 3D character-art "
+            f"rendering"
         ),
         sampling_temperature=category_info["temperature"],
         field_id=field.id,
