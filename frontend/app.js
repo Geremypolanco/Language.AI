@@ -1969,10 +1969,15 @@ function ensureConversationSocket() {
     } else if (msg.type === "transcript") {
       addTranscriptBubble("user", msg.text);
     } else if (msg.type === "reply") {
+      // Text arrives on its own, ahead of any audio — the reply's audio is
+      // streamed separately, one sentence at a time, as "reply_audio_chunk"
+      // messages (see backend/routers/conversation.py). Reset the queue so
+      // a fast new turn doesn't play behind whatever the previous turn
+      // hadn't finished yet.
+      resetConversationAudioQueue();
       addTranscriptBubble("assistant", msg.text);
-      if (msg.audio_base64) {
-        playConversationAudio(msg.audio_base64, msg.audio_mime || "audio/flac");
-      }
+    } else if (msg.type === "reply_audio_chunk") {
+      enqueueConversationAudio(msg.audio_base64, msg.audio_mime || "audio/flac");
     } else if (msg.type === "error") {
       $("#call-status").textContent = msg.message;
     }
@@ -1990,16 +1995,39 @@ function addTranscriptBubble(role, text) {
   $("#transcript").scrollTop = $("#transcript").scrollHeight;
 }
 
-function playConversationAudio(base64, mimeType) {
+// Sentence-by-sentence audio chunks arrive as soon as each one finishes
+// synthesizing server-side, faster than they play back — this queue plays
+// them back-to-back in order instead of overlapping/racing each other.
+const _conversationAudioQueue = [];
+let _conversationAudioPlaying = false;
+
+function resetConversationAudioQueue() {
+  _conversationAudioQueue.length = 0;
+  _conversationAudioPlaying = false;
+}
+
+function enqueueConversationAudio(base64, mimeType) {
+  _conversationAudioQueue.push({ base64, mimeType });
+  if (!_conversationAudioPlaying) _playNextConversationAudio();
+}
+
+function _playNextConversationAudio() {
   const avatar = $("#avatar");
-  const bytes = atob(base64);
+  const next = _conversationAudioQueue.shift();
+  if (!next) {
+    _conversationAudioPlaying = false;
+    avatar.classList.remove("speaking");
+    return;
+  }
+  _conversationAudioPlaying = true;
+  const bytes = atob(next.base64);
   const arr = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  const blob = new Blob([arr], { type: mimeType });
+  const blob = new Blob([arr], { type: next.mimeType });
   const audio = new Audio(URL.createObjectURL(blob));
   avatar.classList.add("speaking");
-  audio.addEventListener("ended", () => avatar.classList.remove("speaking"));
-  audio.play().catch(() => avatar.classList.remove("speaking"));
+  audio.addEventListener("ended", _playNextConversationAudio);
+  audio.play().catch(_playNextConversationAudio);
 }
 
 function blobToBase64(blob) {

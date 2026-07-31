@@ -37,6 +37,7 @@ import asyncio
 import io
 import logging
 import os
+import re
 import urllib.parse
 import wave
 
@@ -48,6 +49,24 @@ logger = logging.getLogger("lingua.piper_tts")
 
 _VOICES_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 _http = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
+
+# Splits after a sentence-ending punctuation mark followed by whitespace,
+# keeping the punctuation attached to the sentence before it. Not a real
+# NLP tokenizer (an abbreviation like "Dr." mid-sentence would split early)
+# — that's an acceptable tradeoff here, since the only thing this feeds is
+# TTS pacing (see hf_client.stream_speech): a slightly-off sentence
+# boundary means one audio clip ends a beat early, not a wrong answer.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
+
+
+def split_into_sentences(text: str) -> list[str]:
+    """Splits `text` into sentence-sized chunks for progressive TTS
+    synthesis. Never returns an empty list for non-empty input — a block
+    with no sentence-ending punctuation at all comes back as one chunk."""
+    text = text.strip()
+    if not text:
+        return []
+    return [s for s in (chunk.strip() for chunk in _SENTENCE_SPLIT_RE.split(text)) if s]
 
 # ISO 639-1 -> best single-speaker Piper voice, picked from rhasspy/piper-
 # voices' own voices.json (highest quality among single-speaker voices per

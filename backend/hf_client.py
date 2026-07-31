@@ -666,6 +666,24 @@ class HFClient:
             logger.exception("HF TTS failed")
         return None
 
+    async def stream_speech(self, text: str, target_lang: str):
+        """Splits `text` into sentences (piper_tts.split_into_sentences) and
+        synthesizes+yields each one's audio as soon as it's ready, instead
+        of waiting for the whole block. This is what actually shortens
+        perceived latency here: chat completions arrive as a single
+        non-streamed payload (there's no live token stream to slice), so
+        the only lever available is starting audio playback on sentence 1
+        while sentence 2+ are still being synthesized, rather than making
+        the caller wait on one TTS call sized to the entire reply. Skips
+        (not yields) any sentence whose synthesis genuinely fails — a
+        dropped clause in a spoken reply beats aborting the whole turn."""
+        from . import piper_tts
+
+        for sentence in piper_tts.split_into_sentences(text):
+            result = await self.text_to_speech(sentence, target_lang)
+            if result is not None:
+                yield sentence, result[0], result[1]
+
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:

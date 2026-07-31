@@ -2,11 +2,12 @@
 
 A WebSocket carries either recorded audio (base64) or typed text from the
 learner; the server transcribes (if audio), generates a level-appropriate
-tutor reply via the HF chat model, synthesizes speech for it, and streams
-both the text and audio back so the frontend can play it while animating a
-talking avatar — the practical, buildable version of "talk normally like in
-a video call" without needing full video synthesis.
-"""
+tutor reply via the chat model, then synthesizes and streams its speech
+back sentence-by-sentence (hf_client.stream_speech) so the frontend can
+start playing the first clause while the rest is still being synthesized,
+instead of waiting on one TTS call sized to the whole reply — the practical,
+buildable version of "talk normally like in a video call" without needing
+either full video synthesis or a live token-streaming chat model."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db
+from .. import auth, db, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
@@ -110,22 +111,41 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history.append({"role": "user", "content": transcript})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            reply_text = await hf_client.conversation_reply(system_prompt, history)
+            chat_timing: dict = {}
+            with telemetry.timed(chat_timing):
+                reply_text = await hf_client.conversation_reply(system_prompt, history)
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            tts_result = await hf_client.text_to_speech(reply_text, user.target_lang)
-            audio_b64 = base64.b64encode(tts_result[0]).decode() if tts_result else None
-            audio_mime = tts_result[1] if tts_result else None
+            # Text goes out immediately — the transcript doesn't need to wait
+            # on audio. Audio is then streamed sentence-by-sentence as each
+            # one finishes synthesizing (see hf_client.stream_speech), so the
+            # learner starts hearing the reply instead of waiting for the
+            # whole thing to render as one clip.
+            await websocket.send_json({"type": "reply", "text": reply_text})
 
-            await websocket.send_json(
-                {
-                    "type": "reply",
-                    "text": reply_text,
-                    "audio_base64": audio_b64,
-                    "audio_mime": audio_mime,
-                }
+            tts_timing: dict = {}
+            sentence_count = 0
+            with telemetry.timed(tts_timing):
+                async for sentence, audio, media_type in hf_client.stream_speech(reply_text, user.target_lang):
+                    sentence_count += 1
+                    await websocket.send_json(
+                        {
+                            "type": "reply_audio_chunk",
+                            "text": sentence,
+                            "audio_base64": base64.b64encode(audio).decode(),
+                            "audio_mime": media_type,
+                        }
+                    )
+
+            telemetry.log_tutor_turn(
+                user_id=user_id,
+                chat_ms=chat_timing["elapsed_ms"],
+                tts_ms=tts_timing["elapsed_ms"],
+                chars_in=len(transcript),
+                chars_out=len(reply_text),
+                sentence_count=sentence_count,
             )
     except WebSocketDisconnect:
         logger.info("Conversation socket closed for user %s", user_id)
