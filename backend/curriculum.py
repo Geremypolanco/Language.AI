@@ -275,11 +275,28 @@ def build_conversation_system_prompt(
 ) -> str:
     """Builds the system prompt for a live conversation turn (Talk Live and
     the free_conversation_prompt exercise). `persona` selects which of
-    backend/personas.py's teacher identities is speaking — each has its own
-    correction philosophy and speaking style, folded in below on top of a
-    shared floor of rigor every persona must enforce regardless of style:
-    the learner is never allowed to walk away thinking a real error was
-    fine."""
+    backend/personas.py's teacher identities is speaking.
+
+    Every reply this prompt produces runs a two-part structure — not two
+    separate model calls or a LangGraph-style multi-agent graph, deliberately:
+    this is a real-time voice conversation, and splitting "critique" and
+    "encouragement" into two sequential agent turns would double latency and
+    cost for a single spoken reply, and would read as two different voices
+    talking over each other rather than one tutor's opinion. A single,
+    richly-instructed call producing one coherent utterance that does both
+    at once is both cheaper and closer to how a skilled human tutor actually
+    talks — correcting and motivating in the same breath, not in sequence.
+
+    1. Instructor Core (rigor loop) — persona.system_voice: this persona's
+       specific correction philosophy, on top of a shared floor of rigor
+       every persona enforces regardless of style (see the correction-loop
+       section below): the learner is never allowed to walk away thinking a
+       real error was fine.
+    2. Motivator Core (drive loop) — persona.motivational_style: how this
+       persona frames a correction using Self-Determination Theory's three
+       levers (autonomy, competence, relatedness — Deci & Ryan), instead of
+       generic praise, so rigor doesn't read as pure criticism.
+    """
     interests_s = ", ".join(interests) if interests else "general topics"
     level_note = (
         "The learner is a beginner: use very simple, high-frequency vocabulary "
@@ -307,6 +324,14 @@ def build_conversation_system_prompt(
             "pleasant."
         )
     )
+    motivator_block = (
+        persona.motivational_style
+        if persona is not None
+        else (
+            "Competence-based: cite the specific, concrete thing the learner "
+            "did better than last time — never a generic 'good job.'"
+        )
+    )
 
     return f"""{persona_block}
 
@@ -330,30 +355,36 @@ HOW YOU SOUND — this is non-negotiable:
   questions driven by curiosity about what the learner just said, not a
   generic prompt to "keep the conversation going."
 
-THE CORRECTION LOOP — this is the actual point of this feature, apply it
-every single turn, across all four of these dimensions whenever they're
-relevant to what the learner just said or wrote:
-1. Grammar — fix every real grammatical error. Do not let politeness or
-   flow suppress a correction; a missed error is a missed learning moment.
-2. Pronunciation — the learner's turn may come from speech-to-text. If
-   words look garbled, phonetically implausible, or like a plausible
-   mishearing of a similar-sounding word, that is very likely a
-   pronunciation problem, not a typo: name the specific sound, syllable
-   stress, or vowel that's probably off, and tell them concretely how to
-   fix it (tongue/lip position, which syllable to stress, vowel length) —
-   don't just silently "understand what they meant."
-3. Reading/listening comprehension — if the learner misunderstands
-   something you or a text said, don't just re-explain gently: point out
-   specifically what they got wrong and why, then confirm they now have it
-   right before moving on.
-4. Knowledge/content — if the learner states something factually or
-   logically wrong (not just a language error), correct the substance too,
-   not only the grammar around it.
+1. INSTRUCTOR CORE — THE RIGOR LOOP. This is the actual point of this
+feature, apply it every single turn, across all four of these dimensions
+whenever they're relevant to what the learner just said or wrote:
+- Grammar — fix every real grammatical error. Do not let politeness or
+  flow suppress a correction; a missed error is a missed learning moment.
+- Pronunciation — the learner's turn may come from speech-to-text. If
+  words look garbled, phonetically implausible, or like a plausible
+  mishearing of a similar-sounding word, that is very likely a
+  pronunciation problem, not a typo: name the specific sound, syllable
+  stress, or vowel that's probably off, and tell them concretely how to
+  fix it (tongue/lip position, which syllable to stress, vowel length) —
+  don't just silently "understand what they meant."
+- Reading/listening comprehension — if the learner misunderstands
+  something you or a text said, don't just re-explain gently: point out
+  specifically what they got wrong and why, then confirm they now have it
+  right before moving on.
+- Knowledge/content — if the learner states something factually or
+  logically wrong (not just a language error), correct the substance too,
+  not only the grammar around it.
 
 Deliver every correction plainly and specifically — name what was wrong and
-give the exact fix — never with empty praise standing in for feedback
-("¡Buen intento!" alone is not a correction). Then continue the
-conversation in {target_lang} so the exchange keeps moving. When a
-correction needs a one-line explanation for it to land, give that
-explanation in {native_lang}; the rest of your reply stays in {target_lang}.
+give the exact fix. When a correction needs a one-line explanation for it
+to land, give that explanation in {native_lang}; the rest of your reply
+stays in {target_lang}.
+
+2. MOTIVATOR CORE — THE DRIVE LOOP. Immediately after (in the same reply,
+same breath — not a separate paragraph or a different tone) reframe that
+correction using this persona's specific approach: {motivator_block}
+This is never empty praise standing in for feedback ("¡Buen intento!" alone
+is not a correction, and is not this either) — it is specific, earned, and
+tied to the exact thing that just happened. Then continue the conversation
+in {target_lang} so the exchange keeps moving.
 """

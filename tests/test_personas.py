@@ -17,6 +17,29 @@ def test_core_teachers_are_five_and_distinct():
         assert p.portrait_prompt
         assert p.system_voice
         assert p.philosophy
+        assert p.motivational_style
+
+
+def test_field_faculty_has_a_distinct_motivational_style_per_category():
+    fields = academy.all_fields()
+    by_category = {}
+    for field in fields:
+        by_category.setdefault(field.category, []).append(personas.build_field_faculty(field))
+    for category, faculty in by_category.items():
+        styles = {p.motivational_style for p in faculty}
+        assert len(styles) == 1, f"{category} faculty should share one category-level motivational style"
+        assert styles.pop()
+
+
+def test_conversation_prompt_fuses_instructor_and_motivator_cores():
+    persona = personas.get_core_teacher("core-marcus")
+    prompt = build_conversation_system_prompt("Spanish", "English", CEFRLevel.B1, [], persona=persona)
+    assert "INSTRUCTOR CORE" in prompt
+    assert "MOTIVATOR CORE" in prompt
+    assert persona.motivational_style in prompt
+
+    generic = build_conversation_system_prompt("Spanish", "English", CEFRLevel.B1, [], persona=None)
+    assert "MOTIVATOR CORE" in generic
 
 
 def test_get_core_teacher_lookup():

@@ -304,6 +304,30 @@ python scripts/ingest_oer.py --status   # chunk count in the store
   Doctorate-level primary-literature sources) — `fetch_arxiv`'s shape is a
   template for adding equivalent connectors for either.
 
+## Faculty: named, voiced teacher personas
+
+`backend/personas.py` replaces the single generic tutor voice with real
+pedagogical identity: 5 hand-designed "core teacher" personas (selectable
+in Talk Live, each with its own correction philosophy and voice) and one
+dedicated professor per Academy field (~30, generated deterministically —
+same field always gets the same professor). See `backend/curriculum.py`'s
+`build_conversation_system_prompt` for the actual instruction set each
+persona speaks under.
+
+Portraits are FLUX-generated (see `hf_client.generate_image`, reused for
+this) with a monogram fallback when unavailable; voices are steered via
+Parler-TTS natural-language voice descriptions for the 8 languages it
+covers (en/fr/es/pt/pl/de/it/nl), falling back to the shared MMS voice
+otherwise. Both integrations were checked against the HF Hub directly
+rather than assumed:
+
+| Model | Verified status |
+|---|---|
+| `black-forest-labs/FLUX.1-schnell` | Gated (license must be accepted once), live on multiple Inference Providers (nscale, fal-ai, together, wavespeed) |
+| `openai/whisper-large-v3` | Live on the `hf-inference` provider |
+| `parler-tts/parler-tts-mini-multilingual-v1.1` | Apache-2.0, confirmed 8-language coverage matches this app's `PARLER_LANGS` exactly; no confirmed live Inference Provider at time of writing — best-effort, same as any HF call here, with a documented (not yet implemented) Space-based fallback in `hf_client.py`'s comments |
+| `hexgrad/Kokoro-82M` | Considered and rejected — English-only, and its one listed provider (fal-ai) shows an error status |
+
 ## Domain & deployment
 
 Lingua deploys to its own Fly.io app/domain:

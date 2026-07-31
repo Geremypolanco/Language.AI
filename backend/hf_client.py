@@ -115,10 +115,23 @@ _MMS_LANG_CODES = {
 # Parler-TTS steers voice identity through a natural-language description of
 # the speaker rather than a fixed voice ID (see backend/personas.py) — this
 # is what lets every teacher persona have its own describable voice without
-# per-persona speaker cloning. parler-tts-mini-multilingual-v1.1 covers only
-# these 8 languages; outside them (or if the call fails — HF's serverless
-# hosting for this model is best-effort, same as every other TTS call here)
-# text_to_speech falls back to the single shared MMS voice for that language.
+# per-persona speaker cloning. Verified against the HF Hub (not assumed):
+# parler-tts-mini-multilingual-v1.1 is Apache-2.0 and its model card lists
+# exactly these 8 training languages — en/fr/es/pt/pl/de/it/nl — matching
+# PARLER_LANGS below exactly. As of this check it has no confirmed live
+# entry under HF's Inference Providers (only community Spaces run it), so
+# this call is genuinely best-effort — same resilience contract as every
+# other HF call in this file: try, log, fall through. If it 404s/errors in
+# production, the documented, verified-working alternative is to call one
+# of its community Spaces (e.g. hf.co/spaces/etrotta/parler-tts-mini-
+# multilingual-v1.1) via gradio_client instead of the raw model endpoint —
+# not implemented here since it couldn't be exercised end-to-end from this
+# environment (Space invocation is disabled in this session's tooling).
+#
+# Kokoro-82M was considered and deliberately rejected for this role: its
+# model card lists English only (no Spanish/multilingual coverage this app
+# needs for native-language delivery), and its one listed Inference Provider
+# (fal-ai) currently shows an error status on the Hub rather than "live".
 PARLER_MODEL = "parler-tts/parler-tts-mini-multilingual-v1.1"
 PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
 
@@ -459,7 +472,12 @@ class HFClient:
                 }
             ]
 
-    # ── Text-to-image (vocab flashcards) ────────────────────────────────
+    # ── Text-to-image (vocab flashcards + persona/faculty portraits) ─────
+    # Verified against the HF Hub: FLUX.1-schnell is gated (the account
+    # behind HF_TOKEN must accept its license on huggingface.co once) but
+    # has multiple live Inference Providers (nscale, fal-ai, together,
+    # wavespeed) as of this check, so the plain serverless call below is a
+    # sound integration, not a guess.
 
     async def generate_image(self, prompt: str) -> bytes | None:
         cache_path = self._cache_path("img", prompt, "jpg")
@@ -556,6 +574,9 @@ class HFClient:
         return _normalize_embeddings(resp.json())
 
     # ── Speech-to-text ───────────────────────────────────────────────────
+    # Verified against the HF Hub: whisper-large-v3 has a live hf-inference
+    # entry under Inference Providers as of this check, so this is the one
+    # audio call in this file confirmed solidly hosted rather than best-effort.
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
         if not settings.hf_configured:
