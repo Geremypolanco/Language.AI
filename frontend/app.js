@@ -38,6 +38,26 @@ function illustrationIdFor(persona) {
   return FACULTY_ILLUSTRATION_CYCLE[hash % FACULTY_ILLUSTRATION_CYCLE.length];
 }
 
+// A signature accent color per core teacher — carried through their card
+// (ring around the avatar, role label, hover glow) so each "agent" reads as
+// a distinct character at a glance, not five identical white cards that
+// only differ by which photo is in the circle.
+const PERSONA_ACCENT_COLORS = {
+  "core-elena": "var(--blue)",
+  "core-marcus": "var(--orange)",
+  "core-amara": "var(--purple)",
+  "core-sofia": "var(--pink)",
+  "core-theo": "var(--teal)",
+};
+const FACULTY_ACCENT_CYCLE = Object.values(PERSONA_ACCENT_COLORS);
+
+function accentColorFor(persona) {
+  if (PERSONA_ACCENT_COLORS[persona.id]) return PERSONA_ACCENT_COLORS[persona.id];
+  let hash = 0;
+  for (let i = 0; i < persona.id.length; i++) hash = (hash * 31 + persona.id.charCodeAt(i)) >>> 0;
+  return FACULTY_ACCENT_CYCLE[hash % FACULTY_ACCENT_CYCLE.length];
+}
+
 function renderPersonaAvatar(container, persona) {
   if (!container) return;
   container.innerHTML = "";
@@ -1164,6 +1184,7 @@ async function showAcademyCurriculum(progress) {
       renderPersonaAvatar($("#academy-faculty-avatar"), faculty);
       $("#academy-faculty-name").textContent = `${faculty.name} — ${faculty.title}`;
       $("#academy-faculty-philosophy").textContent = faculty.philosophy;
+      $("#academy-faculty-card").style.setProperty("--persona-accent", accentColorFor(faculty));
     })
     .catch((err) => console.error("No se pudo cargar el profesorado", err));
 
@@ -1715,14 +1736,16 @@ function renderPersonaPicker() {
   const grid = $("#persona-picker-grid");
   grid.innerHTML = "";
   for (const persona of state.personas) {
+    const accent = accentColorFor(persona);
     const card = document.createElement("div");
     card.className = "persona-card";
+    card.style.setProperty("--persona-accent", accent);
     card.innerHTML = `
       <div class="persona-avatar-slot"></div>
       <p class="persona-card-name">${persona.name}</p>
       <p class="persona-card-title">${persona.title}</p>
       <p class="persona-card-philosophy">${persona.philosophy}</p>
-      <button type="button" class="btn-link persona-card-preview">Escuchar voz</button>
+      <button type="button" class="persona-card-preview">${iconSvg("volume")} Escuchar voz</button>
     `;
     renderPersonaAvatar(card.querySelector(".persona-avatar-slot"), persona);
     card.querySelector(".persona-card-preview").addEventListener("click", (e) => {

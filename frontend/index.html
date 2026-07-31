@@ -408,10 +408,19 @@
       <header class="topbar">
         <div class="brand"><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</div>
         <div class="stats">
-          <span title="Racha"><svg class="icon" style="color: var(--orange)"><use href="#icon-flame"/></svg> <b id="stat-streak">0</b></span>
-          <span title="Gemas"><svg class="icon" style="color: var(--blue)"><use href="#icon-gem"/></svg> <b id="stat-gems">0</b></span>
-          <span title="XP"><svg class="icon" style="color: var(--gold-dark)"><use href="#icon-star"/></svg> <b id="stat-xp">0</b></span>
-          <span title="Nivel" id="stat-level">A1</span>
+          <span class="topbar-stat" title="Racha">
+            <span class="topbar-stat-icon topbar-stat-fire"><svg class="icon"><use href="#icon-flame"/></svg></span>
+            <b id="stat-streak">0</b>
+          </span>
+          <span class="topbar-stat" title="Gemas">
+            <span class="topbar-stat-icon topbar-stat-gem"><svg class="icon"><use href="#icon-gem"/></svg></span>
+            <b id="stat-gems">0</b>
+          </span>
+          <span class="topbar-stat" title="XP">
+            <span class="topbar-stat-icon topbar-stat-xp"><svg class="icon"><use href="#icon-star"/></svg></span>
+            <b id="stat-xp">0</b>
+          </span>
+          <span class="topbar-stat-level" title="Nivel" id="stat-level">A1</span>
         </div>
         <nav class="tabs">
           <button class="tab-btn active" data-tab="path">Camino</button>
