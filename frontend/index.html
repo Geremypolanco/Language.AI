@@ -82,6 +82,10 @@
         <path d="M18.36 6.64a9 9 0 1 1-12.73 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
         <path d="M12 2v10" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/>
       </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="2.1" fill="none"/>
+        <path d="M4.5 20c1.3-3.6 4.2-5.5 7.5-5.5s6.2 1.9 7.5 5.5" stroke="currentColor" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+      </symbol>
       <symbol id="icon-snowflake" viewBox="0 0 24 24">
         <path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11M8 4l4 3 4-3M8 20l4-3 4 3M2.5 9.5l4.5 1.5-1 4.5M21.5 9.5l-4.5 1.5 1 4.5M2.5 14.5l4.5-1.5-1-4.5M21.5 14.5l-4.5-1.5 1-4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </symbol>
@@ -321,20 +325,27 @@
   <div id="app">
 
     <!-- Sign in -->
-    <section id="screen-login" class="screen">
-      <div class="card onboarding-card">
-        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</h1>
-        <p class="subtitle">De principiante a nativo — lecciones personalizadas, conversaciones reales.</p>
-        <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
-          <span class="g-icon">G</span> Iniciar sesión con Google
-        </a>
-        <p id="auth-error" class="auth-error hidden"></p>
-        <div id="dev-login-block" class="dev-login hidden">
-          <p class="subtitle">El inicio de sesión con Google aún no está configurado — acceso de prueba:</p>
-          <form id="dev-login-form">
-            <input type="email" id="dev-login-email" placeholder="tucorreo@ejemplo.com" required />
-            <button type="submit" class="btn btn-primary">Continuar</button>
-          </form>
+    <section id="screen-login" class="screen screen-login">
+      <div class="login-hero">
+        <div class="login-avatar-strip" aria-hidden="true">
+          <span class="login-avatar-preview"><svg><use href="#avatar-core-elena"/></svg></span>
+          <span class="login-avatar-preview"><svg><use href="#avatar-core-marcus"/></svg></span>
+          <span class="login-avatar-preview"><svg><use href="#avatar-core-amara"/></svg></span>
+        </div>
+        <div class="card onboarding-card login-card">
+          <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</h1>
+          <p class="subtitle">De principiante a nativo — lecciones personalizadas, conversaciones reales con un maestro real.</p>
+          <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
+            <span class="g-icon">G</span> Iniciar sesión con Google
+          </a>
+          <p id="auth-error" class="auth-error hidden"></p>
+          <div id="dev-login-block" class="dev-login hidden">
+            <p class="subtitle">El inicio de sesión con Google aún no está configurado — acceso de prueba:</p>
+            <form id="dev-login-form">
+              <input type="email" id="dev-login-email" placeholder="tucorreo@ejemplo.com" required />
+              <button type="submit" class="btn btn-primary">Continuar</button>
+            </form>
+          </div>
         </div>
       </div>
     </section>
@@ -409,6 +420,7 @@
           <button class="tab-btn" data-tab="academy">Universidad</button>
           <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
           <button class="tab-btn" data-tab="progress">Progreso</button>
+          <button class="tab-btn" id="open-profile-btn" title="Tu perfil"><svg class="icon"><use href="#icon-user"/></svg></button>
           <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
         </nav>
       </header>
@@ -686,6 +698,52 @@
         <div id="course-faculty-byline" class="course-faculty-byline"></div>
         <div id="course-modules" class="course-modules"></div>
         <button id="course-complete-btn" class="btn btn-primary">Marcar como completado</button>
+      </div>
+    </section>
+
+    <!-- Profile / account settings overlay -->
+    <section id="screen-profile" class="screen hidden overlay">
+      <div class="reader-frame">
+        <div class="reader-header">
+          <button id="profile-exit" class="btn-icon"><svg class="icon"><use href="#icon-x"/></svg></button>
+        </div>
+        <h2 class="reader-title">Tu perfil</h2>
+        <form id="profile-form" class="profile-form">
+          <label>Nombre
+            <input type="text" id="profile-name" required />
+          </label>
+          <label>Ya hablo
+            <select id="profile-native"></select>
+          </label>
+          <label>Estoy aprendiendo
+            <select id="profile-target"></select>
+          </label>
+          <label>Intereses (separados por comas)
+            <input type="text" id="profile-interests" placeholder="fútbol, cocina, películas" />
+          </label>
+          <label>Meta diaria
+            <select id="profile-daily-goal">
+              <option value="5">5 minutos</option>
+              <option value="10">10 minutos</option>
+              <option value="15">15 minutos</option>
+              <option value="20">20 minutos</option>
+              <option value="30">30 minutos</option>
+              <option value="60">60 minutos</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+          <p id="profile-saved-msg" class="profile-saved-msg hidden">Cambios guardados.</p>
+        </form>
+
+        <div class="profile-danger-zone">
+          <button type="button" id="profile-logout-btn" class="btn btn-secondary">Cerrar sesión</button>
+          <button type="button" id="profile-delete-btn" class="btn btn-danger">Eliminar mi cuenta</button>
+          <div id="profile-delete-confirm" class="profile-delete-confirm hidden">
+            <p>Esto elimina tu cuenta y todo tu progreso de forma permanente. Esta acción no se puede deshacer.</p>
+            <button type="button" id="profile-delete-confirm-btn" class="btn btn-danger">Sí, eliminar permanentemente</button>
+            <button type="button" id="profile-delete-cancel-btn" class="btn-link">Cancelar</button>
+          </div>
+        </div>
       </div>
     </section>
 

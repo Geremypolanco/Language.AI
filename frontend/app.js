@@ -94,6 +94,28 @@ const LANGS = [
   ["ka", "Georgiano"], ["hy", "Armenio"], ["sq", "Albanés"], ["mk", "Macedonio"],
 ];
 
+const LANG_NAME_BY_CODE = Object.fromEntries(LANGS);
+
+// Every exercise type gets an explicit instruction line — before this, the
+// UI showed raw exercise text with no indication of what the learner was
+// supposed to do with it (translate? choose? repeat aloud?), which read as
+// broken rather than as a real exercise.
+const EXERCISE_INSTRUCTIONS = {
+  image_match: () => "Mira la imagen y elige la palabra correcta:",
+  multiple_choice: () => "Elige la opción correcta:",
+  listen_type: () => "Escucha el audio y escribe lo que oyes:",
+  translate_to_target: (nativeLang, targetLang) => `Traduce esta frase a ${LANG_NAME_BY_CODE[targetLang] || targetLang}:`,
+  translate_to_native: (nativeLang, targetLang) => `Traduce esta frase a ${LANG_NAME_BY_CODE[nativeLang] || nativeLang}:`,
+  fill_blank: () => "Completa el espacio en blanco:",
+  speak_repeat: () => "Escucha y repite en voz alta:",
+  free_conversation_prompt: () => "Responde con tus propias palabras:",
+};
+
+function exerciseInstructionFor(type, nativeLang, targetLang) {
+  const fn = EXERCISE_INSTRUCTIONS[type];
+  return fn ? fn(nativeLang, targetLang) : "Responde:";
+}
+
 // Curriculum topic names (backend/curriculum.py _TOPICS_BY_LEVEL) are stable
 // English keys used internally and as LLM context — this maps them to the
 // Spanish label actually shown in the UI (skill path, recent lessons).
@@ -152,7 +174,29 @@ const state = {
   lesson: null, // { exercises, index, correctCount, unitId, startedAt }
   lessonTimerHandle: null,
   personas: [], // the 5 core teachers, fetched once per session — see loadPersonas()
+  demoMode: false, // true when the backend has no HF_TOKEN — see checkDemoMode()
 };
+
+// Fetched once at boot (see boot()) — when true, a persistent banner explains
+// why exercise content is generic placeholder text instead of real
+// AI-generated lessons, rather than letting it silently look broken.
+async function checkDemoMode() {
+  try {
+    const health = await api("/api/health");
+    state.demoMode = !health.hf_configured;
+  } catch {
+    state.demoMode = false;
+  }
+}
+
+function renderDemoModeBanner(container) {
+  if (!state.demoMode || !container) return;
+  const banner = document.createElement("div");
+  banner.className = "demo-mode-banner";
+  banner.textContent =
+    "Modo demo — este servidor no tiene una clave de Hugging Face configurada, así que ves contenido de ejemplo genérico en vez de lecciones generadas por IA.";
+  container.prepend(banner);
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -176,9 +220,13 @@ function showScreen(id) {
 function populateLangSelects() {
   const native = $("#ob-native");
   const target = $("#ob-target");
+  const profileNative = $("#profile-native");
+  const profileTarget = $("#profile-target");
   for (const [code, name] of LANGS) {
     native.add(new Option(name, code));
     target.add(new Option(name, code));
+    profileNative.add(new Option(name, code));
+    profileTarget.add(new Option(name, code));
   }
   native.value = "es";
   target.value = "en";
@@ -260,23 +308,40 @@ async function fetchNextPlacementQuestion() {
 
 function renderPlacementQuestion(ex, level, container) {
   container.innerHTML = "";
+  renderDemoModeBanner(container);
 
-  const prompt = document.createElement("div");
-  prompt.className = "exercise-prompt";
-  prompt.textContent = ex.prompt || ex.target_text;
-  container.appendChild(prompt);
+  const nativeLang = $("#ob-native").value;
+  const targetLang = $("#ob-target").value;
 
-  if (ex.native_text) {
-    const hint = document.createElement("p");
-    hint.className = "subtitle";
-    hint.textContent = ex.native_text;
-    container.appendChild(hint);
+  const instruction = document.createElement("div");
+  instruction.className = "exercise-prompt";
+  instruction.textContent = exerciseInstructionFor(ex.type, nativeLang, targetLang);
+  container.appendChild(instruction);
+
+  // Only the SOURCE side of a translation is ever shown — never the
+  // correct_answer side, which would hand the learner the answer before
+  // they've attempted it. image_match/multiple_choice show neither text
+  // side, since the choices themselves carry the content.
+  let source = null;
+  if (ex.type === "translate_to_target") source = ex.native_text;
+  else if (ex.type === "translate_to_native" || ex.type === "listen_type" || ex.type === "speak_repeat") source = ex.target_text;
+  else if (ex.type === "fill_blank") source = ex.target_text;
+
+  if (ex.type === "image_match") {
+    const img = document.createElement("img");
+    img.className = "exercise-image";
+    container.appendChild(img);
+    loadImage(img, ex.image_prompt || ex.target_text);
+    playAudio(ex.audio_text || ex.target_text, targetLang);
+  } else if (source) {
+    const src = document.createElement("div");
+    src.className = "exercise-prompt";
+    src.textContent = source;
+    container.appendChild(src);
+    if (ex.type === "listen_type" || ex.type === "speak_repeat") {
+      playAudio(ex.audio_text || ex.target_text, targetLang);
+    }
   }
-
-  const target = document.createElement("div");
-  target.className = "exercise-prompt";
-  target.textContent = ex.target_text;
-  container.appendChild(target);
 
   const submit = (answer) => {
     const correct = normalize(answer) === normalize(ex.correct_answer);
@@ -985,22 +1050,52 @@ const ACADEMY_LEVEL_LABELS = {
   ASSOCIATE: "Técnico (equivalente a Asociado)",
   BACHELOR: "Profesional (equivalente a Licenciatura)",
   MASTER: "Avanzado (equivalente a Maestría)",
+  DOCTORATE: "Investigación (equivalente a Doctorado)",
 };
+
+// Each of the 31 fields carries a real SVG icon (backend/academy.py's
+// `icon` field, drawn from index.html's icon sprite — never emoji) tinted
+// by its category, rather than a plain, undifferentiated card. Colors reuse
+// this app's existing palette (see styles.css :root) instead of inventing
+// a new one per category.
+const ACADEMY_CATEGORY_COLORS = {
+  "Tecnología": ["rgba(28,176,246,0.14)", "var(--blue-dark)"],
+  "Negocios": ["rgba(255,200,0,0.16)", "var(--gold-dark)"],
+  "Salud": ["rgba(255,75,75,0.12)", "var(--danger)"],
+  "Ciencias": ["rgba(206,130,255,0.16)", "var(--purple-dark)"],
+  "Ingeniería": ["rgba(255,150,0,0.14)", "var(--orange-dark)"],
+  "Humanidades": ["rgba(20,184,166,0.14)", "var(--teal-dark)"],
+  "Artes": ["rgba(244,114,182,0.16)", "var(--pink-dark)"],
+};
+
+function academyFieldIconBadge(field) {
+  const [bg, fg] = ACADEMY_CATEGORY_COLORS[field.category] || ["rgba(28,58,82,0.08)", "var(--text)"];
+  return `<span class="field-card-icon" style="background:${bg};color:${fg}">${iconSvg(field.icon)}</span>`;
+}
 
 const _academyState = { fieldsLoaded: false, currentCourseId: null };
 
 async function setupAcademy() {
-  if (!_academyState.fieldsLoaded) {
-    _academyState.fieldsLoaded = true;
-    await loadAcademyFields();
-    $("#academy-switch-btn").addEventListener("click", showAcademyPicker);
-    $("#course-exit").addEventListener("click", () => showScreen("#screen-main"));
-    $("#course-complete-btn").addEventListener("click", completeCurrentCourse);
-  }
-  const progress = await api(`/api/academy/${state.userId}/progress`);
-  if (progress.enrollment) {
-    showAcademyCurriculum(progress);
-  } else {
+  try {
+    if (!_academyState.fieldsLoaded) {
+      _academyState.fieldsLoaded = true;
+      await loadAcademyFields();
+      $("#academy-switch-btn").addEventListener("click", showAcademyPicker);
+      $("#course-exit").addEventListener("click", () => showScreen("#screen-main"));
+      $("#course-complete-btn").addEventListener("click", completeCurrentCourse);
+    }
+    const progress = await api(`/api/academy/${state.userId}/progress`);
+    if (progress.enrollment) {
+      await showAcademyCurriculum(progress);
+    } else {
+      showAcademyPicker();
+    }
+  } catch (err) {
+    // A silently-failed fetch here used to just leave the tab blank/stuck —
+    // "no me deja elegir ninguna carrera" — with no indication anything
+    // went wrong. Surface it instead, and let the field grid stay so the
+    // learner can retry.
+    $("#academy-fields").innerHTML = `<p class="recommendations-empty">No se pudo cargar la Universidad: ${err.message}</p>`;
     showAcademyPicker();
   }
 }
@@ -1025,6 +1120,7 @@ async function loadAcademyFields() {
       const card = document.createElement("button");
       card.className = "field-card";
       card.innerHTML = `
+        ${academyFieldIconBadge(field)}
         <p class="field-card-title">${field.name}</p>
         <p class="field-card-desc">${field.description}</p>
       `;
@@ -1036,12 +1132,19 @@ async function loadAcademyFields() {
 }
 
 async function enrollInField(fieldId) {
-  const level = $("#academy-level-select").value;
-  const progress = await api(`/api/academy/${state.userId}/enroll`, {
-    method: "POST",
-    body: JSON.stringify({ field_id: fieldId, level }),
-  }).then(async () => api(`/api/academy/${state.userId}/progress`));
-  showAcademyCurriculum(progress);
+  try {
+    const level = $("#academy-level-select").value;
+    const progress = await api(`/api/academy/${state.userId}/enroll`, {
+      method: "POST",
+      body: JSON.stringify({ field_id: fieldId, level }),
+    }).then(async () => api(`/api/academy/${state.userId}/progress`));
+    await showAcademyCurriculum(progress);
+  } catch (err) {
+    // Previously unhandled — any failure here (auth hiccup, bad field id,
+    // a 500) meant the click just silently did nothing, which read as
+    // "no me deja elegir ninguna carrera" rather than a visible error.
+    alert("No se pudo inscribir en esta carrera: " + err.message);
+  }
 }
 
 function showAcademyPicker() {
@@ -1070,7 +1173,13 @@ async function showAcademyCurriculum(progress) {
 
   const list = $("#academy-course-list");
   list.innerHTML = `<p class="recommendations-empty">Generando tu plan de estudios…</p>`;
-  const curriculum = await api(`/api/academy/${state.userId}/curriculum`);
+  let curriculum;
+  try {
+    curriculum = await api(`/api/academy/${state.userId}/curriculum`);
+  } catch (err) {
+    list.innerHTML = `<p class="recommendations-empty">No se pudo generar el plan de estudios: ${err.message}</p>`;
+    return;
+  }
   list.innerHTML = "";
   const completedIds = new Set(progress.completed_course_ids);
   curriculum.courses.forEach((course, i) => {
@@ -1295,11 +1404,17 @@ function renderCurrentExercise() {
   const ex = exercises[index];
   const container = $("#exercise-container");
   container.innerHTML = "";
+  renderDemoModeBanner(container);
 
   const promptEl = document.createElement("div");
   promptEl.className = "exercise-prompt";
   promptEl.textContent = ex.prompt || "Traduce / responde:";
   container.appendChild(promptEl);
+
+  const instructionEl = document.createElement("p");
+  instructionEl.className = "subtitle exercise-instruction";
+  instructionEl.textContent = exerciseInstructionFor(ex.type, state.user.native_lang, state.user.target_lang);
+  container.appendChild(instructionEl);
 
   const targetLang = state.user.target_lang;
 
@@ -1573,7 +1688,27 @@ function setupTalkTab() {
   $("#persona-picker").classList.add("hidden");
   $("#call-frame").classList.remove("hidden");
   renderPersonaAvatar($("#talk-avatar-slot"), persona);
+  applyTalkDemoModeUI();
   ensureConversationSocket();
+}
+
+// Voice input can never succeed without HF_TOKEN (see backend/routers/
+// conversation.py's speech_to_text demo-mode check) — rather than let the
+// learner record audio and always hit the same failure, the mic button is
+// disabled up front with an accurate explanation, and text input is the
+// one path guaranteed to work.
+function applyTalkDemoModeUI() {
+  const micBtn = $("#mic-btn");
+  const existingBanner = $("#call-frame .demo-mode-banner");
+  if (existingBanner) existingBanner.remove();
+  if (state.demoMode) {
+    renderDemoModeBanner($("#call-frame"));
+    micBtn.disabled = true;
+    micBtn.title = "La voz no está disponible en modo demo — escribe tu mensaje abajo.";
+  } else {
+    micBtn.disabled = false;
+    micBtn.title = "";
+  }
 }
 
 function renderPersonaPicker() {
@@ -1797,6 +1932,71 @@ function setupMic() {
 
 $("#switch-user-btn").addEventListener("click", signOut);
 
+// ---------- Profile / account settings ----------
+
+function openProfile() {
+  const u = state.user;
+  $("#profile-name").value = u.display_name || "";
+  $("#profile-native").value = u.native_lang;
+  $("#profile-target").value = u.target_lang;
+  $("#profile-interests").value = (u.interests || []).join(", ");
+  $("#profile-daily-goal").value = String(u.daily_goal_minutes || 15);
+  $("#profile-saved-msg").classList.add("hidden");
+  $("#profile-delete-confirm").classList.add("hidden");
+  showScreen("#screen-profile");
+}
+
+function setupProfile() {
+  $("#open-profile-btn").addEventListener("click", openProfile);
+  $("#profile-exit").addEventListener("click", () => showScreen("#screen-main"));
+
+  $("#profile-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      state.user = await api(`/api/users/${state.userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          display_name: $("#profile-name").value.trim(),
+          native_lang: $("#profile-native").value,
+          target_lang: $("#profile-target").value,
+          interests: $("#profile-interests").value.split(",").map((s) => s.trim()).filter(Boolean),
+          daily_goal_minutes: parseInt($("#profile-daily-goal").value, 10) || 15,
+        }),
+      });
+      $("#profile-saved-msg").classList.remove("hidden");
+    } catch (err) {
+      alert("No se pudo guardar el perfil: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("#profile-logout-btn").addEventListener("click", signOut);
+
+  $("#profile-delete-btn").addEventListener("click", () => {
+    $("#profile-delete-confirm").classList.remove("hidden");
+  });
+  $("#profile-delete-cancel-btn").addEventListener("click", () => {
+    $("#profile-delete-confirm").classList.add("hidden");
+  });
+  $("#profile-delete-confirm-btn").addEventListener("click", async () => {
+    const btn = $("#profile-delete-confirm-btn");
+    btn.disabled = true;
+    try {
+      await api(`/api/users/${state.userId}`, { method: "DELETE" });
+      state.userId = null;
+      state.user = null;
+      if (state.ws) state.ws.close();
+      location.href = "/";
+    } catch (err) {
+      alert("No se pudo eliminar la cuenta: " + err.message);
+      btn.disabled = false;
+    }
+  });
+}
+
 // ---------- Boot ----------
 
 async function boot() {
@@ -1805,6 +2005,8 @@ async function boot() {
   setupTabs();
   setupMic();
   setupDevLogin();
+  setupProfile();
+  await checkDemoMode();
   await checkSession();
 }
 

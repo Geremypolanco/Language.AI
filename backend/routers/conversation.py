@@ -17,6 +17,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import auth, db, personas, telemetry
+from ..config import settings
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
@@ -93,6 +94,18 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
             msg_type = msg.get("type")
             if msg_type == "audio":
+                if not settings.hf_configured:
+                    # Distinguish this from a real transcription failure below —
+                    # "intenta de nuevo" is misleading advice when no amount of
+                    # retrying will ever work without HF_TOKEN configured.
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": "El reconocimiento de voz no está disponible en modo demo "
+                            "(este servidor no tiene HF_TOKEN configurado) — escribe tu mensaje abajo.",
+                        }
+                    )
+                    continue
                 audio_bytes = base64.b64decode(msg.get("data", ""))
                 content_type = msg.get("content_type", "audio/webm")
                 transcript = await hf_client.speech_to_text(audio_bytes, content_type)

@@ -108,6 +108,9 @@ def get_user(user_id: str, session: dict = Depends(auth.require_owner)) -> UserP
 
 
 class UpdateUserRequest(BaseModel):
+    display_name: str | None = None
+    native_lang: str | None = None
+    target_lang: str | None = None
     interests: list[str] | None = None
     level: CEFRLevel | None = None
     daily_goal_minutes: int | None = None
@@ -125,6 +128,15 @@ def update_user(
             raise HTTPException(status_code=404, detail="Maestro no encontrado")
 
     with db.cursor() as cur:
+        if payload.display_name is not None:
+            name = payload.display_name.strip()
+            if not name:
+                raise HTTPException(status_code=422, detail="El nombre no puede estar vacío")
+            cur.execute("UPDATE users SET display_name=? WHERE id=?", (name, user_id))
+        if payload.native_lang is not None:
+            cur.execute("UPDATE users SET native_lang=? WHERE id=?", (payload.native_lang, user_id))
+        if payload.target_lang is not None:
+            cur.execute("UPDATE users SET target_lang=? WHERE id=?", (payload.target_lang, user_id))
         if payload.interests is not None:
             cur.execute("UPDATE users SET interests=? WHERE id=?", (json.dumps(payload.interests), user_id))
         if payload.level is not None:
@@ -136,3 +148,30 @@ def update_user(
         if payload.tutor_persona_id is not None:
             cur.execute("UPDATE users SET tutor_persona_id=? WHERE id=?", (payload.tutor_persona_id, user_id))
     return get_user_by_id_or_404(user_id)
+
+
+# Tables keyed by user_id whose rows must be purged alongside the account
+# itself — see backend/db.py's schema. faculty_directory is deliberately
+# excluded: it's a global reference table with no user_id column.
+_USER_OWNED_TABLES = (
+    "vocab_progress",
+    "lesson_history",
+    "unit_mastery",
+    "conversation_log",
+    "academy_enrollment",
+    "academy_course_progress",
+    "academy_mastery_log",
+)
+
+
+@router.delete("/{user_id}")
+def delete_user(user_id: str, response: Response, session: dict = Depends(auth.require_owner)) -> dict:
+    """Permanently deletes the account and every row keyed by it — no soft
+    delete, no retention window, since this app makes no promise of one."""
+    get_user_by_id_or_404(user_id)
+    with db.cursor() as cur:
+        for table in _USER_OWNED_TABLES:
+            cur.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
+        cur.execute("DELETE FROM users WHERE id=?", (user_id,))
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return {"deleted": True}

@@ -898,7 +898,16 @@ def _parse_exercises(raw: str) -> list[Exercise]:
 def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> list[Exercise]:
     """Deterministic, network-free content so the app works with no HF_TOKEN
     (useful for local dev/demo/tests). Clearly lower quality than the real
-    LLM-generated, personalized content."""
+    LLM-generated, personalized content.
+
+    Every string here is explicitly tagged "(demo)" — the frontend also
+    shows a persistent demo-mode banner whenever HF_TOKEN isn't configured
+    (see app.js's checkDemoMode/renderDemoModeBanner) — because an earlier
+    revision used bare "[es] Topic, ejemplo 1" bracket placeholders with no
+    indication they were a stand-in, which read as broken/missing content
+    rather than an intentional offline fallback. Multiple-choice options are
+    likewise never the same string repeated with a meaningless "(opción A)"
+    suffix — that looked like duplicated/broken answers, not real choices."""
     from .curriculum import exercise_mix_for
 
     mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
@@ -906,8 +915,8 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
     exercises = []
     for i, ex_type in enumerate(mix):
         word = f"{req.unit.topic.split()[0].lower()}_{i}"
-        target = f"[{req.target_lang}] {topic}, ejemplo {i + 1}"
-        native = f"[{req.native_lang}] {topic}, ejemplo {i + 1}"
+        target = f"(demo) {topic} #{i + 1}"
+        native = f"(demo) {topic} #{i + 1}"
         exercises.append(
             Exercise(
                 id=f"ex-{i}-{word}",
@@ -915,7 +924,7 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
                 prompt=f"Practica: {topic}",
                 target_text=target,
                 native_text=native if req.unit.level.uses_translation else "",
-                options=[target, f"{target} (opción A)", f"{target} (opción B)"]
+                options=[target, "Opción 2 (demo)", "Opción 3 (demo)"]
                 if ex_type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH)
                 else [],
                 correct_answer=target,
