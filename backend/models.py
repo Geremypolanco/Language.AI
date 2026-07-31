@@ -172,6 +172,7 @@ class AcademicLevel(StrEnum):
     ASSOCIATE = "ASSOCIATE"
     BACHELOR = "BACHELOR"
     MASTER = "MASTER"
+    DOCTORATE = "DOCTORATE"
 
     @property
     def label_es(self) -> str:
@@ -179,11 +180,23 @@ class AcademicLevel(StrEnum):
             AcademicLevel.ASSOCIATE: "Técnico (equivalente a Asociado)",
             AcademicLevel.BACHELOR: "Profesional (equivalente a Licenciatura)",
             AcademicLevel.MASTER: "Avanzado (equivalente a Maestría)",
+            AcademicLevel.DOCTORATE: "Investigación (equivalente a Doctorado)",
         }[self]
 
     @property
     def course_count(self) -> int:
-        return {AcademicLevel.ASSOCIATE: 12, AcademicLevel.BACHELOR: 24, AcademicLevel.MASTER: 10}[self]
+        return {
+            AcademicLevel.ASSOCIATE: 12,
+            AcademicLevel.BACHELOR: 24,
+            AcademicLevel.MASTER: 10,
+            AcademicLevel.DOCTORATE: 8,
+        }[self]
+
+    @property
+    def is_research_level(self) -> bool:
+        """MASTER/DOCTORATE lean on primary-literature grounding (arXiv,
+        PubMed Central, SciELO) rather than textbook-level OER sources."""
+        return self in (AcademicLevel.MASTER, AcademicLevel.DOCTORATE)
 
 
 class AcademicField(BaseModel):
@@ -214,10 +227,22 @@ class CourseModule(BaseModel):
     content: str
 
 
+class OERSourceCitation(BaseModel):
+    """A real Open Educational Resource excerpt (ESCO, O*NET, arXiv,
+    OpenStax, MIT OCW, Kaggle/UCI, ...) the course's content was grounded
+    in — see backend/oer/. Shown in the UI so a course visibly cites where
+    its material came from, instead of only the chat model's say-so."""
+
+    title: str
+    source: str
+    url: str
+
+
 class CourseContent(BaseModel):
     id: str
     title: str
     modules: list[CourseModule]
+    sources: list[OERSourceCitation] = Field(default_factory=list)
 
 
 class AcademyEnrollment(BaseModel):

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "software-developers",
+    "title": "O*NET — Software Developers",
+    "text": "O*NET (la base de datos ocupacional del Departamento de Trabajo de EE. UU.) describe a los Software Developers como responsables de diseñar, construir y probar aplicaciones o sistemas de software, analizando las necesidades del usuario para especificar requisitos funcionales. Conocimientos clave: estructuras de datos, control de versiones, pruebas unitarias y arquitectura de software — mapea directamente al plan de estudios de Ciencia de la Computación e Ingeniería de Software.",
+    "field_id": "software-engineering",
+    "url": "https://www.onetonline.org/find/quick?s=software+developer"
+  },
+  {
+    "id": "data-scientists",
+    "title": "O*NET — Data Scientists",
+    "text": "O*NET describe a los Data Scientists como quienes desarrollan y aplican modelos y algoritmos estadísticos y de aprendizaje automático sobre grandes volúmenes de datos para producir conclusiones accionables, comunicando los hallazgos a audiencias técnicas y no técnicas. Habilidades destacadas: programación estadística, visualización de datos y diseño experimental — base directa del plan de estudios de Ciencia de Datos e Inteligencia Artificial.",
+    "field_id": "data-science",
+    "url": "https://www.onetonline.org/find/quick?s=data+scientist"
+  },
+  {
+    "id": "accountants-auditors",
+    "title": "O*NET — Accountants and Auditors",
+    "text": "O*NET describe a Accountants and Auditors como quienes examinan y preparan registros financieros, verifican su exactitud y su conformidad con leyes y regulaciones fiscales, y evalúan operaciones financieras para asegurar eficiencia y cumplimiento. Conocimientos clave: principios de contabilidad, auditoría y normativa fiscal — núcleo del plan de estudios de Contabilidad.",
+    "field_id": "accounting",
+    "url": "https://www.onetonline.org/find/quick?s=accountant"
+  },
+  {
+    "id": "financial-analysts",
+    "title": "O*NET — Financial Analysts",
+    "text": "O*NET describe a Financial Analysts como quienes evalúan inversiones, tendencias económicas y estados financieros de empresas para asesorar decisiones de inversión o financiamiento. Habilidades destacadas: modelado financiero, análisis de estados financieros y evaluación de riesgo — mapea al plan de estudios de Finanzas.",
+    "field_id": "finance",
+    "url": "https://www.onetonline.org/find/quick?s=financial+analyst"
+  },
+  {
+    "id": "registered-nurses",
+    "title": "O*NET — Registered Nurses",
+    "text": "O*NET describe a Registered Nurses como responsables de coordinar el cuidado de pacientes, educar sobre el manejo de condiciones de salud, y brindar apoyo emocional a pacientes y familias, requiriendo dominio de anatomía, fisiología y farmacología básica — base del plan de estudios de Fundamentos de Enfermería.",
+    "field_id": "nursing-foundations",
+    "url": "https://www.onetonline.org/find/quick?s=registered+nurse"
+  },
+  {
+    "id": "clinical-counseling-psychologists",
+    "title": "O*NET — Clinical and Counseling Psychologists",
+    "text": "O*NET describe a Clinical and Counseling Psychologists como quienes evalúan y tratan trastornos mentales, emocionales y de comportamiento mediante entrevista, observación y pruebas psicológicas estandarizadas. Conocimientos clave: psicología clínica, psicometría y ética profesional — mapea al plan de estudios de Psicología.",
+    "field_id": "psychology",
+    "url": "https://www.onetonline.org/find/quick?s=clinical+psychologist"
+  },
+  {
+    "id": "civil-engineers",
+    "title": "O*NET — Civil Engineers",
+    "text": "O*NET describe a Civil Engineers como quienes diseñan y supervisan la construcción de infraestructura — carreteras, puentes, sistemas de agua — analizando informes de estudios de suelo, planos y regulaciones locales de construcción. Conocimientos clave: mecánica de materiales, estructuras e hidráulica — núcleo del plan de estudios de Ingeniería Civil.",
+    "field_id": "civil-engineering",
+    "url": "https://www.onetonline.org/find/quick?s=civil+engineer"
+  },
+  {
+    "id": "market-research-analysts",
+    "title": "O*NET — Market Research Analysts",
+    "text": "O*NET describe a Market Research Analysts como quienes estudian condiciones de mercado para evaluar ventas potenciales de un producto o servicio, diseñando encuestas y analizando datos demográficos y de comportamiento del consumidor. Mapea al plan de estudios de Marketing.",
+    "field_id": "marketing",
+    "url": "https://www.onetonline.org/find/quick?s=market+research+analyst"
+  }
+]

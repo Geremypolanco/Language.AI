@@ -281,8 +281,13 @@ class HFClient:
         course_title: str,
         course_description: str,
         native_lang: str,
-    ) -> list[dict]:
-        """Generates (once) and caches a course's module content."""
+    ) -> dict:
+        """Generates (once) and caches a course's module content, grounded
+        wherever possible in real excerpts retrieved from the OER vector
+        store (see backend/oer/retrieval.py) — populated offline by
+        scripts/ingest_oer.py, not on this request path. Returns
+        {"modules": [...], "sources": [...]}; sources is empty when nothing
+        relevant has been ingested for this field yet."""
         from .academy import build_course_prompt
 
         cache_key = f"{course_id}:{native_lang}"
@@ -292,19 +297,37 @@ class HFClient:
                 return json.load(f)
 
         if not settings.hf_configured:
-            return [
-                {
-                    "title": "Modo demo",
-                    "content": (
-                        f"(Modo demo — configura HF_TOKEN para generar el contenido completo del curso con IA)\n\n"
-                        f'"{course_title}" — {course_description}\n\n'
-                        f"Cuando actives tu clave de Hugging Face, este curso mostrará varios módulos de "
-                        f"contenido completo, generados especialmente para tu carrera."
-                    ),
-                }
-            ]
+            return {
+                "modules": [
+                    {
+                        "title": "Modo demo",
+                        "content": (
+                            f"(Modo demo — configura HF_TOKEN para generar el contenido completo del curso con IA)\n\n"
+                            f'"{course_title}" — {course_description}\n\n'
+                            f"Cuando actives tu clave de Hugging Face, este curso mostrará varios módulos de "
+                            f"contenido completo, generados especialmente para tu carrera."
+                        ),
+                    }
+                ],
+                "sources": [],
+            }
 
-        prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
+        from .oer import retrieval
+
+        chunks: list = []
+        try:
+            chunks = await retrieval.retrieve_context(f"{course_title}. {course_description}", field_id=field.id, k=4)
+        except Exception:
+            logger.exception("OER retrieval failed, generating course content without grounding")
+
+        prompt = build_course_prompt(
+            field,
+            level.label_es,
+            course_title,
+            course_description,
+            native_lang,
+            grounding=[c.text for c in chunks] or None,
+        )
         try:
             raw = await self.chat(
                 [
@@ -323,16 +346,28 @@ class HFClient:
             ]
         except Exception:
             logger.exception("HF course generation failed, using offline fallback content")
-            return [
-                {
-                    "title": "No se pudo generar el curso",
-                    "content": "Inténtalo de nuevo en un momento.",
-                }
-            ]
+            return {
+                "modules": [
+                    {
+                        "title": "No se pudo generar el curso",
+                        "content": "Inténtalo de nuevo en un momento.",
+                    }
+                ],
+                "sources": [],
+            }
 
+        seen: set[tuple[str, str]] = set()
+        sources = []
+        for c in chunks:
+            if not c.title or (c.title, c.url) in seen:
+                continue
+            seen.add((c.title, c.url))
+            sources.append({"title": c.title, "source": c.source, "url": c.url})
+
+        result = {"modules": modules, "sources": sources}
         with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(modules, f)
-        return modules
+            json.dump(result, f)
+        return result
 
     # ── Recommendations (books, songs, and other media) ─────────────────
 
@@ -452,6 +487,25 @@ class HFClient:
             logger.exception("HF TTS failed")
         return None
 
+    # ── Embeddings (OER retrieval-augmented generation, see backend/oer/) ──
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Embeds a batch of text chunks for the OER vector store. Same
+        "call the HF Inference API, no local model install" pattern as the
+        rest of this client — no torch/sentence-transformers dependency."""
+        if not texts:
+            return []
+        if not settings.hf_configured:
+            return [_offline_embedding(t) for t in texts]
+        resp = await self._http.post(
+            f"{settings.hf_models_endpoint}/{settings.embedding_model}",
+            headers=self._headers(),
+            json={"inputs": texts, "options": {"wait_for_model": True}},
+        )
+        if resp.status_code != 200:
+            raise HFClientError(f"HF embedding HTTP {resp.status_code}: {resp.text[:300]}")
+        return _normalize_embeddings(resp.json())
+
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
@@ -470,6 +524,33 @@ class HFClient:
         except Exception:
             logger.exception("HF STT failed")
         return ""
+
+
+def _normalize_embeddings(data: list) -> list[list[float]]:
+    """The feature-extraction pipeline returns per-token vectors for some
+    models and already mean-pooled sentence vectors for others (sentence-
+    transformers models return the latter) — detect which shape came back
+    and mean-pool per input if needed, so callers always get one flat vector
+    per input text."""
+    if not data:
+        return []
+    if isinstance(data[0][0], list):
+        pooled = []
+        for token_vectors in data:
+            n = len(token_vectors)
+            dim = len(token_vectors[0])
+            pooled.append([sum(vec[i] for vec in token_vectors) / n for i in range(dim)])
+        return pooled
+    return data
+
+
+def _offline_embedding(text: str, dim: int = 384) -> list[float]:
+    """Deterministic, dependency-free pseudo-embedding used in demo mode/
+    tests so the OER pipeline runs end to end without HF_TOKEN — same
+    "keep running, lower quality" contract as the other _fallback_* helpers
+    below. Not semantically meaningful, only structurally valid."""
+    digest = hashlib.sha256(text.encode()).digest()
+    return [(digest[i % len(digest)] / 255.0) * 2 - 1 for i in range(dim)]
 
 
 def _parse_exercises(raw: str) -> list[Exercise]:

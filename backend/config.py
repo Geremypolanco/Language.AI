@@ -48,12 +48,26 @@ class Settings:
     tts_model_prefix: str = field(
         default_factory=lambda: os.environ.get("LINGUA_TTS_MODEL_PREFIX", "facebook/mms-tts")
     )
+    embedding_model: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    )
 
     hf_chat_endpoint: str = "https://api-inference.huggingface.co/v1/chat/completions"
     hf_models_endpoint: str = "https://api-inference.huggingface.co/models"
 
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
+
+    # Open Educational Resources retrieval (backend/oer/) — a persisted Chroma
+    # vector store grounding Academy course generation in real OER excerpts,
+    # plus the folder ingestion scripts/ingest_oer.py reads raw source dumps
+    # (OpenStax chapters, MIT OCW syllabi, etc.) from.
+    oer_chroma_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_OER_CHROMA_DIR", str(_BASE_DIR / "data" / "oer_chroma"))
+    )
+    oer_raw_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_OER_RAW_DIR", str(_BASE_DIR / "data" / "oer_raw"))
+    )
 
     # Durable production storage: a dedicated Supabase Postgres project (never
     # ARIA's). When set, db.py persists users/progress/sessions-linked state

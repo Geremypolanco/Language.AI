@@ -10,5 +10,11 @@ python-multipart==0.0.32
 # Durable production storage (Supabase Postgres) — see backend/db.py
 psycopg[binary]==3.2.3
 
+# Open Educational Resources retrieval (backend/oer/) — vector store for
+# grounding Academy course generation in real OER sources. Embeddings
+# themselves go through the HF Inference API (see hf_client.embed_texts),
+# so this stays the only new dependency for the whole RAG pipeline.
+chromadb==1.5.9
+
 # Test suite
 pytest==8.3.3

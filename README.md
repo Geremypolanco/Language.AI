@@ -1,11 +1,16 @@
-# Lingua — AI Language Coach
+# Language AI — AI Language & Academy Coach
 
-A standalone language-learning app in its own repository — no shared code,
-database, domain, or deployment with the ARIA project it originated
-alongside (see [Independence from ARIA](#independence-from-aria) below).
+A standalone language-learning and accelerated-study app in its own
+repository — no shared code, database, domain, or deployment with the ARIA
+project it originated alongside (see
+[Independence from ARIA](#independence-from-aria) below). Internally the
+codebase still refers to itself as "Lingua" in a few places (Python package
+docstrings, the Fly app domain, log messages) — only the brand shown to
+learners has changed to Language AI; renaming those internals is a separate,
+lower-priority cleanup.
 
-Lingua teaches any language, beginner to native speaker, blending two proven
-methodologies:
+Language AI teaches any language, beginner to native speaker, blending two
+proven methodologies:
 
 - **Duolingo-style** gamified skill tree, spaced repetition, XP, streaks, hearts,
   a gem economy (earn-only — no real-money purchases, ever), auto-consuming
@@ -46,11 +51,15 @@ backend/
   db.py               Persistence: Supabase Postgres in production, SQLite fallback locally/in tests
   curriculum.py    language-agnostic skill tree + HF prompt templates
   srs.py               SM-2 spaced repetition + XP/streak/leveling logic
-  hf_client.py      HF Inference API wrapper: chat, text-to-image, TTS, STT
-  routers/             auth, users, lessons, content (media), progress, conversation (WebSocket)
+  hf_client.py      HF Inference API wrapper: chat, text-to-image, TTS, STT, embeddings
+  academy.py          university-prep field/curriculum definitions + prompts
+  oer/                     Open Educational Resources retrieval pipeline (see below)
+  routers/             auth, users, lessons, content (media), progress, conversation (WebSocket), academy
+scripts/
+  ingest_oer.py     admin CLI to populate the OER vector store
 frontend/            vanilla HTML/CSS/JS SPA — no build step
-tests/                  pytest suite (SRS, curriculum, auth, and full API flow)
-fly.toml, Dockerfile     deploy config for Lingua's own Fly.io app/domain
+tests/                  pytest suite (SRS, curriculum, auth, OER pipeline, and full API flow)
+fly.toml, Dockerfile     deploy config for this app's own Fly.io app/domain
 .github/workflows/    CI (tests) + deploy-to-Fly, both scoped to this repo only
 ```
 
@@ -214,6 +223,86 @@ with dev data.
 - **Level-appropriate immersion**: A1 lessons never show a translation (image
   + audio + target text only, Rosetta Stone-style); translations appear from
   A2; free-form conversation exercises unlock at B1.
+
+## Grounding Academy content in real Open Educational Resources (OER)
+
+The Academy tab (`backend/academy.py`) generates accelerated, self-paced
+study tracks — Associate, Bachelor, Master, or Doctorate depth — across
+~30 fields. Left to itself, the chat model would generate course content
+purely from its own training data. `backend/oer/` grounds that generation
+in real, citable material instead, following the public REA/OER (Open
+Educational Resources) movement: syllabi/skills taxonomies, textbook-level
+theory, and practical problem sets, vectorized and retrieved per course.
+
+```
+backend/oer/
+  sources.py       fetch_arxiv (live arXiv API), load_local_folder (OpenStax/
+                    MIT OCW/OER Commons/HF-dataset dumps you download and
+                    drop under data/oer_raw/), load_seed_dataset (curated
+                    ESCO/O*NET/Kaggle-UCI samples, see seed_data/)
+  chunking.py      paragraph-aware text splitter (no LangChain/LlamaIndex
+                    dependency — the app doesn't otherwise need one)
+  embeddings.py    delegates to HFClient.embed_texts — HF Inference API
+                    (sentence-transformers/all-MiniLM-L6-v2 by default), same
+                    "no local model install" pattern as chat/image/TTS/STT
+  vectorstore.py   persisted ChromaDB collection (data/oer_chroma/);
+                    embeddings are always supplied explicitly, so Chroma's
+                    own (heavier) default embedding function is never loaded
+  retrieval.py     retrieve_context(query, field_id) -> grounded excerpts
+  ingest.py        fetch -> chunk -> embed -> upsert orchestration
+scripts/ingest_oer.py   admin CLI that drives ingest.py from the command line
+```
+
+`hf_client.generate_course_content` retrieves up to 4 relevant chunks for
+the course's field before generating, folds them into the prompt as
+grounding the model should prefer over invented specifics, and returns
+them as `CourseContent.sources` — shown in the UI under each course as
+"Contenido basado en fuentes educativas abiertas reales".
+
+### Populating the vector store
+
+Ingestion is a separate, offline step — it never runs on a user's request:
+
+```bash
+# Curated seed samples (ESCO skills, O*NET occupations, Kaggle/UCI datasets)
+python scripts/ingest_oer.py seed --name esco_skills
+python scripts/ingest_oer.py seed --name onet_occupations
+python scripts/ingest_oer.py seed --name kaggle_uci_datasets
+
+# Live arXiv query — best for Master/Doctorate-depth grounding
+python scripts/ingest_oer.py arxiv --field-id data-science --query "machine learning survey"
+
+# Any OpenStax/MIT OCW/OER Commons/etc. export you've downloaded yourself
+python scripts/ingest_oer.py folder --path data/oer_raw/economics --field-id economics
+
+python scripts/ingest_oer.py --status   # chunk count in the store
+```
+
+### What's real today vs. what needs a follow-up ingestion run
+
+- **Live and fully working**: the arXiv connector (`sources.fetch_arxiv`) —
+  a real, unauthenticated call to `export.arxiv.org`'s public API. (It
+  couldn't be exercised end-to-end from this development sandbox — its
+  outbound network policy blocks that host specifically — but it's a plain
+  HTTPS GET against a public REST API, the same pattern already used and
+  tested for the HF calls elsewhere in this app.)
+- **Curated seed samples, not the full corpus**: ESCO's full skills/
+  occupations taxonomy and O*NET's full occupational database are each
+  multi-hundred-megabyte bulk CSV/RDF downloads; O*NET's Web Services API
+  additionally requires registration credentials. Rather than fake a live
+  integration against them, `seed_data/*.json` ships a small, real,
+  hand-picked sample per source (6-8 entries each) so the pipeline has
+  something genuine to retrieve today. To go beyond the sample: download
+  ESCO's CSV export or O*NET's database files and point
+  `sources.load_local_folder` at them (convert rows to the
+  `{"id","title","text","url"}` JSON shape `load_local_folder` expects).
+- **Bring-your-own-download**: MIT OpenCourseWare, OpenStax full textbooks,
+  OpenLearn, OER Commons, and HF-hosted "OER"-tagged datasets don't have a
+  small enough API to call ad hoc — download the source's own export and
+  run `ingest_oer.py folder` against it.
+- **Not yet wired in**: PubMed Central and SciELO (additional
+  Doctorate-level primary-literature sources) — `fetch_arxiv`'s shape is a
+  template for adding equivalent connectors for either.
 
 ## Domain & deployment
 

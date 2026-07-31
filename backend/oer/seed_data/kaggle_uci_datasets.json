@@ -1,0 +1,51 @@
+[
+  {
+    "id": "uci-iris",
+    "title": "UCI Machine Learning Repository — Iris Dataset",
+    "text": "El Iris Dataset (UCI Machine Learning Repository) contiene 150 muestras de tres especies de flor iris, con cuatro medidas florales por muestra. Es el dataset introductorio clásico para clasificación supervisada — proyecto práctico habitual para introducir clasificación en Ciencia de Datos e Inteligencia Artificial.",
+    "field_id": "data-science",
+    "url": "https://archive.ics.uci.edu/dataset/53/iris"
+  },
+  {
+    "id": "uci-wine-quality",
+    "title": "UCI Machine Learning Repository — Wine Quality Dataset",
+    "text": "El Wine Quality Dataset (UCI) recoge variables fisicoquímicas (acidez, azúcar residual, alcohol, etc.) de vinos junto con una puntuación de calidad sensorial, útil para practicar regresión y clasificación ordinal. Proyecto práctico recurrente en cursos de Ciencia de Datos y Química analítica.",
+    "field_id": "data-science",
+    "url": "https://archive.ics.uci.edu/dataset/186/wine+quality"
+  },
+  {
+    "id": "kaggle-titanic",
+    "title": "Kaggle — Titanic: Machine Learning from Disaster",
+    "text": "La competencia Titanic de Kaggle pide predecir la supervivencia de pasajeros del RMS Titanic a partir de variables como clase de pasaje, edad, sexo y tarifa pagada. Es el proyecto introductorio más conocido de clasificación binaria — usado en cursos de Ciencia de Datos, Estadística y Sociología cuantitativa.",
+    "field_id": "data-science",
+    "url": "https://www.kaggle.com/competitions/titanic"
+  },
+  {
+    "id": "uci-adult-census-income",
+    "title": "UCI Machine Learning Repository — Adult (Census Income) Dataset",
+    "text": "El dataset Adult / Census Income (UCI), extraído del censo de EE. UU. de 1994, relaciona variables demográficas y laborales con si el ingreso anual supera los 50,000 USD. Se usa en cursos de Economía y Ciencia de Datos para practicar clasificación y discutir sesgos algorítmicos en variables sensibles.",
+    "field_id": "economics",
+    "url": "https://archive.ics.uci.edu/dataset/2/adult"
+  },
+  {
+    "id": "uci-breast-cancer-wisconsin",
+    "title": "UCI Machine Learning Repository — Breast Cancer Wisconsin (Diagnostic)",
+    "text": "Este dataset (UCI) contiene características extraídas de imágenes digitalizadas de biopsias de tejido mamario, etiquetadas como benignas o malignas. Es un proyecto práctico estándar para introducir clasificación aplicada a diagnóstico en cursos de Ciencia de Datos y Salud Pública.",
+    "field_id": "public-health",
+    "url": "https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic"
+  },
+  {
+    "id": "uci-bank-marketing",
+    "title": "UCI Machine Learning Repository — Bank Marketing Dataset",
+    "text": "El Bank Marketing Dataset (UCI) recoge resultados de campañas de telemarketing de un banco portugués, relacionando variables del cliente y de la campaña con si contrató o no un depósito a plazo. Proyecto práctico habitual en cursos de Marketing y Administración de Empresas para analizar efectividad de campañas.",
+    "field_id": "marketing",
+    "url": "https://archive.ics.uci.edu/dataset/222/bank+marketing"
+  },
+  {
+    "id": "kaggle-house-prices",
+    "title": "Kaggle — House Prices: Advanced Regression Techniques",
+    "text": "Esta competencia de Kaggle pide predecir el precio de venta de viviendas en Ames, Iowa, a partir de más de 70 variables (superficie, calidad de construcción, año de remodelación, etc.). Es el proyecto introductorio estándar de regresión múltiple, usado en cursos de Ciencia de Datos, Finanzas y Economía aplicada.",
+    "field_id": "finance",
+    "url": "https://www.kaggle.com/c/house-prices-advanced-regression-techniques"
+  }
+]

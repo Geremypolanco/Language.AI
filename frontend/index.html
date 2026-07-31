@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lingua — Aprende un idioma, habla como un nativo</title>
+<title>Language AI — Aprende un idioma, habla como un nativo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
@@ -12,11 +12,17 @@
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
-      <symbol id="icon-brand" viewBox="0 0 24 24">
-        <path d="M12 3C7.03 3 3 6.58 3 11c0 2.49 1.28 4.72 3.3 6.2-.12.98-.5 2.18-1.42 3.4a.6.6 0 0 0 .58.94c1.98-.36 3.5-1.14 4.55-1.84A11.6 11.6 0 0 0 12 19c4.97 0 9-3.58 9-8s-4.03-8-9-8z" fill="currentColor"/>
-        <circle cx="8.3" cy="11" r="1.15" fill="#fff"/>
-        <circle cx="12" cy="11" r="1.15" fill="#fff"/>
-        <circle cx="15.7" cy="11" r="1.15" fill="#fff"/>
+      <symbol id="icon-brand" viewBox="0 0 100 100">
+        <defs>
+          <linearGradient id="brandGrad" x1="8%" y1="0%" x2="92%" y2="100%">
+            <stop offset="0%" stop-color="#9fc0ff"/>
+            <stop offset="45%" stop-color="#5170f2"/>
+            <stop offset="100%" stop-color="#33409e"/>
+          </linearGradient>
+        </defs>
+        <path d="M18 80C18 45 34 16 53 16c15 0 24 10 22 24" fill="none" stroke="url(#brandGrad)" stroke-width="15" stroke-linecap="round"/>
+        <path d="M73 40c9 10 7 27-8 31-13 3-20-9-11-18 6-6 15-4 19 3" fill="none" stroke="url(#brandGrad)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M22 78C22 47 37 20 53 20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="3" stroke-linecap="round"/>
       </symbol>
       <symbol id="icon-flame" viewBox="0 0 24 24">
         <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="currentColor"/>
@@ -106,7 +112,7 @@
     <!-- Sign in -->
     <section id="screen-login" class="screen">
       <div class="card onboarding-card">
-        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
+        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</h1>
         <p class="subtitle">De principiante a nativo — lecciones personalizadas, conversaciones reales.</p>
         <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
           <span class="g-icon">G</span> Iniciar sesión con Google
@@ -125,7 +131,7 @@
     <!-- Onboarding -->
     <section id="screen-onboarding" class="screen hidden">
       <div class="card onboarding-card" id="onboarding-step-profile">
-        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
+        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</h1>
         <p class="subtitle">Cuéntanos tus objetivos — esto personaliza cada lección.</p>
         <form id="onboarding-form">
           <label>Tu nombre
@@ -167,34 +173,30 @@
 
       <div class="card onboarding-card hidden" id="onboarding-step-result">
         <div class="complete-mascot" id="placement-result-mascot">
-          <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
-            <defs>
-              <radialGradient id="owlGrad1" cx="35%" cy="28%" r="80%">
-                <stop offset="0%" stop-color="#5cc9f9"/>
-                <stop offset="100%" stop-color="#0e88c2"/>
-              </radialGradient>
-            </defs>
-            <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad1)" />
-            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
-            <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
-            <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
-            <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-            <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-            <circle cx="44" cy="60" r="16.5" fill="#fff" />
-            <circle cx="76" cy="60" r="16.5" fill="#fff" />
-            <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-            <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-            <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-            <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-            <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
-            <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
-            <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
-            <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
-            <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
-            <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
-            <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
-            <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
-          </svg>
+          <svg class="mascot-figure" viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="avatarSkin0" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#ffd9b3"/>
+                      <stop offset="100%" stop-color="#f0b083"/>
+                    </radialGradient>
+                    <linearGradient id="avatarShirt0" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="#5170f2"/>
+                      <stop offset="100%" stop-color="#33409e"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M18 120 Q18 82 60 82 Q102 82 102 120 Z" fill="url(#avatarShirt0)"/>
+                  <ellipse cx="60" cy="60" rx="34" ry="36" fill="url(#avatarSkin0)"/>
+                  <path d="M27 55 Q23 19 60 17 Q97 19 93 55 Q90 33 60 31 Q30 33 27 55Z" fill="#4a3728"/>
+                  <ellipse cx="38" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <ellipse cx="82" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <path d="M39 50 Q45 46 51 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M69 50 Q75 46 81 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <ellipse class="mascot-pupil" cx="45" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <ellipse class="mascot-pupil" cx="75" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <circle cx="46.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <circle cx="76.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <path d="M46 74 Q60 85 74 74" stroke="#a9633f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                </svg>
         </div>
         <h2>¡Estás en el nivel <span id="placement-result-level">A2</span>!</h2>
         <p class="subtitle" id="placement-result-note">Empezarás tu camino ahí — se sigue ajustando mientras avanzas.</p>
@@ -205,7 +207,7 @@
     <!-- Main app -->
     <section id="screen-main" class="screen hidden">
       <header class="topbar">
-        <div class="brand"><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</div>
+        <div class="brand"><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Language AI</div>
         <div class="stats">
           <span title="Racha"><svg class="icon" style="color: var(--orange)"><use href="#icon-flame"/></svg> <b id="stat-streak">0</b></span>
           <span title="Gemas"><svg class="icon" style="color: var(--blue)"><use href="#icon-gem"/></svg> <b id="stat-gems">0</b></span>
@@ -289,6 +291,7 @@
                   <option value="ASSOCIATE">Técnico (equivalente a Asociado) — más rápido</option>
                   <option value="BACHELOR">Profesional (equivalente a Licenciatura)</option>
                   <option value="MASTER">Avanzado (equivalente a Maestría)</option>
+                  <option value="DOCTORATE">Investigación (equivalente a Doctorado)</option>
                 </select>
               </div>
             </div>
@@ -313,33 +316,29 @@
           <div class="call-frame">
             <div class="avatar-tile">
               <div id="avatar" class="avatar">
-                <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+                <svg class="mascot-figure" viewBox="0 0 120 120" aria-hidden="true">
                   <defs>
-                    <radialGradient id="owlGrad0" cx="35%" cy="28%" r="80%">
-                      <stop offset="0%" stop-color="#5cc9f9"/>
-                      <stop offset="100%" stop-color="#0e88c2"/>
+                    <radialGradient id="avatarSkin1" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#ffd9b3"/>
+                      <stop offset="100%" stop-color="#f0b083"/>
                     </radialGradient>
+                    <linearGradient id="avatarShirt1" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="#5170f2"/>
+                      <stop offset="100%" stop-color="#33409e"/>
+                    </linearGradient>
                   </defs>
-                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad0)"/>
-                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c"/>
-                  <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff"/>
-                  <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7"/>
-                  <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55"/>
-                  <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55"/>
-                  <circle cx="44" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="76" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2"/>
-                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2"/>
-                  <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-                  <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c"/>
-                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c"/>
-                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727"/>
-                  <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-                  <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)"/>
-                  <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)"/>
+                  <path d="M18 120 Q18 82 60 82 Q102 82 102 120 Z" fill="url(#avatarShirt1)"/>
+                  <ellipse cx="60" cy="60" rx="34" ry="36" fill="url(#avatarSkin1)"/>
+                  <path d="M27 55 Q23 19 60 17 Q97 19 93 55 Q90 33 60 31 Q30 33 27 55Z" fill="#4a3728"/>
+                  <ellipse cx="38" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <ellipse cx="82" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <path d="M39 50 Q45 46 51 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M69 50 Q75 46 81 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <ellipse class="mascot-pupil" cx="45" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <ellipse class="mascot-pupil" cx="75" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <circle cx="46.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <circle cx="76.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <path d="M46 74 Q60 85 74 74" stroke="#a9633f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
                 </svg>
               </div>
               <div id="call-status" class="call-status">Conectando…</div>
@@ -360,33 +359,29 @@
 
             <div class="card mascot-card" id="mascot-card">
               <div class="mascot-avatar">
-                <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
+                <svg class="mascot-figure" viewBox="0 0 120 120" aria-hidden="true">
                   <defs>
-                    <radialGradient id="owlGrad3" cx="35%" cy="28%" r="80%">
-                      <stop offset="0%" stop-color="#5cc9f9"/>
-                      <stop offset="100%" stop-color="#0e88c2"/>
+                    <radialGradient id="avatarSkin2" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#ffd9b3"/>
+                      <stop offset="100%" stop-color="#f0b083"/>
                     </radialGradient>
+                    <linearGradient id="avatarShirt2" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="#5170f2"/>
+                      <stop offset="100%" stop-color="#33409e"/>
+                    </linearGradient>
                   </defs>
-                  <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad3)" />
-                  <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
-                  <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
-                  <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
-                  <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-                  <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-                  <circle cx="44" cy="60" r="16.5" fill="#fff" />
-                  <circle cx="76" cy="60" r="16.5" fill="#fff" />
-                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-                  <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-                  <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
-                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
-                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
-                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
-                  <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
-                  <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
-                  <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
-                  <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
+                  <path d="M18 120 Q18 82 60 82 Q102 82 102 120 Z" fill="url(#avatarShirt2)"/>
+                  <ellipse cx="60" cy="60" rx="34" ry="36" fill="url(#avatarSkin2)"/>
+                  <path d="M27 55 Q23 19 60 17 Q97 19 93 55 Q90 33 60 31 Q30 33 27 55Z" fill="#4a3728"/>
+                  <ellipse cx="38" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <ellipse cx="82" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <path d="M39 50 Q45 46 51 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M69 50 Q75 46 81 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <ellipse class="mascot-pupil" cx="45" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <ellipse class="mascot-pupil" cx="75" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <circle cx="46.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <circle cx="76.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <path d="M46 74 Q60 85 74 74" stroke="#a9633f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
                 </svg>
                 <span id="mascot-badge" class="mascot-badge"></span>
               </div>
@@ -496,34 +491,30 @@
     <section id="screen-complete" class="screen hidden overlay">
       <div class="card complete-card">
         <div class="complete-mascot" id="complete-mascot">
-          <svg class="mascot-owl" viewBox="0 0 120 120" aria-hidden="true">
-            <defs>
-              <radialGradient id="owlGrad2" cx="35%" cy="28%" r="80%">
-                <stop offset="0%" stop-color="#5cc9f9"/>
-                <stop offset="100%" stop-color="#0e88c2"/>
-              </radialGradient>
-            </defs>
-            <ellipse cx="60" cy="70" rx="40" ry="38" fill="url(#owlGrad2)" />
-            <path d="M28 40 Q22 14 40 26 Q48 18 60 28 Q72 18 80 26 Q98 14 92 40 Z" fill="#0c6e9c" />
-            <ellipse cx="60" cy="77" rx="23" ry="25" fill="#eaf7ff" />
-            <path d="M42 90 Q60 98 78 90" stroke="#cfeaf9" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
-            <ellipse cx="33" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-            <ellipse cx="87" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.55" />
-            <circle cx="44" cy="60" r="16.5" fill="#fff" />
-            <circle cx="76" cy="60" r="16.5" fill="#fff" />
-            <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-            <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0c6e9c" stroke-width="2" />
-            <path d="M35 49 Q44 43 53 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-            <path d="M67 49 Q76 43 85 49" stroke="#0c6e9c" stroke-width="2.4" fill="none" stroke-linecap="round" />
-            <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c" />
-            <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c" />
-            <circle cx="48.7" cy="58.2" r="2.2" fill="#fff" />
-            <circle cx="80.7" cy="58.2" r="2.2" fill="#fff" />
-            <path d="M55 66 L60 75 L65 66 Z" fill="#ffa727" />
-            <path d="M57 75 Q60 77 63 75" stroke="#d97e00" stroke-width="1.4" fill="none" stroke-linecap="round" />
-            <ellipse cx="25" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(-18 25 78)" />
-            <ellipse cx="95" cy="78" rx="9.5" ry="17" fill="#0c6e9c" transform="rotate(18 95 78)" />
-          </svg>
+          <svg class="mascot-figure" viewBox="0 0 120 120" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="avatarSkin3" cx="35%" cy="28%" r="80%">
+                      <stop offset="0%" stop-color="#ffd9b3"/>
+                      <stop offset="100%" stop-color="#f0b083"/>
+                    </radialGradient>
+                    <linearGradient id="avatarShirt3" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="#5170f2"/>
+                      <stop offset="100%" stop-color="#33409e"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M18 120 Q18 82 60 82 Q102 82 102 120 Z" fill="url(#avatarShirt3)"/>
+                  <ellipse cx="60" cy="60" rx="34" ry="36" fill="url(#avatarSkin3)"/>
+                  <path d="M27 55 Q23 19 60 17 Q97 19 93 55 Q90 33 60 31 Q30 33 27 55Z" fill="#4a3728"/>
+                  <ellipse cx="38" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <ellipse cx="82" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
+                  <path d="M39 50 Q45 46 51 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <path d="M69 50 Q75 46 81 50" stroke="#4a3728" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+                  <ellipse class="mascot-pupil" cx="45" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <ellipse class="mascot-pupil" cx="75" cy="62" rx="4.4" ry="5.2" fill="#26343c"/>
+                  <circle cx="46.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <circle cx="76.6" cy="59.6" r="1.4" fill="#fff"/>
+                  <path d="M46 74 Q60 85 74 74" stroke="#a9633f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                </svg>
           <span id="complete-mascot-badge" class="mascot-badge"></span>
         </div>
         <h2 id="complete-title">¡Lección completada! <svg class="icon"><use href="#icon-sparkle"/></svg></h2>

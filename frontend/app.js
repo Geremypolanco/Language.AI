@@ -1037,6 +1037,19 @@ async function openCourse(courseId, title) {
       `;
       modulesEl.appendChild(section);
     }
+    if (course.sources && course.sources.length) {
+      const sourcesEl = document.createElement("div");
+      sourcesEl.className = "course-sources";
+      sourcesEl.innerHTML = `
+        <p class="course-sources-label"><svg class="icon"><use href="#icon-book"/></svg> Contenido basado en fuentes educativas abiertas reales</p>
+        <ul class="course-sources-list">
+          ${course.sources
+            .map((s) => `<li><a href="${s.url}" target="_blank" rel="noopener noreferrer">${s.title}</a></li>`)
+            .join("")}
+        </ul>
+      `;
+      modulesEl.appendChild(sourcesEl);
+    }
   } catch (err) {
     modulesEl.innerHTML = `<p class="recommendations-empty">No se pudo generar el curso: ${err.message}</p>`;
   }

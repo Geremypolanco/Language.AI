@@ -23,6 +23,7 @@ from ..models import (
     Curriculum,
     CourseContent,
     CourseStub,
+    OERSourceCitation,
 )
 from .users import get_user_by_id_or_404
 
@@ -131,8 +132,13 @@ async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
-    modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.native_lang)
-    return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
+    result = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    return CourseContent(
+        id=stub.id,
+        title=stub.title,
+        modules=[{"title": m["title"], "content": m["content"]} for m in result["modules"]],
+        sources=[OERSourceCitation(**s) for s in result.get("sources", [])],
+    )
 
 
 @router.post("/{user_id}/courses/{course_id}/complete", response_model=AcademyProgress)

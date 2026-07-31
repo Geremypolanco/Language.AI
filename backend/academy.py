@@ -113,13 +113,32 @@ def build_curriculum_prompt(field: AcademicField, level_label: str, course_count
     )
 
 
-def build_course_prompt(field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str) -> str:
+def build_course_prompt(
+    field: AcademicField,
+    level_label: str,
+    course_title: str,
+    course_description: str,
+    native_lang: str,
+    grounding: list[str] | None = None,
+) -> str:
+    grounding_block = ""
+    if grounding:
+        excerpts = "\n\n".join(f"[{i + 1}] {text}" for i, text in enumerate(grounding))
+        grounding_block = (
+            f"\n\nGround your content in these real excerpts from open educational sources "
+            f"(ESCO/O*NET skill and occupation descriptions, arXiv papers, OpenStax/MIT OCW-style "
+            f"material, or well-known Kaggle/UCI datasets) wherever they're relevant to this course — "
+            f"don't force a fit for excerpts that aren't relevant, and don't limit the module to only "
+            f"what's in them, but prefer them over invented specifics when they cover the topic:\n\n"
+            f"{excerpts}\n"
+        )
     return (
         f"Write self-study course material in {native_lang} for the course \"{course_title}\" "
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
         f"{level_label} depth. Structure it as 4 to 6 modules. Each module should teach real, accurate, "
         f"standard content for this topic — the kind of material an actual textbook or course would "
-        f"cover — with clear explanations and at least one concrete example per module. "
+        f"cover — with clear explanations and at least one concrete example per module."
+        f"{grounding_block}\n\n"
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'
     )

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "digital-content-creation",
+    "title": "ESCO — Creación de contenido digital",
+    "text": "La taxonomía europea ESCO (European Skills, Competences, Qualifications and Occupations) agrupa 'crear contenido digital' entre las competencias transversales digitales: producir y editar contenido en distintos formatos, adaptar la comunicación al medio digital, y respetar derechos de autor y licencias al reutilizar material de terceros. Es una competencia base para carreras de Diseño Gráfico, Comunicación y Periodismo, y Marketing.",
+    "field_id": "graphic-design",
+    "url": "https://esco.ec.europa.eu/en"
+  },
+  {
+    "id": "data-information-literacy",
+    "title": "ESCO — Alfabetización de datos e información",
+    "text": "ESCO clasifica la 'alfabetización de datos e información' como la capacidad de localizar, evaluar y gestionar información y datos de forma crítica: distinguir fuentes fiables, estructurar datos para análisis, y documentar el origen de cada dato usado en una conclusión. Es transversal a Ciencia de Datos, Inteligencia Artificial y disciplinas de investigación en general.",
+    "field_id": "data-science",
+    "url": "https://esco.ec.europa.eu/en"
+  },
+  {
+    "id": "financial-literacy",
+    "title": "ESCO — Gestión financiera",
+    "text": "Dentro de las competencias de gestión, ESCO describe 'gestión financiera' como planificar presupuestos, interpretar estados financieros, y evaluar el impacto financiero de una decisión operativa. Es núcleo de Contabilidad, Finanzas y Administración de Empresas, y aparece también como competencia secundaria en Emprendimiento.",
+    "field_id": "finance",
+    "url": "https://esco.ec.europa.eu/en"
+  },
+  {
+    "id": "problem-solving-technical",
+    "title": "ESCO — Resolución de problemas técnicos",
+    "text": "ESCO agrupa bajo 'resolución de problemas' la capacidad de diagnosticar la causa raíz de una falla técnica y evaluar alternativas de solución con sus costos y riesgos — competencia central en Ingeniería Civil, Ingeniería Mecánica e Ingeniería Eléctrica, y trasladable a la depuración de software en Ingeniería de Software.",
+    "field_id": "mechanical-engineering",
+    "url": "https://esco.ec.europa.eu/en"
+  },
+  {
+    "id": "communication-multilingual",
+    "title": "ESCO — Comunicación profesional",
+    "text": "ESCO describe la 'comunicación para fines profesionales' como adaptar el registro, la estructura y el nivel de detalle de un mensaje al público y al canal — escrito, oral o digital. Es competencia transversal citada en Periodismo, Relaciones Internacionales y Psicología (comunicación clínica).",
+    "field_id": "journalism",
+    "url": "https://esco.ec.europa.eu/en"
+  },
+  {
+    "id": "critical-thinking",
+    "title": "ESCO — Pensamiento crítico",
+    "text": "El 'pensamiento crítico' en ESCO cubre evaluar argumentos por su validez lógica y evidencia, identificar sesgos propios y ajenos, y construir conclusiones proporcionales a la evidencia disponible — competencia base en Filosofía, Ciencias Políticas y en el método científico de Biología, Química y Física.",
+    "field_id": "philosophy",
+    "url": "https://esco.ec.europa.eu/en"
+  }
+]
