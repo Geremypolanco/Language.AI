@@ -20,6 +20,7 @@ from ..models import (
     AcademicLevel,
     AcademyEnrollment,
     AcademyProgress,
+    Assignment,
     Curriculum,
     CourseContent,
     CourseStub,
@@ -164,6 +165,76 @@ async def get_scenario_feedback(
     user = get_user_by_id_or_404(user_id)
     feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, user.native_lang)
     return {"feedback": feedback}
+
+
+def _get_submission_rows(user_id: str, course_id: str) -> dict[str, Any]:
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT assignment_id, response, feedback, grade FROM academy_assignment_submission "
+            "WHERE user_id=? AND course_id=?",
+            (user_id, course_id),
+        )
+        return {r["assignment_id"]: r for r in cur.fetchall()}
+
+
+@router.get("/{user_id}/courses/{course_id}/assignments", response_model=list[Assignment])
+async def get_assignments(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> list[Assignment]:
+    """Real, gradeable schoolwork for this course — a tarea, an informe, and
+    a proyecto — on top of the theory in get_course and the ungraded
+    practice scenario. Submission status/feedback/grade persist per user."""
+    user, field, level, stub = await _resolve_course(user_id, course_id)
+    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    submissions = _get_submission_rows(user_id, course_id)
+    assignments = []
+    for item in raw:
+        sub = submissions.get(item["id"])
+        assignments.append(
+            Assignment(
+                id=item["id"],
+                type=item["type"],
+                title=item["title"],
+                instructions=item["instructions"],
+                submitted=sub is not None,
+                response=sub["response"] if sub else "",
+                feedback=sub["feedback"] if sub else "",
+                grade=sub["grade"] if sub else "",
+            )
+        )
+    return assignments
+
+
+class AssignmentSubmitRequest(BaseModel):
+    response: str
+
+
+@router.post("/{user_id}/courses/{course_id}/assignments/{assignment_id}/submit")
+async def submit_assignment(
+    user_id: str,
+    course_id: str,
+    assignment_id: str,
+    payload: AssignmentSubmitRequest,
+    session: dict = Depends(auth.require_owner),
+) -> dict:
+    user, field, level, stub = await _resolve_course(user_id, course_id)
+    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    assignment = next((a for a in raw if a["id"] == assignment_id), None)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+
+    result = await hf_client.grade_assignment_submission(
+        assignment["title"], assignment["instructions"], payload.response, user.native_lang
+    )
+    submitted_at = datetime.now(UTC).isoformat()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_assignment_submission "
+            "(user_id, course_id, assignment_id, response, feedback, grade, submitted_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (user_id, assignment_id) DO UPDATE SET response=excluded.response, "
+            "feedback=excluded.feedback, grade=excluded.grade, submitted_at=excluded.submitted_at",
+            (user_id, course_id, assignment_id, payload.response, result["feedback"], result["grade"], submitted_at),
+        )
+    return {"grade": result["grade"], "feedback": result["feedback"]}
 
 
 @router.post("/{user_id}/courses/{course_id}/complete", response_model=AcademyProgress)

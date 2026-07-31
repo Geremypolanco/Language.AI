@@ -458,6 +458,111 @@ class HFClient:
             logger.exception("HF scenario feedback failed")
             return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
 
+    async def generate_assignments(
+        self,
+        field: "AcademicField",
+        level: "AcademicLevel",
+        course_id: str,
+        course_title: str,
+        course_description: str,
+        native_lang: str,
+    ) -> list[dict]:
+        """Generates (once) and caches real, gradeable schoolwork for a
+        course — one tarea, one informe, one proyecto — the same shape of
+        assigned work a normal school/university course gives, on top of
+        the theory in generate_course_content and the ungraded practice
+        scenario above."""
+        from .academy import build_assignments_prompt
+
+        cache_key = f"{course_id}:{native_lang}"
+        cache_path = self._cache_path("assignments", cache_key, "json")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return json.load(f)
+
+        if not settings.hf_configured:
+            return [
+                {
+                    "id": f"{course_id}:demo",
+                    "type": "tarea",
+                    "title": "Modo demo",
+                    "instructions": "Configura HF_TOKEN para generar tareas, informes y proyectos reales para este curso.",
+                }
+            ]
+
+        prompt = build_assignments_prompt(field, level.label_es, course_title, course_description, native_lang)
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1200,
+                temperature=0.6,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            items = json.loads(cleaned)
+            assignments = [
+                {
+                    "id": f"{course_id}:{i}",
+                    "type": item.get("type", "tarea"),
+                    "title": item.get("title", ""),
+                    "instructions": item.get("instructions", ""),
+                }
+                for i, item in enumerate(items)
+                if item.get("instructions")
+            ]
+        except Exception:
+            logger.exception("HF assignment generation failed, using offline fallback content")
+            return [
+                {
+                    "id": f"{course_id}:0",
+                    "type": "tarea",
+                    "title": "No se pudieron generar las tareas",
+                    "instructions": "Inténtalo de nuevo en un momento.",
+                }
+            ]
+
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(assignments, f)
+        return assignments
+
+    async def grade_assignment_submission(
+        self, assignment_title: str, instructions: str, response: str, native_lang: str
+    ) -> dict:
+        """Grades a learner's submitted tarea/informe/proyecto — not cached,
+        since it depends on what they personally wrote. Returns a short
+        qualitative grade plus feedback, written in native_lang."""
+        if not settings.hf_configured:
+            return {
+                "grade": "Modo demo",
+                "feedback": "Configura HF_TOKEN para recibir una calificación real de IA sobre tu entrega.",
+            }
+        prompt = (
+            f"A student was assigned this schoolwork:\n\nTitle: {assignment_title}\n"
+            f"Instructions: {instructions}\n\n"
+            f"Their submission:\n\n{response}\n\n"
+            f"Grade it fairly, as a real teacher would, in {native_lang}. "
+            f'Respond with ONLY a JSON object, no other text, shaped like: '
+            f'{{"grade": "a short qualitative grade, e.g. Excelente / Bien / Necesita mejorar", '
+            f'"feedback": "3-5 sentences: what they did well, what to improve, one concrete next step"}}'
+        )
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=350,
+                temperature=0.6,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            data = json.loads(cleaned)
+            return {"grade": data.get("grade", ""), "feedback": data.get("feedback", "")}
+        except Exception:
+            logger.exception("HF assignment grading failed")
+            return {"grade": "", "feedback": "No se pudo calificar la entrega en este momento — inténtalo de nuevo."}
+
     # ── Recommendations (books, songs, and other media) ─────────────────
 
     async def generate_recommendations(

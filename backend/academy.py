@@ -150,7 +150,11 @@ def build_course_prompt(field: AcademicField, level_label: str, course_title: st
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
         f"{level_label} depth. Structure it as 4 to 6 modules. Each module should teach real, accurate, "
         f"standard content for this topic — the kind of material an actual textbook or course would "
-        f"cover — with clear explanations and at least one concrete example per module. "
+        f"cover, using the correct professional/technical terms this field actually uses — with clear "
+        f"explanations and at least one concrete example per module. Explain each term the first time it "
+        f"appears clearly enough that a bright 10-year-old could follow the explanation, even though the "
+        f"terminology itself stays accurate and professional — simplify the explanation, never the "
+        f"vocabulary. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'
     )
@@ -167,4 +171,23 @@ def build_practice_scenario_prompt(
         f"fields, a design/debugging problem for engineering or computer science, a business case for "
         f"business fields, a text/argument to analyze for humanities, etc). End with a direct question "
         f"asking what the student would do. 2 to 4 short paragraphs. Output ONLY the scenario text."
+    )
+
+
+def build_assignments_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str
+) -> str:
+    return (
+        f"Design 3 pieces of real, gradeable schoolwork in {native_lang} for the course \"{course_title}\" "
+        f"({course_description}), part of a {field.name} curriculum at a {level_label} depth — the same "
+        f"kind of assigned work a normal school or university course would give: exactly one short "
+        f"homework task (\"tarea\"), one written report (\"informe\"), and one small project (\"proyecto\"), "
+        f"each appropriately scoped for self-study (a report or project a self-paced learner can realistically "
+        f"finish in one sitting, not a semester-long undertaking). "
+        f"Write instructions clear enough for a bright 10-year-old to follow, using the correct "
+        f"professional/technical vocabulary this field actually uses — simplify the explanation, never the "
+        f"terminology. Each item's instructions must say exactly what to submit (e.g. word count, what "
+        f"questions to answer, what the project should include). "
+        f"Respond with ONLY a JSON array of exactly 3 items, no other text, each shaped like: "
+        f'{{"type": "tarea|informe|proyecto", "title": "short title", "instructions": "what the student must do and submit"}}'
     )

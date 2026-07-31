@@ -221,6 +221,22 @@ class CourseContent(BaseModel):
     modules: list[CourseModule]
 
 
+class Assignment(BaseModel):
+    """A real, gradeable piece of schoolwork for a course — a homework task,
+    a written report, or a small project, the same kinds of work a normal
+    school or university course would assign — as opposed to the optional,
+    ungraded practice scenario (see get_practice_scenario)."""
+
+    id: str
+    type: str  # "tarea" | "informe" | "proyecto"
+    title: str
+    instructions: str
+    submitted: bool = False
+    response: str = ""
+    feedback: str = ""
+    grade: str = ""
+
+
 class AcademyEnrollment(BaseModel):
     field_id: str
     field_name: str

@@ -115,6 +115,17 @@ CREATE TABLE IF NOT EXISTS ai_feedback (
     note TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS academy_assignment_submission (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    assignment_id TEXT NOT NULL,
+    response TEXT NOT NULL,
+    feedback TEXT NOT NULL,
+    grade TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, assignment_id)
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -195,6 +206,17 @@ CREATE TABLE IF NOT EXISTS ai_feedback (
     rating TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_assignment_submission (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    assignment_id TEXT NOT NULL,
+    response TEXT NOT NULL,
+    feedback TEXT NOT NULL,
+    grade TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, assignment_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);

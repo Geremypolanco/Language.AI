@@ -500,3 +500,31 @@ def test_academy_practice_scenario_and_feedback_demo_mode():
         )
         assert feedback_res.status_code == 200
         assert feedback_res.json()["feedback"]
+
+
+def test_academy_assignments_generate_and_submit_demo_mode():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy7@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+
+        assignments_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments")
+        assert assignments_res.status_code == 200
+        assignments = assignments_res.json()
+        assert assignments
+        assert all(a["submitted"] is False for a in assignments)
+
+        assignment_id = assignments[0]["id"]
+        submit_res = client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/assignments/{assignment_id}/submit",
+            json={"response": "Mi respuesta a la tarea."},
+        )
+        assert submit_res.status_code == 200
+        assert "feedback" in submit_res.json()
+
+        # submission status now persists
+        assignments_after = client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments").json()
+        submitted = next(a for a in assignments_after if a["id"] == assignment_id)
+        assert submitted["submitted"] is True
+        assert submitted["response"] == "Mi respuesta a la tarea."

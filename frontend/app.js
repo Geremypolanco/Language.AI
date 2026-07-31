@@ -268,18 +268,38 @@ function t(key, ...args) {
   return entry;
 }
 
+// Captures each element's originally-authored Spanish content exactly once,
+// before any translation is ever applied to it. Without this, "no ${lang}
+// translation for this key, so don't touch the element" only actually means
+// "stays Spanish" the first time — once English (or any other language) has
+// been applied, switching back to Spanish would otherwise leave elements
+// with no explicit `es` dictionary entry stuck showing English forever,
+// since there'd be nothing left in the DOM to fall back to.
+function _captureI18nDefaults() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    if (el.dataset.i18nDefault === undefined) el.dataset.i18nDefault = el.textContent;
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    if (el.dataset.i18nDefault === undefined) el.dataset.i18nDefault = el.innerHTML;
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    if (el.dataset.i18nDefault === undefined) el.dataset.i18nDefault = el.placeholder;
+  });
+}
+
 function applyI18n() {
+  _captureI18nDefaults();
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const value = t(el.getAttribute("data-i18n"));
-    if (value !== undefined) el.textContent = value;
+    el.textContent = value !== undefined ? value : el.dataset.i18nDefault;
   });
   document.querySelectorAll("[data-i18n-html]").forEach((el) => {
     const value = t(el.getAttribute("data-i18n-html"));
-    if (value !== undefined) el.innerHTML = value;
+    el.innerHTML = value !== undefined ? value : el.dataset.i18nDefault;
   });
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     const value = t(el.getAttribute("data-i18n-placeholder"));
-    if (value !== undefined) el.placeholder = value;
+    el.placeholder = value !== undefined ? value : el.dataset.i18nDefault;
   });
   document.documentElement.lang = currentUiLang();
   $$(".ui-lang-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.uiLang === currentUiLang()));
@@ -1159,11 +1179,63 @@ const ACADEMY_CATEGORY_COLORS = {
   "Artes": ["#f472b6", "#a21caf"],
 };
 
+// Real illustrated bust avatars per tutor — not just an icon in a colored
+// circle. Skin tone, hair style, and hair color are derived deterministically
+// from the tutor's name (same tutor always looks the same); the shirt and
+// graduation-cap ribbon use the field's category color, tying every tutor
+// back to the same visual family as the main coach mascot.
+const _TUTOR_SKIN_TONES = ["#ffdbac", "#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#6b4226"];
+const _TUTOR_HAIR_COLORS = ["#1c1410", "#3b2a1a", "#5c3a21", "#8a4b28", "#2b2b2b", "#8a6d3b", "#6b4226"];
+
+function _hashString(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+function _tutorHairPath(style, hairColor) {
+  if (style === 0) {
+    // short, neat
+    return `<path d="M18 40 Q26 12 50 12 Q74 12 82 40 L82 26 Q72 18 50 18 Q28 18 18 26 Z" fill="${hairColor}"/>`;
+  }
+  if (style === 1) {
+    // long, past the shoulders
+    return `<path d="M14 62 Q10 16 50 12 Q90 16 86 62 L86 40 Q80 20 50 16 Q20 20 14 40 Z" fill="${hairColor}"/>`;
+  }
+  if (style === 2) {
+    // curly
+    return `
+      <circle cx="24" cy="28" r="10" fill="${hairColor}"/>
+      <circle cx="38" cy="15" r="11" fill="${hairColor}"/>
+      <circle cx="52" cy="11" r="11" fill="${hairColor}"/>
+      <circle cx="66" cy="15" r="11" fill="${hairColor}"/>
+      <circle cx="78" cy="28" r="10" fill="${hairColor}"/>
+    `;
+  }
+  return ""; // style 3: no hair drawn, cap sits directly on the head
+}
+
 function tutorAvatarSvg(field) {
   const [light, dark] = ACADEMY_CATEGORY_COLORS[field.category] || ["#2dd4bf", "#0f766e"];
+  const seed = _hashString((field.tutor_name || "") + (field.id || ""));
+  const skin = _TUTOR_SKIN_TONES[seed % _TUTOR_SKIN_TONES.length];
+  const hairColor = _TUTOR_HAIR_COLORS[(seed >> 3) % _TUTOR_HAIR_COLORS.length];
+  const hairStyle = (seed >> 6) % 4;
+
   return `
-    <span class="tutor-avatar" style="background: linear-gradient(135deg, ${light}, ${dark})">
-      <svg class="icon"><use href="#icon-${field.icon}"/></svg>
+    <span class="tutor-avatar" style="border-color: ${dark}" title="${escapeHtml(field.tutor_name || "")}">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="50" fill="#fff"/>
+        <path d="M12 100 Q18 66 50 66 Q82 66 88 100 Z" fill="${light}"/>
+        <circle cx="50" cy="45" r="27" fill="${skin}"/>
+        ${_tutorHairPath(hairStyle, hairColor)}
+        <circle cx="40" cy="47" r="3.1" fill="#26343c"/>
+        <circle cx="60" cy="47" r="3.1" fill="#26343c"/>
+        <path d="M41 58 Q50 63 59 58" stroke="#26343c" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M20 28 L50 15 L80 28 L50 41 Z" fill="${dark}"/>
+        <ellipse cx="50" cy="31.5" rx="14" ry="4.4" fill="${dark}"/>
+        <circle cx="50" cy="28" r="2.6" fill="${light}"/>
+      </svg>
     </span>
   `;
 }
@@ -1306,6 +1378,89 @@ async function openCourse(courseId, title) {
   $("#practice-scenario-box").innerHTML = "";
   $("#course-video-box").classList.add("hidden");
   $("#course-video-box").innerHTML = "";
+
+  loadCourseAssignments(courseId);
+}
+
+const ASSIGNMENT_TYPE_LABELS = { tarea: "Tarea", informe: "Informe", proyecto: "Proyecto" };
+
+async function loadCourseAssignments(courseId) {
+  const container = $("#course-assignments");
+  container.innerHTML = `<p class="recommendations-empty">Generando tareas, informes y proyectos…</p>`;
+  try {
+    const assignments = await api(`/api/academy/${state.userId}/courses/${courseId}/assignments`);
+    container.innerHTML = "";
+    for (const assignment of assignments) {
+      container.appendChild(renderAssignmentCard(courseId, assignment));
+    }
+  } catch (err) {
+    container.innerHTML = `<p class="recommendations-empty">No se pudieron cargar las tareas: ${err.message}</p>`;
+  }
+}
+
+function renderAssignmentCard(courseId, assignment) {
+  const card = document.createElement("div");
+  card.className = "assignment-card";
+  const typeLabel = ASSIGNMENT_TYPE_LABELS[assignment.type] || assignment.type;
+  card.innerHTML = `
+    <div class="assignment-card-header">
+      <span class="assignment-type-badge assignment-type-${escapeHtml(assignment.type)}">${escapeHtml(typeLabel)}</span>
+      <span class="assignment-title">${escapeHtml(assignment.title)}</span>
+    </div>
+    <p class="assignment-instructions">${escapeHtml(assignment.instructions)}</p>
+    <textarea class="assignment-response-input" rows="4" placeholder="Escribe tu entrega aquí…"></textarea>
+    <button class="btn btn-secondary assignment-submit-btn" type="button">${assignment.submitted ? "Volver a entregar" : "Entregar"}</button>
+    <div class="assignment-feedback hidden"></div>
+  `;
+
+  const textarea = card.querySelector(".assignment-response-input");
+  textarea.value = assignment.response || "";
+  const feedbackEl = card.querySelector(".assignment-feedback");
+  const header = card.querySelector(".assignment-card-header");
+  const submitBtn = card.querySelector(".assignment-submit-btn");
+
+  const showGrade = (grade) => {
+    let badge = card.querySelector(".assignment-grade-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "assignment-grade-badge";
+      header.appendChild(badge);
+    }
+    badge.textContent = grade;
+  };
+
+  if (assignment.submitted) {
+    if (assignment.grade) showGrade(assignment.grade);
+    if (assignment.feedback) {
+      feedbackEl.textContent = assignment.feedback;
+      feedbackEl.classList.remove("hidden");
+    }
+  }
+
+  submitBtn.addEventListener("click", async () => {
+    const response = textarea.value.trim();
+    if (!response) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Calificando…";
+    try {
+      const { grade, feedback } = await api(
+        `/api/academy/${state.userId}/courses/${courseId}/assignments/${assignment.id}/submit`,
+        { method: "POST", body: JSON.stringify({ response }) }
+      );
+      feedbackEl.textContent = feedback;
+      feedbackEl.classList.remove("hidden");
+      if (grade) showGrade(grade);
+      submitBtn.textContent = "Volver a entregar";
+    } catch (err) {
+      feedbackEl.textContent = `No se pudo calificar: ${err.message}`;
+      feedbackEl.classList.remove("hidden");
+      submitBtn.textContent = assignment.submitted ? "Volver a entregar" : "Entregar";
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  return card;
 }
 
 async function completeCurrentCourse() {

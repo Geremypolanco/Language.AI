@@ -235,6 +235,12 @@ methodology to Duolingo and Rosetta Stone. Generate a JSON array of exactly {len
 exercises for a learner studying {req.target_lang} (native language: {req.native_lang}),
 at CEFR level {req.unit.level.value}, on the topic "{req.unit.topic}".
 
+Write every instruction and example so a bright 10-year-old could follow it —
+short sentences, no unexplained jargon in the instructions themselves — while
+still using the correct grammatical terms (e.g. "verbo", "adjetivo",
+"pretérito") where naming a concept actually helps the learner. Simple
+explanation, accurate vocabulary — not a dumbed-down one.
+
 Personalize the example sentences and vocabulary choices around the learner's
 interests where natural: {interests}. {mistakes}
 
