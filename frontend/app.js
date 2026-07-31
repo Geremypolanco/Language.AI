@@ -9,6 +9,61 @@ function iconSvg(name, extraClass = "") {
   return `<svg class="${cls}"><use href="#icon-${name}"/></svg>`;
 }
 
+// ---------- Persona portraits ----------
+// Every teacher (5 core + one per Academy field, see backend/personas.py) is
+// a real, photorealistic HF-generated portrait, not a hand-drawn mascot. If
+// HF_TOKEN isn't configured (demo mode) the portrait request 404s/503s, so
+// every portrait falls back to a monogram in a stable, persona-specific
+// color rather than a broken image icon.
+const PERSONA_PALETTE = ["#4a5fd9", "#2f8f76", "#b3562f", "#6b4fb0", "#1c8ca8", "#a5395a", "#4f7a2f", "#7a5230"];
+
+function personaInitials(name) {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] || "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase();
+}
+
+function personaColor(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return PERSONA_PALETTE[hash % PERSONA_PALETTE.length];
+}
+
+function renderPersonaAvatar(container, persona) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!persona) {
+    container.innerHTML = `<svg class="icon icon-brand" style="width:100%;height:100%"><use href="#icon-brand"/></svg>`;
+    return;
+  }
+  const img = document.createElement("img");
+  img.className = "persona-portrait";
+  img.alt = persona.name;
+  img.src = persona.portrait_url;
+  img.loading = "lazy";
+  img.onerror = () => {
+    container.innerHTML = "";
+    const fallback = document.createElement("div");
+    fallback.className = "persona-fallback";
+    fallback.style.background = personaColor(persona.id);
+    fallback.textContent = personaInitials(persona.name);
+    container.appendChild(fallback);
+  };
+  container.appendChild(img);
+}
+
+async function loadPersonas() {
+  if (!state.personas.length) {
+    state.personas = await api("/api/personas");
+  }
+  return state.personas;
+}
+
+function currentPersona() {
+  return state.personas.find((p) => p.id === state.user?.tutor_persona_id) || null;
+}
+
 // Any language the tutor chat model knows works for exercises/conversation —
 // this list is what's offered in the picker, not a hard backend restriction.
 // Keep in sync with backend/hf_client.py's _MMS_LANG_CODES for TTS voice
@@ -93,6 +148,7 @@ const state = {
   audioChunks: [],
   lesson: null, // { exercises, index, correctCount, unitId, startedAt }
   lessonTimerHandle: null,
+  personas: [], // the 5 core teachers, fetched once per session — see loadPersonas()
 };
 
 async function api(path, opts = {}) {
@@ -258,6 +314,7 @@ function renderPlacementQuestion(ex, level, container) {
 async function finishPlacementTest(recommendedLevel) {
   $("#placement-progress-bar").style.width = "100%";
   $("#placement-result-level").textContent = recommendedLevel;
+  renderPersonaAvatar($("#placement-avatar-slot"), null); // no account/tutor chosen yet — brand mark
   showOnboardingStep("#onboarding-step-result");
   $("#placement-continue").onclick = () => createProfileAndEnter(recommendedLevel).catch((err) => alert(err.message));
 }
@@ -314,7 +371,7 @@ async function signOut() {
 async function enterApp() {
   state.user = await api(`/api/users/${state.userId}`);
   showScreen("#screen-main");
-  await Promise.all([loadPath(), loadProgress()]);
+  await Promise.all([loadPath(), loadProgress(), loadPersonas()]);
 }
 
 function refreshTopbar(progress) {
@@ -615,6 +672,7 @@ function renderMascot(data) {
   const card = $("#mascot-card");
   const badge = $("#mascot-badge");
   const message = $("#mascot-message");
+  renderPersonaAvatar($("#dash-avatar-slot"), currentPersona());
   card.classList.remove("mood-goal", "mood-cool", "mood-fire", "mood-curious", "mood-happy");
   if (data.daily_goal_minutes > 0 && data.today_minutes >= data.daily_goal_minutes) {
     card.classList.add("mood-goal");
@@ -995,6 +1053,14 @@ async function showAcademyCurriculum(progress) {
   $("#academy-current-field").textContent = progress.enrollment.field_name;
   $("#academy-current-level").textContent = ACADEMY_LEVEL_LABELS[progress.enrollment.level] || progress.enrollment.level;
 
+  api(`/api/academy/fields/${progress.enrollment.field_id}/faculty`)
+    .then((faculty) => {
+      renderPersonaAvatar($("#academy-faculty-avatar"), faculty);
+      $("#academy-faculty-name").textContent = `${faculty.name} — ${faculty.title}`;
+      $("#academy-faculty-philosophy").textContent = faculty.philosophy;
+    })
+    .catch((err) => console.error("No se pudo cargar el profesorado", err));
+
   const pct = progress.total_courses ? Math.round((progress.completed_course_ids.length / progress.total_courses) * 100) : 0;
   $("#academy-progress-fill").style.width = `${pct}%`;
   $("#academy-progress-caption").textContent = `${progress.completed_course_ids.length} de ${progress.total_courses} cursos completados`;
@@ -1024,11 +1090,20 @@ async function openCourse(courseId, title) {
   _academyState.currentCourseId = courseId;
   showScreen("#screen-course");
   $("#course-title").textContent = title;
+  $("#course-faculty-byline").innerHTML = "";
   const modulesEl = $("#course-modules");
   modulesEl.innerHTML = `<p class="recommendations-empty">Generando tu curso…</p>`;
   try {
     const course = await api(`/api/academy/${state.userId}/courses/${courseId}`);
     modulesEl.innerHTML = "";
+    if (course.faculty) {
+      const byline = $("#course-faculty-byline");
+      byline.innerHTML = `
+        <div class="persona-avatar-slot faculty-avatar"></div>
+        <p class="course-faculty-byline-text">Impartido por <strong>${course.faculty.name}</strong>, ${course.faculty.title.toLowerCase()}</p>
+      `;
+      renderPersonaAvatar(byline.querySelector(".persona-avatar-slot"), course.faculty);
+    }
     for (const mod of course.modules) {
       const section = document.createElement("div");
       section.innerHTML = `
@@ -1076,7 +1151,7 @@ function setupTabs() {
       if (btn.dataset.tab === "practice") setupPractice();
       if (btn.dataset.tab === "library") setupLibrary();
       if (btn.dataset.tab === "academy") setupAcademy();
-      if (btn.dataset.tab === "talk") ensureConversationSocket();
+      if (btn.dataset.tab === "talk") setupTalkTab();
       if (btn.dataset.tab === "progress") loadDashboard();
     });
   });
@@ -1440,6 +1515,7 @@ function renderFreeConversation(ex, container) {
           interests: state.user.interests,
           prompt: ex.prompt,
           user_answer: answer,
+          tutor_persona_id: state.user.tutor_persona_id || "",
         }),
       });
       showFeedback(container, true, "", reply);
@@ -1470,6 +1546,7 @@ async function finishLesson() {
       : "Sigue practicando esta unidad para dominarla.";
   $("#complete-mascot").classList.toggle("mood-fire", !!result.leveled_up);
   $("#complete-mascot-badge").innerHTML = iconSvg(result.leveled_up ? "sparkle" : "star");
+  renderPersonaAvatar($("#complete-avatar-slot"), currentPersona());
   showScreen("#screen-complete");
 }
 
@@ -1481,6 +1558,80 @@ $("#complete-continue").addEventListener("click", async () => {
 });
 
 // ---------- Conversation ("Talk Live") ----------
+
+function setupTalkTab() {
+  const persona = currentPersona();
+  if (!persona) {
+    renderPersonaPicker();
+    $("#persona-picker").classList.remove("hidden");
+    $("#call-frame").classList.add("hidden");
+    return;
+  }
+  $("#persona-picker").classList.add("hidden");
+  $("#call-frame").classList.remove("hidden");
+  renderPersonaAvatar($("#talk-avatar-slot"), persona);
+  ensureConversationSocket();
+}
+
+function renderPersonaPicker() {
+  const grid = $("#persona-picker-grid");
+  grid.innerHTML = "";
+  for (const persona of state.personas) {
+    const card = document.createElement("div");
+    card.className = "persona-card";
+    card.innerHTML = `
+      <div class="persona-avatar-slot"></div>
+      <p class="persona-card-name">${persona.name}</p>
+      <p class="persona-card-title">${persona.title}</p>
+      <p class="persona-card-philosophy">${persona.philosophy}</p>
+      <button type="button" class="btn-link persona-card-preview">Escuchar voz</button>
+    `;
+    renderPersonaAvatar(card.querySelector(".persona-avatar-slot"), persona);
+    card.querySelector(".persona-card-preview").addEventListener("click", (e) => {
+      e.stopPropagation();
+      previewPersonaVoice(persona);
+    });
+    card.addEventListener("click", () => choosePersona(persona));
+    grid.appendChild(card);
+  }
+}
+
+async function choosePersona(persona) {
+  state.user = await api(`/api/users/${state.userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ tutor_persona_id: persona.id }),
+  });
+  if (state.ws) {
+    state.ws.close();
+    state.ws = null;
+  }
+  setupTalkTab();
+}
+
+async function previewPersonaVoice(persona) {
+  try {
+    const res = await fetch("/api/content/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "Hola — seré tu maestro. Vamos a corregir cada detalle hasta que hables con confianza.",
+        target_lang: state.user?.target_lang || "es",
+        tutor_persona_id: persona.id,
+      }),
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    new Audio(URL.createObjectURL(blob)).play();
+  } catch (err) {
+    console.error("No se pudo reproducir la vista previa de voz", err);
+  }
+}
+
+$("#change-tutor-btn").addEventListener("click", () => {
+  renderPersonaPicker();
+  $("#persona-picker").classList.remove("hidden");
+  $("#call-frame").classList.add("hidden");
+});
 
 function ensureConversationSocket() {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
@@ -1511,9 +1662,32 @@ function ensureConversationSocket() {
 function addTranscriptBubble(role, text) {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
-  div.textContent = text;
   $("#transcript").appendChild(div);
-  $("#transcript").scrollTop = $("#transcript").scrollHeight;
+  const transcript = $("#transcript");
+  if (role === "assistant") {
+    typewriteInto(div, text, transcript);
+  } else {
+    div.textContent = text;
+    transcript.scrollTop = transcript.scrollHeight;
+  }
+}
+
+// A tutor reply appearing all at once, mid-conversation, reads as a canned
+// response — typing it out (like a real person composing a reply) is part
+// of what makes the persona feel like it's actually there, not a static
+// text dump.
+function typewriteInto(el, text, scrollContainer, charsPerTick = 2, tickMs = 18) {
+  el.classList.add("typing");
+  let i = 0;
+  const timer = setInterval(() => {
+    i = Math.min(text.length, i + charsPerTick);
+    el.textContent = text.slice(0, i);
+    if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    if (i >= text.length) {
+      clearInterval(timer);
+      el.classList.remove("typing");
+    }
+  }, tickMs);
 }
 
 function playConversationAudio(base64) {

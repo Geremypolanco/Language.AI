@@ -111,12 +111,19 @@ class UpdateUserRequest(BaseModel):
     interests: list[str] | None = None
     level: CEFRLevel | None = None
     daily_goal_minutes: int | None = None
+    tutor_persona_id: str | None = None
 
 
 @router.patch("/{user_id}", response_model=UserProfile)
 def update_user(
     user_id: str, payload: UpdateUserRequest, session: dict = Depends(auth.require_owner)
 ) -> UserProfile:
+    if payload.tutor_persona_id is not None:
+        from .. import personas
+
+        if not personas.get_core_teacher(payload.tutor_persona_id):
+            raise HTTPException(status_code=404, detail="Maestro no encontrado")
+
     with db.cursor() as cur:
         if payload.interests is not None:
             cur.execute("UPDATE users SET interests=? WHERE id=?", (json.dumps(payload.interests), user_id))
@@ -126,4 +133,6 @@ def update_user(
             cur.execute(
                 "UPDATE users SET daily_goal_minutes=? WHERE id=?", (max(1, payload.daily_goal_minutes), user_id)
             )
+        if payload.tutor_persona_id is not None:
+            cur.execute("UPDATE users SET tutor_persona_id=? WHERE id=?", (payload.tutor_persona_id, user_id))
     return get_user_by_id_or_404(user_id)

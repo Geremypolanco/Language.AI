@@ -112,6 +112,16 @@ _MMS_LANG_CODES = {
     "mk": "mkd",
 }
 
+# Parler-TTS steers voice identity through a natural-language description of
+# the speaker rather than a fixed voice ID (see backend/personas.py) — this
+# is what lets every teacher persona have its own describable voice without
+# per-persona speaker cloning. parler-tts-mini-multilingual-v1.1 covers only
+# these 8 languages; outside them (or if the call fails — HF's serverless
+# hosting for this model is best-effort, same as every other TTS call here)
+# text_to_speech falls back to the single shared MMS voice for that language.
+PARLER_MODEL = "parler-tts/parler-tts-mini-multilingual-v1.1"
+PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
+
 
 class HFClientError(RuntimeError):
     pass
@@ -288,13 +298,22 @@ class HFClient:
         scripts/ingest_oer.py, not on this request path. Returns
         {"modules": [...], "sources": [...]}; sources is empty when nothing
         relevant has been ingested for this field yet."""
+        from . import personas
         from .academy import build_course_prompt
+
+        # Faculty assignment is deterministic and free (no HF call) — compute
+        # it up front so every return path below, demo mode included, can
+        # show the assigned professor's identity.
+        faculty = personas.build_field_faculty(field)
+        faculty_info = {"id": faculty.id, "name": faculty.name, "title": faculty.title}
 
         cache_key = f"{course_id}:{native_lang}"
         cache_path = self._cache_path("course", cache_key, "json")
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
+                cached = json.load(f)
+            cached.setdefault("faculty", faculty_info)
+            return cached
 
         if not settings.hf_configured:
             return {
@@ -310,6 +329,7 @@ class HFClient:
                     }
                 ],
                 "sources": [],
+                "faculty": faculty_info,
             }
 
         from .oer import retrieval
@@ -327,6 +347,7 @@ class HFClient:
             course_description,
             native_lang,
             grounding=[c.text for c in chunks] or None,
+            professor_style=faculty.system_voice,
         )
         try:
             raw = await self.chat(
@@ -354,6 +375,7 @@ class HFClient:
                     }
                 ],
                 "sources": [],
+                "faculty": faculty_info,
             }
 
         seen: set[tuple[str, str]] = set()
@@ -364,7 +386,7 @@ class HFClient:
             seen.add((c.title, c.url))
             sources.append({"title": c.title, "source": c.source, "url": c.url})
 
-        result = {"modules": modules, "sources": sources}
+        result = {"modules": modules, "sources": sources, "faculty": faculty_info}
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(result, f)
         return result
@@ -463,8 +485,35 @@ class HFClient:
 
     # ── Text-to-speech ──────────────────────────────────────────────────
 
-    async def text_to_speech(self, text: str, target_lang: str) -> bytes | None:
-        lang_code = _MMS_LANG_CODES.get(target_lang.lower()[:2], "eng")
+    async def text_to_speech(
+        self, text: str, target_lang: str, voice_description: str | None = None
+    ) -> bytes | None:
+        """`voice_description` (see backend/personas.py TeacherPersona) asks
+        for a distinct persona voice via Parler-TTS when the language
+        supports it; omit it (or fall through on failure/unsupported
+        language) for the single shared per-language MMS voice."""
+        lang_code2 = target_lang.lower()[:2]
+
+        if voice_description and lang_code2 in PARLER_LANGS and settings.hf_configured:
+            parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
+            if os.path.exists(parler_cache_path):
+                with open(parler_cache_path, "rb") as f:
+                    return f.read()
+            try:
+                resp = await self._http.post(
+                    f"{settings.hf_models_endpoint}/{PARLER_MODEL}",
+                    headers=self._headers(),
+                    json={"inputs": text, "parameters": {"description": voice_description}},
+                )
+                if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                    with open(parler_cache_path, "wb") as f:
+                        f.write(resp.content)
+                    return resp.content
+                logger.warning("HF Parler-TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+            except Exception:
+                logger.exception("HF Parler-TTS failed, falling back to the shared MMS voice")
+
+        lang_code = _MMS_LANG_CODES.get(lang_code2, "eng")
         model = f"{settings.tts_model_prefix}-{lang_code}"
         cache_path = self._cache_path("tts", f"{model}:{text}", "flac")
         if os.path.exists(cache_path):

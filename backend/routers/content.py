@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from .. import auth
+from .. import auth, personas
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
@@ -19,11 +19,15 @@ router = APIRouter(prefix="/api/content", tags=["content"], dependencies=[Depend
 class TTSRequest(BaseModel):
     text: str
     target_lang: str
+    tutor_persona_id: str = ""
 
 
 @router.post("/tts")
 async def text_to_speech(payload: TTSRequest) -> Response:
-    audio = await hf_client.text_to_speech(payload.text, payload.target_lang)
+    persona = personas.get_core_teacher(payload.tutor_persona_id) if payload.tutor_persona_id else None
+    audio = await hf_client.text_to_speech(
+        payload.text, payload.target_lang, voice_description=persona.voice_description if persona else None
+    )
     if audio is None:
         raise HTTPException(status_code=503, detail="Audio no disponible — configura HF_TOKEN para activar texto a voz")
     return Response(content=audio, media_type="audio/flac")
@@ -58,6 +62,7 @@ class TutorReplyRequest(BaseModel):
     interests: list[str] = Field(default_factory=list)
     prompt: str
     user_answer: str
+    tutor_persona_id: str = ""
 
 
 @router.post("/tutor-reply")
@@ -66,8 +71,9 @@ async def tutor_reply(payload: TutorReplyRequest) -> dict:
     tutor reply instead of a canned "Correct!"/"Not quite" banner — the same
     tutor persona used in Talk Live, so a lesson's free-response question
     feels like part of one ongoing conversation rather than a form field."""
+    persona = personas.get_core_teacher(payload.tutor_persona_id) if payload.tutor_persona_id else None
     system_prompt = build_conversation_system_prompt(
-        payload.target_lang, payload.native_lang, payload.level, payload.interests
+        payload.target_lang, payload.native_lang, payload.level, payload.interests, persona=persona
     )
     history = [
         {"role": "assistant", "content": payload.prompt},

@@ -92,8 +92,22 @@ class UserProfile(BaseModel):
     gems: int = 0
     streak_freezes: int = 0
     daily_goal_minutes: int = 15
+    tutor_persona_id: str = ""
     created_at: str = ""
     last_active_date: str = ""
+
+
+class PersonaInfo(BaseModel):
+    """Public-facing view of a backend.personas.TeacherPersona — leaves out
+    the raw system/voice/portrait prompts, which are prompt-engineering
+    internals rather than something the picker UI needs to display."""
+
+    id: str
+    name: str
+    title: str
+    philosophy: str
+    correction_focus: str
+    portrait_url: str
 
 
 class AnswerSubmission(BaseModel):
@@ -238,11 +252,23 @@ class OERSourceCitation(BaseModel):
     url: str
 
 
+class FacultyByline(BaseModel):
+    """Slim professor identity attached to generated course content — see
+    backend/personas.py build_field_faculty. Not the full PersonaInfo (no
+    portrait_url here) since the frontend already has the field's faculty
+    from GET /api/academy/fields/{field_id}/faculty and just needs the byline."""
+
+    id: str
+    name: str
+    title: str
+
+
 class CourseContent(BaseModel):
     id: str
     title: str
     modules: list[CourseModule]
     sources: list[OERSourceCitation] = Field(default_factory=list)
+    faculty: FacultyByline | None = None
 
 
 class AcademyEnrollment(BaseModel):

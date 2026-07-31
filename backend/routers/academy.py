@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .. import academy, auth, db
+from .. import academy, auth, db, personas
 from ..hf_client import hf_client
 from ..models import (
     AcademicField,
@@ -23,7 +23,9 @@ from ..models import (
     Curriculum,
     CourseContent,
     CourseStub,
+    FacultyByline,
     OERSourceCitation,
+    PersonaInfo,
 )
 from .users import get_user_by_id_or_404
 
@@ -33,6 +35,14 @@ router = APIRouter(prefix="/api/academy", tags=["academy"])
 @router.get("/fields", response_model=list[AcademicField])
 def get_fields() -> list[AcademicField]:
     return academy.all_fields()
+
+
+@router.get("/fields/{field_id}/faculty", response_model=PersonaInfo)
+def get_field_faculty(field_id: str) -> PersonaInfo:
+    field = academy.get_field(field_id)
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    return personas.to_persona_info(personas.build_field_faculty(field))
 
 
 def _course_id(field_id: str, level: AcademicLevel, order: int) -> str:
@@ -138,6 +148,7 @@ async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.
         title=stub.title,
         modules=[{"title": m["title"], "content": m["content"]} for m in result["modules"]],
         sources=[OERSourceCitation(**s) for s in result.get("sources", [])],
+        faculty=FacultyByline(**result["faculty"]) if result.get("faculty") else None,
     )
 
 

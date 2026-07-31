@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
     gems INTEGER NOT NULL DEFAULT 0,
     streak_freezes INTEGER NOT NULL DEFAULT 0,
     daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
+    tutor_persona_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS users (
     gems INTEGER NOT NULL DEFAULT 0,
     streak_freezes INTEGER NOT NULL DEFAULT 0,
     daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
+    tutor_persona_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL
 );
@@ -245,6 +247,8 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN streak_freezes INTEGER NOT NULL DEFAULT 0")
     if "daily_goal_minutes" not in existing_cols:
         conn.execute("ALTER TABLE users ADD COLUMN daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
+    if "tutor_persona_id" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN tutor_persona_id TEXT NOT NULL DEFAULT ''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
 
     lesson_cols = {row[1] for row in conn.execute("PRAGMA table_info(lesson_history)").fetchall()}
@@ -261,6 +265,7 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS gems INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freezes INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tutor_persona_id TEXT NOT NULL DEFAULT ''")
         cur.execute("ALTER TABLE lesson_history ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()

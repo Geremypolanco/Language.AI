@@ -120,6 +120,7 @@ def build_course_prompt(
     course_description: str,
     native_lang: str,
     grounding: list[str] | None = None,
+    professor_style: str | None = None,
 ) -> str:
     grounding_block = ""
     if grounding:
@@ -132,12 +133,14 @@ def build_course_prompt(
             f"what's in them, but prefer them over invented specifics when they cover the topic:\n\n"
             f"{excerpts}\n"
         )
+    style_block = f"\n\n{professor_style}" if professor_style else ""
     return (
         f"Write self-study course material in {native_lang} for the course \"{course_title}\" "
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
         f"{level_label} depth. Structure it as 4 to 6 modules. Each module should teach real, accurate, "
         f"standard content for this topic — the kind of material an actual textbook or course would "
         f"cover — with clear explanations and at least one concrete example per module."
+        f"{style_block}"
         f"{grounding_block}\n\n"
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'

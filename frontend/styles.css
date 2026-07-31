@@ -314,12 +314,20 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .mascot-card.mood-happy { background: linear-gradient(135deg, rgba(88,204,2,0.12), rgba(28,176,246,0.06)); border-color: rgba(88,204,2,0.28); }
 
 .mascot-avatar { position: relative; flex-shrink: 0; width: 76px; height: 76px; }
-.mascot-figure { width: 100%; height: 100%; animation: mascot-bob 2.6s ease-in-out infinite; filter: drop-shadow(0 4px 6px rgba(20,80,120,0.25)); }
-.mascot-pupil { transition: transform 0.2s ease; }
-.mood-fire .mascot-figure { animation-duration: 1.1s; }
-@keyframes mascot-bob {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-6px) rotate(2deg); }
+.mascot-avatar .persona-avatar-slot { width: 100%; height: 100%; animation: persona-breathe 3.4s ease-in-out infinite; }
+.mood-fire .persona-avatar-slot { animation-duration: 1.4s; }
+@keyframes persona-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+
+/* ── Persona portraits (real faculty photos, with a monogram fallback when
+   HF_TOKEN isn't configured — see app.js renderPersonaAvatar) ──────────── */
+.persona-avatar-slot { position: relative; display: block; border-radius: 50%; overflow: hidden; flex-shrink: 0; }
+.persona-portrait { width: 100%; height: 100%; object-fit: cover; display: block; }
+.persona-fallback {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.02em;
 }
 .mascot-badge {
   position: absolute;
@@ -451,10 +459,29 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 
 /* ── Lesson-complete rewards ────────────────────────────────────────── */
 .complete-mascot { position: relative; width: 110px; height: 110px; margin: 0 auto 8px; }
-.complete-mascot .mascot-figure { width: 100%; height: 100%; animation: mascot-bob 1.2s ease-in-out infinite; filter: drop-shadow(0 6px 10px rgba(20,80,120,0.3)); }
+.complete-mascot .persona-avatar-slot { width: 100%; height: 100%; animation: persona-breathe 1.8s ease-in-out infinite; }
 .complete-mascot .mascot-badge { width: 36px; height: 36px; font-size: 1.35rem; }
 .complete-rewards { display: flex; justify-content: center; gap: 10px; margin: 12px 0; }
 .reward-pill { background: var(--gray-bg); border-radius: 20px; padding: 8px 16px; font-weight: 800; }
+
+/* ── Persona picker ("elige a tu maestro") ──────────────────────────── */
+.persona-picker { max-width: 900px; margin: 0 auto; text-align: center; }
+.persona-picker-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-top: 20px;
+}
+.persona-card {
+  background: #fff; border: 1px solid var(--gray-border); border-radius: var(--radius);
+  padding: 18px 14px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: pointer; text-align: center; transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.persona-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(20,40,80,0.1); border-color: var(--blue); }
+@media (prefers-color-scheme: dark) { .persona-card { background: #1b2b32; } }
+.persona-card .persona-avatar-slot { width: 96px; height: 96px; box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+.persona-card-name { font-weight: 800; font-size: 1rem; margin: 0; }
+.persona-card-title { font-size: 0.78rem; font-weight: 700; color: var(--blue); margin: 0; text-transform: uppercase; letter-spacing: 0.03em; }
+.persona-card-philosophy { font-size: 0.82rem; color: #898781; margin: 0; line-height: 1.4; }
+.persona-card-preview { margin-top: 4px; }
+.change-tutor-btn { display: block; margin: 0 auto 4px; }
 
 .call-frame { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 .avatar-tile {
@@ -472,7 +499,7 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
   display: flex; align-items: center; justify-content: center;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.avatar .mascot-figure { width: 78%; height: 78%; }
+.avatar .persona-avatar-slot { width: 78%; height: 78%; }
 .avatar.listening { box-shadow: 0 0 0 8px rgba(88,204,2,0.35); }
 .avatar.speaking { animation: avatar-pulse 0.6s ease-in-out infinite; }
 @keyframes avatar-pulse {
@@ -493,6 +520,11 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .transcript .msg { padding: 6px 10px; border-radius: 10px; max-width: 85%; font-size: 0.9rem; }
 .transcript .msg.user { align-self: flex-end; background: var(--blue); color: #fff; }
 .transcript .msg.assistant { align-self: flex-start; background: var(--gray-bg); }
+.transcript .msg.assistant.typing::after {
+  content: ""; display: inline-block; width: 2px; height: 0.9em; margin-left: 2px;
+  background: currentColor; vertical-align: -0.1em; animation: cursor-blink 0.8s step-end infinite;
+}
+@keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 .call-controls { display: flex; flex-direction: column; gap: 10px; }
 .mic-btn {
@@ -675,6 +707,19 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .academy-curriculum-header h2 { margin: 0 0 4px; }
 .academy-progress-track { max-width: 720px; margin: 0 auto; }
 #academy-progress-caption { max-width: 720px; margin: 8px auto 20px; }
+
+.faculty-card {
+  max-width: 720px; margin: 0 auto 20px; display: flex; align-items: center; gap: 16px;
+  background: linear-gradient(135deg, rgba(28,176,246,0.08), rgba(88,204,2,0.06));
+  border: 1px solid rgba(28,176,246,0.18); border-radius: var(--radius); padding: 16px 20px;
+}
+.faculty-card .faculty-avatar { width: 64px; height: 64px; flex-shrink: 0; }
+.faculty-label { margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #898781; }
+.faculty-name { margin: 2px 0 2px; font-weight: 800; font-size: 1.05rem; }
+.course-faculty-byline { max-width: 640px; margin: 0 auto 20px; display: flex; align-items: center; gap: 12px; }
+.course-faculty-byline .faculty-avatar { width: 44px; height: 44px; flex-shrink: 0; }
+.course-faculty-byline-text { font-size: 0.85rem; color: #898781; }
+.course-faculty-byline-text strong { color: var(--text); }
 
 .academy-course-list { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
 .course-item {

@@ -16,7 +16,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db
+from .. import auth, db, personas
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
@@ -64,7 +64,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
         await websocket.close()
         return
 
-    system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests)
+    persona = personas.get_core_teacher(user.tutor_persona_id) if user.tutor_persona_id else None
+    system_prompt = build_conversation_system_prompt(
+        user.target_lang, user.native_lang, user.level, user.interests, persona=persona
+    )
     history = _recent_history(user_id)
 
     await websocket.send_json(
@@ -75,6 +78,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             # code colliding with the Spanish word "en").
             "type": "ready",
             "message": f"Conversación lista — nivel {user.level.value} ({user.target_lang.upper()}).",
+            "persona": {"id": persona.id, "name": persona.name} if persona else None,
         }
     )
 
@@ -115,7 +119,9 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            audio = await hf_client.text_to_speech(reply_text, user.target_lang)
+            audio = await hf_client.text_to_speech(
+                reply_text, user.target_lang, voice_description=persona.voice_description if persona else None
+            )
             audio_b64 = base64.b64encode(audio).decode() if audio else None
 
             await websocket.send_json(
