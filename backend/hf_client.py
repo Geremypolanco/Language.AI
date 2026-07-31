@@ -149,6 +149,13 @@ PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
 # with real traffic.
 PARLER_SPACE_ID = "etrotta/parler-tts-mini-multilingual-v1.1"
 
+# The fixed generation seed that Space's own gen_tts() hardcodes internally
+# (read directly from its app.py source: `SEED = 42; set_seed(SEED)` before
+# every generation) — documented here, not re-implemented, since the app
+# never controls the Space's internals directly; it's what makes a fixed
+# voice_description reproduce a consistent-sounding voice call to call.
+PARLER_VOICE_SEED = 42
+
 
 def _call_parler_space(text: str, description: str) -> bytes | None:
     """Synchronous by necessity (gradio_client isn't async) — always called
@@ -236,14 +243,43 @@ class HFClient:
                 logger.exception("HF exercise generation failed, using offline fallback content")
         return _fallback_exercises(req, mix_override)
 
-    async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
+    async def conversation_reply(
+        self, system_prompt: str, history: list[dict[str, str]], temperature: float = 0.8
+    ) -> dict:
+        """Returns {"spoken_response": str, "critique_metrics": dict}. The
+        model is instructed (see curriculum.build_conversation_system_prompt's
+        OUTPUT FORMAT section) to emit both in one JSON object per turn —
+        critique_metrics is a structured record of that turn's grammar/
+        pronunciation/comprehension/knowledge corrections (for the app to
+        track over time, e.g. recurring mistakes), separate from the
+        natural-language spoken_response actually sent to the learner and to
+        TTS. `temperature` is per-persona (see personas.TeacherPersona.
+        sampling_temperature) — precise personas sample lower, expressive
+        ones higher.
+
+        Falls back to treating the raw text as spoken_response with empty
+        critique_metrics if the model doesn't return valid JSON — the
+        conversation must never break just because structured parsing failed."""
         if not settings.hf_configured:
-            return (
-                "(modo demo — configura HF_TOKEN para activar al tutor de IA real) "
-                "¡Qué bien, cuéntame más!"
-            )
+            return {
+                "spoken_response": (
+                    "(modo demo — configura HF_TOKEN para activar al tutor de IA real) "
+                    "¡Qué bien, cuéntame más!"
+                ),
+                "critique_metrics": {},
+            }
         messages = [{"role": "system", "content": system_prompt}, *history]
-        return await self.chat(messages, max_tokens=300, temperature=0.8)
+        raw = await self.chat(messages, max_tokens=500, temperature=temperature)
+        try:
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            data = json.loads(cleaned)
+            spoken = str(data.get("spoken_response", "")).strip()
+            if not spoken:
+                raise ValueError("empty spoken_response")
+            return {"spoken_response": spoken, "critique_metrics": data.get("critique_metrics") or {}}
+        except Exception:
+            logger.exception("Tutor reply wasn't valid structured JSON — using the raw text as spoken_response")
+            return {"spoken_response": raw.strip(), "critique_metrics": {}}
 
     # ── Library (on-demand AI-generated books) ──────────────────────────
 

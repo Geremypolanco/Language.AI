@@ -312,3 +312,17 @@ class DashboardData(BaseModel):
     leaderboard: list[LeaderboardEntry]
     your_weekly_xp: int
     your_rank: int | None
+
+
+class CritiqueMetrics(BaseModel):
+    """Structured record of one conversation turn's corrections — see
+    curriculum.build_conversation_system_prompt's OUTPUT FORMAT section and
+    hf_client.conversation_reply. Each list holds zero or more flagged
+    issues; loosely typed as dicts (rather than strict per-field models)
+    since the exact keys the model uses can vary slightly turn to turn and
+    over-constraining them would make normal variation fail validation."""
+
+    grammar: list[dict] = Field(default_factory=list)
+    pronunciation: list[dict] = Field(default_factory=list)
+    comprehension: list[dict] = Field(default_factory=list)
+    knowledge: list[dict] = Field(default_factory=list)

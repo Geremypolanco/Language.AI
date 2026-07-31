@@ -79,8 +79,10 @@ async def tutor_reply(payload: TutorReplyRequest) -> dict:
         {"role": "assistant", "content": payload.prompt},
         {"role": "user", "content": payload.user_answer},
     ]
-    reply = await hf_client.conversation_reply(system_prompt, history)
-    return {"reply": reply}
+    reply = await hf_client.conversation_reply(
+        system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
+    )
+    return {"reply": reply["spoken_response"], "critique_metrics": reply["critique_metrics"]}
 
 
 class RecommendationsRequest(BaseModel):

@@ -106,6 +106,29 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     completed_at TEXT NOT NULL,
     PRIMARY KEY (user_id, course_id)
 );
+
+-- A queryable snapshot of backend.personas.build_field_faculty()'s output —
+-- NOT the source of truth (that stays the deterministic Python function,
+-- computed live on every request so it can never drift from the code that
+-- actually assigns personas) but a materialized copy for SQL-side admin/BI
+-- queries, populated by scripts/export_faculty_directory.py. The app itself
+-- never reads this table on any request path.
+CREATE TABLE IF NOT EXISTS faculty_directory (
+    field_id TEXT PRIMARY KEY,
+    field_name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    persona_id TEXT NOT NULL,
+    persona_name TEXT NOT NULL,
+    persona_title TEXT NOT NULL,
+    archetype TEXT NOT NULL,
+    correction_focus TEXT NOT NULL,
+    motivational_style TEXT NOT NULL,
+    voice_description TEXT NOT NULL,
+    voice_seed INTEGER NOT NULL DEFAULT 42,
+    sampling_temperature REAL NOT NULL,
+    oer_namespace TEXT NOT NULL,
+    generated_at TEXT NOT NULL
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -177,6 +200,29 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     PRIMARY KEY (user_id, course_id)
+);
+
+-- A queryable snapshot of backend.personas.build_field_faculty()'s output —
+-- NOT the source of truth (that stays the deterministic Python function,
+-- computed live on every request so it can never drift from the code that
+-- actually assigns personas) but a materialized copy for SQL-side admin/BI
+-- queries, populated by scripts/export_faculty_directory.py. The app itself
+-- never reads this table on any request path.
+CREATE TABLE IF NOT EXISTS faculty_directory (
+    field_id TEXT PRIMARY KEY,
+    field_name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    persona_id TEXT NOT NULL,
+    persona_name TEXT NOT NULL,
+    persona_title TEXT NOT NULL,
+    archetype TEXT NOT NULL,
+    correction_focus TEXT NOT NULL,
+    motivational_style TEXT NOT NULL,
+    voice_description TEXT NOT NULL,
+    voice_seed INTEGER NOT NULL DEFAULT 42,
+    sampling_temperature REAL NOT NULL,
+    oer_namespace TEXT NOT NULL,
+    generated_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);

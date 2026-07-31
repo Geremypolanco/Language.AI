@@ -1647,6 +1647,8 @@ function ensureConversationSocket() {
       addTranscriptBubble("user", msg.text);
     } else if (msg.type === "reply") {
       addTranscriptBubble("assistant", msg.text);
+      const critiqueEl = renderCritiqueMetrics(msg.critique_metrics);
+      if (critiqueEl) $("#transcript").appendChild(critiqueEl);
       if (msg.audio_base64) {
         playConversationAudio(msg.audio_base64);
       }
@@ -1657,6 +1659,34 @@ function ensureConversationSocket() {
   ws.addEventListener("close", () => {
     $("#call-status").textContent = "Desconectado — cambia de pestaña para reconectar.";
   });
+}
+
+// Structured record of one turn's corrections (see backend hf_client.
+// conversation_reply's critique_metrics) — a separate, scannable list of
+// what was actually flagged, distinct from the natural spoken reply above it.
+const CRITIQUE_LABELS = {
+  grammar: "Gramática",
+  pronunciation: "Pronunciación",
+  comprehension: "Comprensión",
+  knowledge: "Conocimiento",
+};
+
+function renderCritiqueMetrics(critiqueMetrics) {
+  if (!critiqueMetrics) return null;
+  const items = [];
+  for (const [key, label] of Object.entries(CRITIQUE_LABELS)) {
+    for (const entry of critiqueMetrics[key] || []) {
+      const detail = entry.error || entry.issue || entry.claim || "";
+      const fix = entry.correction || entry.fix || "";
+      if (!detail && !fix) continue;
+      items.push(`<li><strong>${label}:</strong> ${detail}${fix ? ` → ${fix}` : ""}</li>`);
+    }
+  }
+  if (!items.length) return null;
+  const div = document.createElement("div");
+  div.className = "critique-metrics";
+  div.innerHTML = `<p class="critique-metrics-label">Correcciones de este turno</p><ul>${items.join("")}</ul>`;
+  return div;
 }
 
 function addTranscriptBubble(role, text) {

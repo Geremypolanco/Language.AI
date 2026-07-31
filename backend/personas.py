@@ -65,6 +65,12 @@ class TeacherPersona:
     motivational_style: str
     voice_description: str
     portrait_prompt: str
+    # Chat sampling temperature (see hf_client.conversation_reply) — a real,
+    # per-persona lever, not the fabricated "adjust temperature from user
+    # retention telemetry" some product briefs ask for: precise, rule-bound
+    # personas sample lower (more consistent phrasing), expressive/creative
+    # ones sample higher (more natural variation), matching each archetype.
+    sampling_temperature: float = 0.8
     field_id: str | None = None
 
 
@@ -109,6 +115,7 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "background, shallow depth of field, shot on an 85mm portrait lens, "
             "photorealistic, natural skin texture, sharp focus on the eyes"
         ),
+        sampling_temperature=0.55,
     ),
     TeacherPersona(
         id="core-marcus",
@@ -150,6 +157,7 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "field, shot on an 85mm portrait lens, photorealistic, natural skin "
             "texture, sharp focus on the eyes"
         ),
+        sampling_temperature=0.9,
     ),
     TeacherPersona(
         id="core-amara",
@@ -192,6 +200,7 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "portrait lens, photorealistic, natural skin texture, sharp focus on "
             "the eyes"
         ),
+        sampling_temperature=0.6,
     ),
     TeacherPersona(
         id="core-sofia",
@@ -232,6 +241,7 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "field, shot on an 85mm portrait lens, photorealistic, natural skin "
             "texture, sharp focus on the eyes"
         ),
+        sampling_temperature=0.7,
     ),
     TeacherPersona(
         id="core-theo",
@@ -273,6 +283,7 @@ CORE_TEACHERS: list[TeacherPersona] = [
             "85mm portrait lens, photorealistic, natural skin texture, sharp "
             "focus on the eyes"
         ),
+        sampling_temperature=0.85,
     ),
 ]
 
@@ -325,6 +336,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "Competence-based: measure progress against real engineering "
             "standards ('that's production-grade reasoning now'), not effort."
         ),
+        temperature=0.6,
     ),
     "Negocios": dict(
         archetype="pragmatic_executive",
@@ -340,6 +352,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "case, not compliance with a template — 'that's a pitch you could "
             "actually defend in the room.'"
         ),
+        temperature=0.65,
     ),
     "Salud": dict(
         archetype="clinical_empathetic_rigorous",
@@ -356,6 +369,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "getting this right, then credit the learner specifically for "
             "reasoning carefully rather than guessing."
         ),
+        temperature=0.55,
     ),
     "Ciencias": dict(
         archetype="empirical_socratic",
@@ -370,6 +384,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "Competence-based: treat the learner reaching the right question as "
             "the actual win, before the answer even arrives."
         ),
+        temperature=0.6,
     ),
     "Ingeniería": dict(
         archetype="applied_systematic",
@@ -384,6 +399,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "Competence-based: confirm explicitly when a design now survives an "
             "edge case it previously failed — the fix itself is the reward."
         ),
+        temperature=0.55,
     ),
     "Humanidades": dict(
         archetype="discursive_critical",
@@ -398,6 +414,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "Autonomy-based: treat a sharpened argument as the learner's own "
             "intellectual ground gained, not a rule they've now satisfied."
         ),
+        temperature=0.75,
     ),
     "Artes": dict(
         archetype="creative_critical",
@@ -412,6 +429,7 @@ _CATEGORY_ARCHETYPES: dict[str, dict[str, str]] = {
             "Relatedness-based: critique the way one working artist talks to "
             "another — direct, but from inside a shared craft, not above it."
         ),
+        temperature=0.85,
     ),
 }
 
@@ -518,5 +536,6 @@ def build_field_faculty(field: "AcademicField") -> TeacherPersona:
             f"on an 85mm portrait lens, photorealistic, natural skin texture, sharp "
             f"focus on the eyes"
         ),
+        sampling_temperature=category_info["temperature"],
         field_id=field.id,
     )

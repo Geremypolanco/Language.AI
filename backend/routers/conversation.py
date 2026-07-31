@@ -114,7 +114,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history.append({"role": "user", "content": transcript})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            reply_text = await hf_client.conversation_reply(system_prompt, history)
+            reply = await hf_client.conversation_reply(
+                system_prompt, history, temperature=persona.sampling_temperature if persona else 0.8
+            )
+            reply_text = reply["spoken_response"]
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
@@ -129,6 +132,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                     "type": "reply",
                     "text": reply_text,
                     "audio_base64": audio_b64,
+                    "critique_metrics": reply["critique_metrics"],
                 }
             )
     except WebSocketDisconnect:

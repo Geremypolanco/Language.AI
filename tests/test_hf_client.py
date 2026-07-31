@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from backend import hf_client as hf_client_module
 from backend.config import settings
@@ -32,6 +33,43 @@ def test_text_to_speech_falls_back_to_parler_space_when_direct_endpoint_errors(m
             hf_client.text_to_speech("Hola", "es", voice_description="a distinctive test voice")
         )
         assert audio == b"FAKE_SPACE_AUDIO"
+
+    _with_hf_configured(run)
+
+
+def test_conversation_reply_parses_the_structured_json_contract(monkeypatch):
+    payload = {
+        "critique_metrics": {
+            "grammar": [{"error": "ser vs estar", "correction": "estoy", "explanation": "temporary state"}],
+            "pronunciation": [],
+            "comprehension": [],
+            "knowledge": [],
+        },
+        "spoken_response": "¡Casi! Se dice 'estoy cansado' — ¿qué más hiciste hoy?",
+    }
+
+    async def fake_chat(messages, max_tokens=500, temperature=0.8):
+        assert temperature == 0.55  # Elena's sampling_temperature, passed through
+        return json.dumps(payload)
+
+    def run():
+        monkeypatch.setattr(hf_client, "chat", fake_chat)
+        result = asyncio.run(hf_client.conversation_reply("system prompt", [], temperature=0.55))
+        assert result["spoken_response"] == payload["spoken_response"]
+        assert result["critique_metrics"]["grammar"][0]["correction"] == "estoy"
+
+    _with_hf_configured(run)
+
+
+def test_conversation_reply_falls_back_to_raw_text_on_bad_json(monkeypatch):
+    async def fake_chat(messages, max_tokens=500, temperature=0.8):
+        return "not json at all, just a plain reply"
+
+    def run():
+        monkeypatch.setattr(hf_client, "chat", fake_chat)
+        result = asyncio.run(hf_client.conversation_reply("system prompt", []))
+        assert result["spoken_response"] == "not json at all, just a plain reply"
+        assert result["critique_metrics"] == {}
 
     _with_hf_configured(run)
 
