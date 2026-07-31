@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from .. import auth
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
-from ..models import CEFRLevel
+from ..models import CEFRLevel, Recommendation
 
 # Gated behind "signed in" (any account, not a specific user_id) — these calls
 # hit paid HF inference, so they shouldn't be reachable by anonymous traffic
@@ -75,3 +75,19 @@ async def tutor_reply(payload: TutorReplyRequest) -> dict:
     ]
     reply = await hf_client.conversation_reply(system_prompt, history)
     return {"reply": reply}
+
+
+class RecommendationsRequest(BaseModel):
+    target_lang: str
+    level: CEFRLevel
+    interests: list[str] = Field(default_factory=list)
+
+
+@router.post("/recommendations", response_model=list[Recommendation])
+async def get_recommendations(payload: RecommendationsRequest) -> list[Recommendation]:
+    """Suggests real books, songs, podcasts, and shows to reinforce learning
+    outside the app's own lessons — the user's own request: "la plataforma
+    debe de sugerir libros, canciones, y otras cosas que ayude a mejorar aún
+    más el aprendizaje"."""
+    items = await hf_client.generate_recommendations(payload.target_lang, payload.level.value, payload.interests)
+    return [Recommendation(**item) for item in items]

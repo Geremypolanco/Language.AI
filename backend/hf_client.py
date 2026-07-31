@@ -14,12 +14,16 @@ import json
 import logging
 import os
 import re
+from typing import TYPE_CHECKING
 
 import httpx
 
 from .config import settings
 from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_es
 from .models import Exercise, ExerciseType
+
+if TYPE_CHECKING:
+    from .models import BookStub
 
 logger = logging.getLogger("lingua.hf_client")
 
@@ -174,6 +178,124 @@ class HFClient:
             )
         messages = [{"role": "system", "content": system_prompt}, *history]
         return await self.chat(messages, max_tokens=300, temperature=0.8)
+
+    # ── Library (on-demand AI-generated books) ──────────────────────────
+
+    async def generate_book_content(self, stub: "BookStub", target_lang: str, native_lang: str) -> str:
+        """Generates (once) and caches the full text of a library book, keyed by
+        (book id, target language) so the same title read in two different
+        target languages gets two independently generated, cached copies."""
+        from .library import build_book_generation_prompt
+
+        cache_path = self._cache_path("book", f"{stub.id}:{target_lang}", "txt")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return f.read()
+
+        if not settings.hf_configured:
+            return (
+                f"(Modo demo — configura HF_TOKEN para generar el libro completo con IA)\n\n"
+                f'"{stub.title}" es una historia de {stub.genre_label.lower()} pensada para el nivel '
+                f"{stub.level.value} en {target_lang}. Cuando actives tu clave de Hugging Face, esta "
+                f"página mostrará el libro completo, generado especialmente para ti."
+            )
+
+        prompt = build_book_generation_prompt(stub, target_lang, native_lang)
+        try:
+            content = await self.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": "You are a language-learning story author. You write only in the "
+                        "requested target language, at the requested CEFR difficulty, with no "
+                        "explanations outside the story itself.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1400,
+                temperature=0.85,
+            )
+        except Exception:
+            logger.exception("HF book generation failed, using offline fallback content")
+            return (
+                f"(No se pudo generar el libro en este momento — inténtalo de nuevo en un momento)\n\n"
+                f'"{stub.title}" — {stub.genre_label}, nivel {stub.level.value}.'
+            )
+
+        # Only successful HF generations are cached — a demo/error message
+        # must never get stuck on disk and block real content once a token
+        # is configured (same rule the image/TTS caches already follow).
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return content
+
+    # ── Recommendations (books, songs, and other media) ─────────────────
+
+    async def generate_recommendations(
+        self, target_lang: str, level: str, interests: list[str]
+    ) -> list[dict]:
+        if not settings.hf_configured:
+            interest_note = f" relacionado con {interests[0]}" if interests else ""
+            return [
+                {
+                    "kind": "book",
+                    "title": f"Busca cuentos ilustrados para nivel {level}",
+                    "creator": f"En {target_lang}",
+                    "reason": f"Ideal para tu nivel{interest_note} — configura HF_TOKEN para recomendaciones con IA.",
+                },
+                {
+                    "kind": "song",
+                    "title": f"Explora listas de música popular en {target_lang}",
+                    "creator": "Playlists para principiantes",
+                    "reason": "Escuchar música es una forma natural de entrenar el oído.",
+                },
+                {
+                    "kind": "podcast",
+                    "title": f"Busca podcasts para aprender {target_lang}",
+                    "creator": "Episodios cortos y lentos",
+                    "reason": "Los podcasts para estudiantes narran más despacio y repiten vocabulario clave.",
+                },
+            ]
+
+        interests_note = f" The learner is interested in: {', '.join(interests)}." if interests else ""
+        prompt = (
+            f"Suggest 6 real, well-known books, songs, podcasts, or shows that would help someone "
+            f"learn {target_lang} at CEFR level {level}.{interests_note} Only suggest items you are "
+            f"confident actually exist — do not invent titles or creators. "
+            f'Respond with ONLY a JSON array, no other text, each item shaped like: '
+            f'{{"kind": "book|song|podcast|show", "title": "...", "creator": "author or artist name", '
+            f'"reason": "one short sentence on why it fits this level/interest"}}'
+        )
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=900,
+                temperature=0.6,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            items = json.loads(cleaned)
+            return [
+                {
+                    "kind": item.get("kind", "book"),
+                    "title": item.get("title", ""),
+                    "creator": item.get("creator", ""),
+                    "reason": item.get("reason", ""),
+                }
+                for item in items
+            ]
+        except Exception:
+            logger.exception("HF recommendations generation failed, using offline fallback content")
+            return [
+                {
+                    "kind": "book",
+                    "title": f"Busca cuentos ilustrados para nivel {level}",
+                    "creator": f"En {target_lang}",
+                    "reason": "No se pudieron generar recomendaciones personalizadas en este momento.",
+                }
+            ]
 
     # ── Text-to-image (vocab flashcards) ────────────────────────────────
 

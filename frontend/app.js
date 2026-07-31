@@ -596,7 +596,7 @@ async function loadDashboard() {
   const sections = [
     refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
     renderLevelMeter, renderDailyGoal, setupDailyGoalEditor, renderDueCard,
-    renderActivity, renderMasteryChart, renderRecentLessons, setupShop,
+    setupRecommendations, setupShop, renderActivity, renderMasteryChart, renderRecentLessons,
   ];
   for (const render of sections) {
     try {
@@ -793,6 +793,131 @@ async function startPractice(exerciseType) {
   }
 }
 
+// ---------- Library (500+ AI-generated books, on demand) ----------
+
+const _libraryState = { offset: 0, genresLoaded: false };
+
+async function setupLibrary() {
+  if (!_libraryState.genresLoaded) {
+    _libraryState.genresLoaded = true;
+    try {
+      const genres = await api("/api/library/genres");
+      const select = $("#library-genre-filter");
+      for (const g of genres) select.add(new Option(g.label, g.id));
+    } catch (err) {
+      console.error("Failed to load library genres", err);
+    }
+    $("#library-level-filter").addEventListener("change", () => loadLibraryPage(true));
+    $("#library-genre-filter").addEventListener("change", () => loadLibraryPage(true));
+    $("#library-load-more").addEventListener("click", () => loadLibraryPage(false));
+  }
+  if ($("#library-grid").children.length === 0) {
+    loadLibraryPage(true);
+  }
+}
+
+async function loadLibraryPage(reset) {
+  if (reset) {
+    _libraryState.offset = 0;
+    $("#library-grid").innerHTML = "";
+  }
+  const level = $("#library-level-filter").value;
+  const genre = $("#library-genre-filter").value;
+  const params = new URLSearchParams({ offset: String(_libraryState.offset), limit: "30" });
+  if (level) params.set("level", level);
+  if (genre) params.set("genre", genre);
+  const books = await api(`/api/library/${state.userId}/catalog?${params}`);
+  const grid = $("#library-grid");
+  for (const book of books) {
+    const card = document.createElement("button");
+    card.className = "book-card";
+    card.innerHTML = `
+      <div class="book-card-chips">
+        <span class="book-chip">${book.genre_label}</span>
+        <span class="book-chip level">${book.level}</span>
+      </div>
+      <p class="book-card-title">${book.title}</p>
+      <p class="book-card-blurb">${book.blurb}</p>
+    `;
+    card.addEventListener("click", () => openBook(book.id));
+    grid.appendChild(card);
+  }
+  _libraryState.offset += books.length;
+  $("#library-load-more").classList.toggle("hidden", books.length < 30);
+}
+
+async function openBook(bookId) {
+  showScreen("#screen-reader");
+  $("#reader-title").textContent = "";
+  $("#reader-genre-chip").textContent = "";
+  $("#reader-level-chip").textContent = "";
+  const body = $("#reader-body");
+  body.textContent = "Generando tu libro…";
+  body.classList.add("loading");
+  try {
+    const book = await api(`/api/library/${state.userId}/books/${bookId}`);
+    $("#reader-title").textContent = book.title;
+    $("#reader-genre-chip").textContent = book.genre_label;
+    $("#reader-level-chip").textContent = book.level;
+    body.textContent = book.content;
+    body.classList.remove("loading");
+  } catch (err) {
+    body.textContent = `No se pudo generar el libro: ${err.message}`;
+    body.classList.remove("loading");
+  }
+}
+
+$("#reader-exit").addEventListener("click", () => showScreen("#screen-main"));
+
+// ---------- Recommendations (books, songs, and other media) ----------
+
+async function fetchRecommendations() {
+  const list = $("#recommendations-list");
+  list.innerHTML = `<p class="recommendations-empty">Buscando sugerencias…</p>`;
+  try {
+    const items = await api("/api/content/recommendations", {
+      method: "POST",
+      body: JSON.stringify({
+        target_lang: state.user.target_lang,
+        level: state.user.level,
+        interests: state.user.interests || [],
+      }),
+    });
+    list.innerHTML = "";
+    if (!items.length) {
+      list.innerHTML = `<p class="recommendations-empty">No hay sugerencias por ahora.</p>`;
+      return;
+    }
+    const kindIcons = { book: "book", song: "volume", podcast: "mic", show: "sparkle" };
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "recommendation-item";
+      row.innerHTML = `
+        <span class="recommendation-icon">${iconSvg(kindIcons[item.kind] || "sparkle")}</span>
+        <div>
+          <p class="recommendation-title">${item.title}</p>
+          <p class="recommendation-creator">${item.creator}</p>
+          <p class="recommendation-reason">${item.reason}</p>
+        </div>
+      `;
+      list.appendChild(row);
+    }
+  } catch (err) {
+    list.innerHTML = `<p class="recommendations-empty">No se pudieron cargar sugerencias: ${err.message}</p>`;
+  }
+}
+
+function setupRecommendations() {
+  const btn = $("#recommendations-refresh-btn");
+  if (!btn.dataset.wired) {
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", fetchRecommendations);
+  }
+  if ($("#recommendations-list").children.length === 0) {
+    fetchRecommendations();
+  }
+}
+
 // ---------- Tabs ----------
 
 function setupTabs() {
@@ -803,6 +928,7 @@ function setupTabs() {
       $$(".tab-panel").forEach((p) => p.classList.add("hidden"));
       $(`#tab-${btn.dataset.tab}`).classList.remove("hidden");
       if (btn.dataset.tab === "practice") setupPractice();
+      if (btn.dataset.tab === "library") setupLibrary();
       if (btn.dataset.tab === "talk") ensureConversationSocket();
       if (btn.dataset.tab === "progress") loadDashboard();
     });

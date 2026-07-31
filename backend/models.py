@@ -142,6 +142,34 @@ class LeaderboardEntry(BaseModel):
     is_you: bool = False
 
 
+class BookStub(BaseModel):
+    """Catalog entry: free, static metadata for a library title. The actual
+    story text is generated (and cached) on first read — see backend/library.py
+    and HFClient.generate_book_content."""
+
+    id: str
+    title: str
+    genre: str
+    genre_label: str
+    level: CEFRLevel
+    blurb: str
+
+
+class BookContent(BaseModel):
+    id: str
+    title: str
+    genre_label: str
+    level: CEFRLevel
+    content: str
+
+
+class Recommendation(BaseModel):
+    kind: str  # "book" | "song" | "podcast" | "show"
+    title: str
+    creator: str
+    reason: str
+
+
 class DashboardData(BaseModel):
     user_id: str
     xp: int

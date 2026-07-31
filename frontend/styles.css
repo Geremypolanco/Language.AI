@@ -149,6 +149,10 @@ h1, h2, h3, .brand, .card-title, .level-meter-row, .stat-value,
 .btn-primary:hover { background: var(--green-dark); }
 .btn-primary:active:not(:disabled) { box-shadow: 0 2px 0 var(--green-dark); }
 .btn-primary:disabled { background: #ccc; box-shadow: 0 4px 0 #a9a9a9; cursor: not-allowed; }
+.btn-secondary { background: #fff; color: var(--blue); box-shadow: 0 4px 0 var(--gray-border); border: 2px solid var(--blue); }
+.btn-secondary:hover { background: rgba(28,176,246,0.08); }
+.btn-secondary:active:not(:disabled) { box-shadow: 0 2px 0 var(--gray-border); }
+@media (prefers-color-scheme: dark) { .btn-secondary { background: #1b2b32; } }
 .btn-icon { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #999; }
 
 .topbar {
@@ -583,3 +587,62 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .dev-login { margin-top: 24px; border-top: 1px solid var(--gray-border); padding-top: 16px; }
 .dev-login form { display: flex; gap: 8px; margin-top: 8px; }
 .dev-login input { flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--gray-border); }
+
+/* ── Library (500+ AI-generated books) ──────────────────────────────── */
+
+.library-intro { max-width: 640px; margin: 0 auto 24px; text-align: center; }
+.library-intro h2 { font-size: 1.4rem; margin: 0 0 6px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.library-filters { display: flex; justify-content: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.library-filters select {
+  padding: 8px 12px; border-radius: 8px; border: 2px solid var(--gray-border);
+  font-weight: 700; font-family: inherit; color: var(--text); background: #fff;
+}
+@media (prefers-color-scheme: dark) { .library-filters select { background: #1b2b32; } }
+
+.library-grid {
+  max-width: 960px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;
+}
+.book-card {
+  background: #fff; border: 1px solid rgba(28,58,82,0.05); border-radius: 16px;
+  box-shadow: var(--card-shadow); padding: 18px; text-align: left; cursor: pointer;
+  font-family: inherit; color: var(--text); transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.book-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(28,58,82,0.12); }
+@media (prefers-color-scheme: dark) { .book-card { background: #1b2b32; border-color: rgba(255,255,255,0.06); } }
+.book-card-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.book-chip {
+  font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 3px 8px; border-radius: 20px; background: rgba(28,176,246,0.14); color: var(--blue);
+}
+.book-chip.level { background: rgba(206,130,255,0.18); color: var(--purple-dark); }
+.book-card-title { font-weight: 800; font-size: 1rem; margin: 0; }
+.book-card-blurb { margin: 0; font-size: 0.82rem; color: #898781; }
+
+.library-load-more-row { text-align: center; margin: 24px 0; }
+
+.reader-frame { max-width: 680px; margin: 0 auto; padding: 24px; }
+.reader-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.reader-header-meta { display: flex; gap: 8px; }
+.reader-chip {
+  font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 4px 10px; border-radius: 20px; background: rgba(28,176,246,0.14); color: var(--blue);
+}
+.reader-title { font-size: 1.6rem; margin: 0 0 20px; }
+.reader-body { font-size: 1.05rem; line-height: 1.8; white-space: pre-wrap; }
+.reader-body.loading { color: #898781; font-style: italic; }
+
+/* ── Recommendations (books, songs, and other media) ─────────────────── */
+
+.recommendations-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.recommendation-item { display: flex; gap: 12px; align-items: flex-start; }
+.recommendation-icon {
+  width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: rgba(255,200,0,0.18); color: var(--gold-dark);
+}
+.recommendation-icon .icon { width: 18px; height: 18px; }
+.recommendation-title { font-weight: 800; font-size: 0.92rem; margin: 0; }
+.recommendation-creator { font-size: 0.8rem; color: #898781; margin: 1px 0; }
+.recommendation-reason { font-size: 0.8rem; color: #898781; margin: 2px 0 0; }
+.recommendations-empty { font-size: 0.85rem; color: #898781; }

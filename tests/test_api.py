@@ -311,3 +311,66 @@ def test_practice_session_generates_exercises_of_one_type_and_completes_normally
 
         progress = client.get(f"/api/progress/{user['id']}").json()
         assert progress["today_minutes"] == 2
+
+
+def test_library_catalog_has_500_plus_titles_across_every_level():
+    with TestClient(app) as client:
+        user = _onboard(client, email="library1@example.com")
+        res = client.get(f"/api/library/{user['id']}/catalog", params={"limit": 100})
+        assert res.status_code == 200
+        assert len(res.json()) == 100  # paginated — full catalog is 500+, checked below
+
+        from backend.library import CATALOG
+
+        assert len(CATALOG) >= 500
+        assert {b.level.value for b in CATALOG} == {"A1", "A2", "B1", "B2", "C1", "C2", "NATIVE"}
+
+
+def test_library_catalog_filters_by_level_and_genre():
+    with TestClient(app) as client:
+        user = _onboard(client, email="library2@example.com")
+        res = client.get(f"/api/library/{user['id']}/catalog", params={"level": "A1", "genre": "adventure", "limit": 100})
+        assert res.status_code == 200
+        books = res.json()
+        assert len(books) > 0
+        assert all(b["level"] == "A1" and b["genre"] == "adventure" for b in books)
+
+
+def test_library_book_content_generates_demo_fallback_without_hf_token():
+    with TestClient(app) as client:
+        user = _onboard(client, email="library3@example.com")
+        catalog_res = client.get(f"/api/library/{user['id']}/catalog", params={"limit": 1})
+        book_id = catalog_res.json()[0]["id"]
+
+        res = client.get(f"/api/library/{user['id']}/books/{book_id}")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["id"] == book_id
+        assert "modo demo" in body["content"].lower()
+
+
+def test_library_book_not_found_returns_404():
+    with TestClient(app) as client:
+        user = _onboard(client, email="library4@example.com")
+        res = client.get(f"/api/library/{user['id']}/books/does-not-exist")
+        assert res.status_code == 404
+
+
+def test_library_genres_endpoint_lists_all_genres():
+    with TestClient(app) as client:
+        res = client.get("/api/library/genres")
+        assert res.status_code == 200
+        assert len(res.json()) == 10
+
+
+def test_recommendations_gives_demo_mode_suggestions_without_hf_token():
+    with TestClient(app) as client:
+        _onboard(client, email="recs@example.com")
+        res = client.post(
+            "/api/content/recommendations",
+            json={"target_lang": "Spanish", "level": "A2", "interests": ["music"]},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body) > 0
+        assert all({"kind", "title", "creator", "reason"} <= item.keys() for item in body)

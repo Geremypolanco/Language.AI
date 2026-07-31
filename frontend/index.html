@@ -215,6 +215,7 @@
         <nav class="tabs">
           <button class="tab-btn active" data-tab="path">Camino</button>
           <button class="tab-btn" data-tab="practice">Practicar</button>
+          <button class="tab-btn" data-tab="library">Biblioteca</button>
           <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
           <button class="tab-btn" data-tab="progress">Progreso</button>
           <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
@@ -244,6 +245,32 @@
             </label>
           </div>
           <div id="practice-grid" class="practice-grid"></div>
+        </div>
+
+        <div id="tab-library" class="tab-panel hidden">
+          <div class="library-intro">
+            <h2><svg class="icon"><use href="#icon-book"/></svg> Biblioteca de más de 500 libros</h2>
+            <p class="subtitle">Historias creadas por IA en el idioma que estás aprendiendo — cada una se genera la primera vez que la abres.</p>
+            <div class="library-filters">
+              <select id="library-level-filter">
+                <option value="">Todos los niveles</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+                <option value="C1">C1</option>
+                <option value="C2">C2</option>
+                <option value="NATIVE">Nativo</option>
+              </select>
+              <select id="library-genre-filter">
+                <option value="">Todos los géneros</option>
+              </select>
+            </div>
+          </div>
+          <div id="library-grid" class="library-grid"></div>
+          <div class="library-load-more-row">
+            <button id="library-load-more" class="btn btn-secondary hidden">Cargar más</button>
+          </div>
         </div>
 
         <div id="tab-talk" class="tab-panel hidden">
@@ -373,6 +400,15 @@
             </div>
 
             <div class="card">
+              <div class="card-title-row">
+                <h2 class="card-title"><svg class="icon"><use href="#icon-sparkle"/></svg> Recomendado para ti</h2>
+                <button id="recommendations-refresh-btn" class="link-btn" type="button">Nuevas sugerencias</button>
+              </div>
+              <p class="subtitle">Libros, canciones y más para reforzar lo que aprendes, fuera de la app.</p>
+              <div id="recommendations-list" class="recommendations-list"></div>
+            </div>
+
+            <div class="card">
               <h2 class="card-title"><svg class="icon"><use href="#icon-gem"/></svg> Tienda de gemas</h2>
               <p class="subtitle">Gana gemas terminando lecciones. Gástalas aquí — nunca con dinero real.</p>
               <div class="shop-grid shop-grid-single">
@@ -462,6 +498,21 @@
         <p id="complete-streak"></p>
         <p id="complete-level"></p>
         <button id="complete-continue" class="btn btn-primary">Continuar</button>
+      </div>
+    </section>
+
+    <!-- Library book reader overlay -->
+    <section id="screen-reader" class="screen hidden overlay">
+      <div class="reader-frame">
+        <div class="reader-header">
+          <button id="reader-exit" class="btn-icon"><svg class="icon"><use href="#icon-x"/></svg></button>
+          <div class="reader-header-meta">
+            <span id="reader-genre-chip" class="reader-chip"></span>
+            <span id="reader-level-chip" class="reader-chip"></span>
+          </div>
+        </div>
+        <h2 id="reader-title" class="reader-title"></h2>
+        <div id="reader-body" class="reader-body"></div>
       </div>
     </section>
 
