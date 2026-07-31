@@ -16,6 +16,7 @@ callers fall back to AI generation, exactly as before this existed.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -35,6 +36,21 @@ def _cache_path(query: str) -> str:
     return os.path.join(settings.cache_dir, f"gimg-{digest}.jpg")
 
 
+async def _get_with_retry(url: str, **kwargs) -> httpx.Response:
+    """One retry on a transient network failure — the same DNS-blip
+    (httpx.ConnectError: "No address associated with hostname") seen on
+    hf_client's calls has hit any outbound host on this machine, not just
+    huggingface.co, so this source gets the same one-retry treatment."""
+    for attempt in range(2):
+        try:
+            return await _http.get(url, **kwargs)
+        except httpx.TransportError:
+            if attempt == 1:
+                raise
+            await asyncio.sleep(0.5)
+    raise AssertionError("unreachable")
+
+
 async def search_image(query: str) -> bytes | None:
     """Returns the bytes of the first safe-search image result for `query`,
     cached to disk thereafter (same pattern as hf_client's media caches).
@@ -48,7 +64,7 @@ async def search_image(query: str) -> bytes | None:
             return f.read()
 
     try:
-        resp = await _http.get(
+        resp = await _get_with_retry(
             _SEARCH_ENDPOINT,
             params={
                 "key": settings.google_cse_api_key,
@@ -67,7 +83,7 @@ async def search_image(query: str) -> bytes | None:
         if not items:
             return None
 
-        image_resp = await _http.get(items[0]["link"])
+        image_resp = await _get_with_retry(items[0]["link"])
         if image_resp.status_code != 200 or not image_resp.headers.get("content-type", "").startswith("image"):
             return None
 

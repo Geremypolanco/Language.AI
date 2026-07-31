@@ -135,6 +135,22 @@ class HFClient:
 
     # ── Chat / text generation ──────────────────────────────────────────
 
+    async def _post_with_retry(self, url: str, **kwargs) -> httpx.Response:
+        """One retry on a transient network failure (DNS blip, connection
+        reset) before giving up — this was the actual, repeated cause of AI
+        calls (chat, images, TTS, video, STT) silently failing in production
+        with httpx.ConnectError: "No address associated with hostname", even
+        though HF_TOKEN was configured and working. Used by every outbound
+        HF call in this client so none of them are exposed to this alone."""
+        for attempt in range(2):
+            try:
+                return await self._http.post(url, **kwargs)
+            except httpx.TransportError:
+                if attempt == 1:
+                    raise
+                await asyncio.sleep(0.5)
+        raise AssertionError("unreachable")  # loop always returns or raises
+
     async def chat(self, messages: list[dict[str, str]], max_tokens: int = 700, temperature: float = 0.7) -> str:
         if not settings.hf_configured:
             raise HFClientError("HF_TOKEN not configured")
@@ -144,19 +160,10 @@ class HFClient:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        # One retry on a transient network failure (DNS blip, connection
-        # reset) before giving up — this was the actual cause of exercises
-        # silently falling back to offline placeholder text in production
-        # (httpx.ConnectError: "No address associated with hostname"),
-        # even though HF_TOKEN was configured and working.
-        for attempt in range(2):
-            try:
-                resp = await self._http.post(settings.hf_chat_endpoint, headers=self._headers(), json=payload)
-                break
-            except httpx.TransportError as exc:
-                if attempt == 1:
-                    raise HFClientError(f"HF chat network error: {exc}") from exc
-                await asyncio.sleep(0.5)
+        try:
+            resp = await self._post_with_retry(settings.hf_chat_endpoint, headers=self._headers(), json=payload)
+        except httpx.TransportError as exc:
+            raise HFClientError(f"HF chat network error: {exc}") from exc
         if resp.status_code != 200:
             raise HFClientError(f"HF chat HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
@@ -654,7 +661,7 @@ class HFClient:
         if not settings.hf_configured:
             return None
         try:
-            resp = await self._http.post(
+            resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{settings.image_model}",
                 headers=self._headers(),
                 json={"inputs": prompt},
@@ -682,7 +689,7 @@ class HFClient:
         if not settings.hf_configured:
             return None
         try:
-            resp = await self._http.post(
+            resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{settings.video_model}",
                 headers=self._headers(),
                 json={"inputs": prompt},
@@ -709,7 +716,7 @@ class HFClient:
         if not settings.hf_configured:
             return None
         try:
-            resp = await self._http.post(
+            resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{model}",
                 headers=self._headers(),
                 json={"inputs": text},
@@ -729,7 +736,7 @@ class HFClient:
         if not settings.hf_configured:
             return ""
         try:
-            resp = await self._http.post(
+            resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{settings.stt_model}",
                 headers={**self._headers(), "Content-Type": content_type},
                 content=audio_bytes,
