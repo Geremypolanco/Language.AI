@@ -117,6 +117,204 @@
         <path d="M4 7h8M8 4 4 7l4 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M20 17h-8M16 14l4 3-4 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </symbol>
+
+      <!-- Illustrated faculty portraits — the onerror fallback for the real
+           FLUX-generated photo (see app.js renderPersonaAvatar). Hand-drawn
+           vector illustrations, not a photo, but a real face with a proper
+           hairline, natural eyes/brows/mouth and persona-matched attire —
+           replacing the previous cartoon mascot and the plain monogram. -->
+      <symbol id="avatar-core-elena" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="ccE"><circle cx="100" cy="100" r="96"/></clipPath>
+          <radialGradient id="bgE" cx="35%" cy="25%" r="80%"><stop offset="0%" stop-color="#eef1fa"/><stop offset="100%" stop-color="#d7ddef"/></radialGradient>
+          <linearGradient id="skinE" x1="30%" y1="0%" x2="70%" y2="100%"><stop offset="0%" stop-color="#f2c9a0"/><stop offset="100%" stop-color="#dba578"/></linearGradient>
+          <linearGradient id="blazerE" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4a4f5c"/><stop offset="100%" stop-color="#2e323b"/></linearGradient>
+          <linearGradient id="hairE" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#5a4534"/><stop offset="100%" stop-color="#2b1f15"/></linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="url(#bgE)"/>
+        <g clip-path="url(#ccE)">
+          <path d="M28 200 C30 150 55 132 100 132 C145 132 170 150 172 200 Z" fill="url(#blazerE)"/>
+          <path d="M85 138 L100 158 L115 138 L108 132 L92 132 Z" fill="#f4f4f6"/>
+          <path d="M84 118 L84 145 Q100 156 116 145 L116 118 Z" fill="url(#skinE)"/>
+          <path d="M84 122 Q100 132 116 122" stroke="#c98f5f" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <ellipse cx="63" cy="92" rx="6" ry="9" fill="url(#skinE)"/>
+          <ellipse cx="137" cy="92" rx="6" ry="9" fill="url(#skinE)"/>
+          <ellipse cx="100" cy="90" rx="38" ry="44" fill="url(#skinE)"/>
+          <path d="M58 96 C52 54 70 24 100 22 C130 24 148 54 142 96 C142 66 128 40 100 40 C72 40 58 66 58 96 Z" fill="url(#hairE)"/>
+          <ellipse cx="100" cy="30" rx="20" ry="13" fill="url(#hairE)"/>
+          <path d="M75 78 Q84 73 93 77" stroke="#3a2a1c" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M107 77 Q116 73 125 78" stroke="#3a2a1c" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M76 89 Q84 85 92 89 Q84 93 76 89 Z" fill="#fff"/>
+          <path d="M108 89 Q116 85 124 89 Q116 93 108 89 Z" fill="#fff"/>
+          <circle cx="84.5" cy="89" r="3.4" fill="#3d2b1f"/>
+          <circle cx="115.5" cy="89" r="3.4" fill="#3d2b1f"/>
+          <circle cx="85.6" cy="87.8" r="0.9" fill="#fff"/>
+          <circle cx="116.6" cy="87.8" r="0.9" fill="#fff"/>
+          <path d="M99 90 Q96 100 94 105 Q98 108 101 106" stroke="#c98f5f" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.55"/>
+          <ellipse cx="71" cy="102" rx="7" ry="4.5" fill="#e8a583" opacity="0.35"/>
+          <ellipse cx="129" cy="102" rx="7" ry="4.5" fill="#e8a583" opacity="0.35"/>
+          <path d="M89 114 Q100 119 111 114" stroke="#a15c4a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+      </symbol>
+
+      <symbol id="avatar-core-marcus" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="ccM"><circle cx="100" cy="100" r="96"/></clipPath>
+          <radialGradient id="bgM" cx="35%" cy="25%" r="80%"><stop offset="0%" stop-color="#eef1fa"/><stop offset="100%" stop-color="#d7ddef"/></radialGradient>
+          <linearGradient id="skinM" x1="30%" y1="0%" x2="70%" y2="100%"><stop offset="0%" stop-color="#8a5a3a"/><stop offset="100%" stop-color="#6b4128"/></linearGradient>
+          <linearGradient id="sweaterM" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8b909c"/><stop offset="100%" stop-color="#666b76"/></linearGradient>
+          <linearGradient id="hairM" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#2a2018"/><stop offset="100%" stop-color="#160f0a"/></linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="url(#bgM)"/>
+        <g clip-path="url(#ccM)">
+          <path d="M26 200 C28 148 55 130 100 130 C145 130 172 148 174 200 Z" fill="url(#sweaterM)"/>
+          <path d="M84 118 L84 142 Q100 152 116 142 L116 118 Z" fill="url(#skinM)"/>
+          <path d="M84 122 Q100 130 116 122" stroke="#4a2c18" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <ellipse cx="62" cy="92" rx="6" ry="9" fill="url(#skinM)"/>
+          <ellipse cx="138" cy="92" rx="6" ry="9" fill="url(#skinM)"/>
+          <ellipse cx="100" cy="90" rx="39" ry="45" fill="url(#skinM)"/>
+          <path d="M58 88 C52 48 72 22 100 22 C128 22 148 48 142 88
+                   C140 76 138 64 132 58
+                   C130 64 126 60 122 66
+                   C120 60 116 58 112 64
+                   C110 58 106 56 100 62
+                   C94 56 90 58 88 64
+                   C84 58 80 60 78 66
+                   C74 60 70 64 68 58
+                   C62 64 60 76 58 88 Z" fill="url(#hairM)"/>
+          <path d="M72 106 Q100 126 128 106 L128 118 Q100 136 72 118 Z" fill="#160f0a" opacity="0.15"/>
+          <path d="M75 78 Q84 73 93 77" stroke="#160f0a" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <path d="M107 77 Q116 73 125 78" stroke="#160f0a" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <path d="M76 89 Q84 85 92 89 Q84 93 76 89 Z" fill="#fff"/>
+          <path d="M108 89 Q116 85 124 89 Q116 93 108 89 Z" fill="#fff"/>
+          <circle cx="84.5" cy="89" r="3.4" fill="#241a10"/>
+          <circle cx="115.5" cy="89" r="3.4" fill="#241a10"/>
+          <circle cx="85.6" cy="87.8" r="0.9" fill="#fff"/>
+          <circle cx="116.6" cy="87.8" r="0.9" fill="#fff"/>
+          <path d="M99 90 Q96 100 94 105 Q98 108 101 106" stroke="#4a2c18" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.5"/>
+          <path d="M88 114 Q100 120 112 114" stroke="#3a1f14" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+      </symbol>
+
+      <symbol id="avatar-core-amara" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="ccA"><circle cx="100" cy="100" r="96"/></clipPath>
+          <radialGradient id="bgA" cx="35%" cy="25%" r="80%"><stop offset="0%" stop-color="#eef1fa"/><stop offset="100%" stop-color="#d7ddef"/></radialGradient>
+          <linearGradient id="skinA" x1="30%" y1="0%" x2="70%" y2="100%"><stop offset="0%" stop-color="#6e4630"/><stop offset="100%" stop-color="#553424"/></linearGradient>
+          <linearGradient id="blazerA" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2b3358"/><stop offset="100%" stop-color="#1a2140"/></linearGradient>
+          <radialGradient id="hairA" cx="40%" cy="20%" r="90%"><stop offset="0%" stop-color="#a8a5a0"/><stop offset="55%" stop-color="#6b6763"/><stop offset="100%" stop-color="#3d3a37"/></radialGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="url(#bgA)"/>
+        <g clip-path="url(#ccA)">
+          <path d="M28 200 C30 150 55 132 100 132 C145 132 170 150 172 200 Z" fill="url(#blazerA)"/>
+          <path d="M85 138 L100 158 L115 138 L108 132 L92 132 Z" fill="#f4f4f6"/>
+          <path d="M84 118 L84 145 Q100 156 116 145 L116 118 Z" fill="url(#skinA)"/>
+          <path d="M84 122 Q100 132 116 122" stroke="#3d2416" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <ellipse cx="61" cy="94" rx="6" ry="9" fill="url(#skinA)"/>
+          <ellipse cx="139" cy="94" rx="6" ry="9" fill="url(#skinA)"/>
+          <ellipse cx="100" cy="92" rx="38" ry="44" fill="url(#skinA)"/>
+          <path d="M56 90 C48 56 64 26 100 24 C136 26 152 56 144 90
+                    C146 74 142 58 132 50
+                    C136 44 130 38 124 42
+                    C124 34 114 30 108 36
+                    C104 28 96 28 92 36
+                    C86 30 76 34 76 42
+                    C70 38 64 44 68 50
+                    C58 58 54 74 56 90 Z" fill="url(#hairA)"/>
+          <path d="M75 80 Q84 76 93 79" stroke="#241209" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M107 79 Q116 76 125 80" stroke="#241209" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M76 90 Q84 86 92 90 Q84 94 76 90 Z" fill="#fff"/>
+          <path d="M108 90 Q116 86 124 90 Q116 94 108 90 Z" fill="#fff"/>
+          <circle cx="84.5" cy="90" r="3.4" fill="#241209"/>
+          <circle cx="115.5" cy="90" r="3.4" fill="#241209"/>
+          <circle cx="85.6" cy="88.8" r="0.9" fill="#fff"/>
+          <circle cx="116.6" cy="88.8" r="0.9" fill="#fff"/>
+          <path d="M99 91 Q96 101 94 106 Q98 109 101 107" stroke="#3d2416" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.5"/>
+          <ellipse cx="71" cy="104" rx="7" ry="4.5" fill="#3d2416" opacity="0.16"/>
+          <ellipse cx="129" cy="104" rx="7" ry="4.5" fill="#3d2416" opacity="0.16"/>
+          <path d="M89 115 Q100 119 111 115" stroke="#3d2012" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+      </symbol>
+
+      <symbol id="avatar-core-sofia" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="ccS"><circle cx="100" cy="100" r="96"/></clipPath>
+          <radialGradient id="bgS" cx="35%" cy="25%" r="80%"><stop offset="0%" stop-color="#eef1fa"/><stop offset="100%" stop-color="#d7ddef"/></radialGradient>
+          <linearGradient id="skinS" x1="30%" y1="0%" x2="70%" y2="100%"><stop offset="0%" stop-color="#e8b183"/><stop offset="100%" stop-color="#cf9265"/></linearGradient>
+          <linearGradient id="blouseS" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e0ad2f"/><stop offset="100%" stop-color="#b8871c"/></linearGradient>
+          <linearGradient id="hairS" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#3d2a1c"/><stop offset="100%" stop-color="#1e130c"/></linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="url(#bgS)"/>
+        <g clip-path="url(#ccS)">
+          <path d="M46 128 C38 158 40 190 48 212 L72 212 C64 182 62 145 62 118 Z" fill="url(#hairS)"/>
+          <path d="M154 128 C162 158 160 190 152 212 L128 212 C136 182 138 145 138 118 Z" fill="url(#hairS)"/>
+          <path d="M30 200 C32 150 55 132 100 132 C145 132 168 150 170 200 Z" fill="url(#blouseS)"/>
+          <path d="M85 138 L100 156 L115 138 L108 132 L92 132 Z" fill="#fbe9c0"/>
+          <path d="M84 118 L84 144 Q100 154 116 144 L116 118 Z" fill="url(#skinS)"/>
+          <path d="M84 122 Q100 131 116 122" stroke="#a86840" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <ellipse cx="62" cy="94" rx="6" ry="9" fill="url(#skinS)"/>
+          <ellipse cx="138" cy="94" rx="6" ry="9" fill="url(#skinS)"/>
+          <ellipse cx="100" cy="90" rx="38" ry="44" fill="url(#skinS)"/>
+          <path d="M56 100 C50 56 68 22 100 20 C132 22 150 56 144 100 C144 70 130 38 100 38 C70 38 56 70 56 100 Z" fill="url(#hairS)"/>
+          <path d="M75 78 Q84 73 93 77" stroke="#2b1c12" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M107 77 Q116 73 125 78" stroke="#2b1c12" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M75 88 Q84 82 93 88 Q84 94 75 88 Z" fill="#fff"/>
+          <path d="M107 88 Q116 82 125 88 Q116 94 107 88 Z" fill="#fff"/>
+          <circle cx="84.5" cy="88" r="3.7" fill="#2b1c12"/>
+          <circle cx="115.5" cy="88" r="3.7" fill="#2b1c12"/>
+          <circle cx="85.8" cy="86.6" r="1" fill="#fff"/>
+          <circle cx="116.8" cy="86.6" r="1" fill="#fff"/>
+          <path d="M99 90 Q96 100 94 105 Q98 108 101 106" stroke="#a86840" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.55"/>
+          <ellipse cx="70" cy="102" rx="7.5" ry="5" fill="#e8748a" opacity="0.4"/>
+          <ellipse cx="130" cy="102" rx="7.5" ry="5" fill="#e8748a" opacity="0.4"/>
+          <path d="M87 112 Q100 121 113 112" stroke="#a1483f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+      </symbol>
+
+      <symbol id="avatar-core-theo" viewBox="0 0 200 200">
+        <defs>
+          <clipPath id="ccT"><circle cx="100" cy="100" r="96"/></clipPath>
+          <radialGradient id="bgT" cx="35%" cy="25%" r="80%"><stop offset="0%" stop-color="#eef1fa"/><stop offset="100%" stop-color="#d7ddef"/></radialGradient>
+          <linearGradient id="skinT" x1="30%" y1="0%" x2="70%" y2="100%"><stop offset="0%" stop-color="#e8bd93"/><stop offset="100%" stop-color="#cf9c6d"/></linearGradient>
+          <linearGradient id="jacketT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#7a5a3f"/><stop offset="100%" stop-color="#5c4330"/></linearGradient>
+          <linearGradient id="hairT" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#4a4340"/><stop offset="100%" stop-color="#2c2724"/></linearGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="url(#bgT)"/>
+        <g clip-path="url(#ccT)">
+          <path d="M26 200 C28 148 55 130 100 130 C145 130 172 148 174 200 Z" fill="url(#jacketT)"/>
+          <path d="M78 136 L100 154 L122 136 L114 130 L100 136 L86 130 Z" fill="#5b6b52"/>
+          <path d="M84 116 L84 142 Q100 152 116 142 L116 116 Z" fill="url(#skinT)"/>
+          <path d="M84 120 Q100 129 116 120" stroke="#a8703f" stroke-width="1.5" fill="none" opacity="0.5"/>
+          <ellipse cx="61" cy="88" rx="6" ry="9" fill="url(#skinT)"/>
+          <ellipse cx="139" cy="88" rx="6" ry="9" fill="url(#skinT)"/>
+          <ellipse cx="100" cy="88" rx="39" ry="45" fill="url(#skinT)"/>
+          <path d="M66 98 C64 118 78 134 100 136 C122 134 136 118 134 98 C134 116 120 128 100 130 C80 128 66 116 66 98 Z" fill="url(#hairT)" opacity="0.85"/>
+          <path d="M58 84 C52 46 72 20 100 20 C128 20 148 46 142 84
+                   C140 68 136 52 128 46
+                   C124 54 120 50 118 58
+                   C114 50 108 48 100 52
+                   C92 48 86 50 82 58
+                   C80 50 76 54 72 46
+                   C64 52 60 68 58 84 Z" fill="url(#hairT)"/>
+          <path d="M60 62 C58 52 62 42 70 36 C66 44 64 54 64 66 Z" fill="#a3a09c" opacity="0.75"/>
+          <path d="M140 62 C142 52 138 42 130 36 C134 44 136 54 136 66 Z" fill="#a3a09c" opacity="0.75"/>
+          <path d="M75 77 Q84 72 93 76" stroke="#2c2724" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+          <path d="M107 76 Q116 72 125 77" stroke="#2c2724" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+          <path d="M76 88 Q84 84 92 88 Q84 92 76 88 Z" fill="#fff"/>
+          <path d="M108 88 Q116 84 124 88 Q116 92 108 88 Z" fill="#fff"/>
+          <circle cx="84.5" cy="88" r="3.5" fill="#3d2f22"/>
+          <circle cx="115.5" cy="88" r="3.5" fill="#3d2f22"/>
+          <circle cx="85.6" cy="86.8" r="0.9" fill="#fff"/>
+          <circle cx="116.6" cy="86.8" r="0.9" fill="#fff"/>
+          <path d="M99 89 Q96 99 94 104 Q98 107 101 105" stroke="#a8703f" stroke-width="1.4" fill="none" stroke-linecap="round" opacity="0.5"/>
+          <path d="M90 111 Q100 115 110 111" stroke="#6b4a35" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+      </symbol>
     </defs>
   </svg>
 

@@ -13,21 +13,29 @@ function iconSvg(name, extraClass = "") {
 // Every teacher (5 core + one per Academy field, see backend/personas.py) is
 // a real, photorealistic HF-generated portrait, not a hand-drawn mascot. If
 // HF_TOKEN isn't configured (demo mode) the portrait request 404s/503s, so
-// every portrait falls back to a monogram in a stable, persona-specific
-// color rather than a broken image icon.
-const PERSONA_PALETTE = ["#4a5fd9", "#2f8f76", "#b3562f", "#6b4fb0", "#1c8ca8", "#a5395a", "#4f7a2f", "#7a5230"];
+// every portrait falls back to a hand-illustrated face (see index.html's
+// avatar-core-* symbols) rather than a broken image icon.
 
-function personaInitials(name) {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] || "";
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase();
-}
+// Hand-illustrated portraits (see index.html's <symbol id="avatar-core-*">
+// defs) — the fallback when the real FLUX-generated photo isn't available
+// (no HF_TOKEN, or the request fails). Each core teacher has its own; every
+// departmental faculty persona (id "faculty:<field_id>") is deterministically
+// assigned one of the same five so it always gets a real illustrated face
+// instead of a plain monogram, not a fresh portrait per field.
+const PERSONA_ILLUSTRATIONS = {
+  "core-elena": "avatar-core-elena",
+  "core-marcus": "avatar-core-marcus",
+  "core-amara": "avatar-core-amara",
+  "core-sofia": "avatar-core-sofia",
+  "core-theo": "avatar-core-theo",
+};
+const FACULTY_ILLUSTRATION_CYCLE = Object.values(PERSONA_ILLUSTRATIONS);
 
-function personaColor(id) {
+function illustrationIdFor(persona) {
+  if (PERSONA_ILLUSTRATIONS[persona.id]) return PERSONA_ILLUSTRATIONS[persona.id];
   let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return PERSONA_PALETTE[hash % PERSONA_PALETTE.length];
+  for (let i = 0; i < persona.id.length; i++) hash = (hash * 31 + persona.id.charCodeAt(i)) >>> 0;
+  return FACULTY_ILLUSTRATION_CYCLE[hash % FACULTY_ILLUSTRATION_CYCLE.length];
 }
 
 function renderPersonaAvatar(container, persona) {
@@ -43,12 +51,7 @@ function renderPersonaAvatar(container, persona) {
   img.src = persona.portrait_url;
   img.loading = "lazy";
   img.onerror = () => {
-    container.innerHTML = "";
-    const fallback = document.createElement("div");
-    fallback.className = "persona-fallback";
-    fallback.style.background = personaColor(persona.id);
-    fallback.textContent = personaInitials(persona.name);
-    container.appendChild(fallback);
+    container.innerHTML = `<svg style="width:100%;height:100%"><use href="#${illustrationIdFor(persona)}"/></svg>`;
   };
   container.appendChild(img);
 }
