@@ -85,6 +85,17 @@ class Settings:
 
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
+    # Free, code-only disk-space safety valve (see cache_gc.py) instead of
+    # paying to grow the Fly volume: a periodic background task deletes the
+    # least-recently-accessed cache files whenever cache_dir exceeds this
+    # many bytes. Every file in there is regenerable (exercises, images,
+    # audio, RAG context) or re-downloadable (Piper voice models), so
+    # eviction only ever costs a future cache miss, never real data.
+    # Default 600MB leaves headroom in the deploy's 1GB volume for the rest
+    # of /app/data (SQLite fallback, etc).
+    cache_max_bytes: int = field(
+        default_factory=lambda: int(os.environ.get("LINGUA_CACHE_MAX_MB", "600")) * 1024 * 1024
+    )
 
     # Durable production storage: a dedicated Supabase Postgres project (never
     # ARIA's). When set, db.py persists users/progress/sessions-linked state

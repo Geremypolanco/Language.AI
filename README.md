@@ -278,6 +278,18 @@ trades, anything with an encyclopedia article. Both are keyless and free;
 either one returning nothing just means the prompt runs without that extra
 grounding, same as before either existed.
 
+### Disk cache stays bounded automatically (no paid volume growth needed)
+
+Every cache entry described above (generated exercises/images/audio, RAG
+grounding text, Piper voice models) lives under `LINGUA_CACHE_DIR` on the
+Fly volume. Rather than paying to grow that volume as usage accumulates,
+`backend/cache_gc.py` runs a periodic background task (every 30 minutes,
+started from `main.py`'s lifespan) that deletes the least-recently-accessed
+cache files whenever the directory exceeds `LINGUA_CACHE_MAX_MB` (default
+600MB, leaving headroom in the deploy's 1GB volume). Every file there is
+either regenerable or re-downloadable, so eviction only ever costs a future
+cache miss — never real user data.
+
 ## How personalization actually works
 
 - **Curriculum** (`curriculum.py`) defines a language-agnostic topic/skill

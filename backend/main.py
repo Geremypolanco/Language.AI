@@ -11,6 +11,8 @@ or:                  uvicorn backend.main:app --reload --port 8100
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .cache_gc import run_periodic_gc
 from .config import settings
 from .hf_client import hf_client
 from .routers import auth as auth_router
@@ -45,7 +48,19 @@ async def lifespan(app: FastAPI):
             redirect_uri,
             "enabled" if settings.dev_login_enabled else "disabled",
         )
+
+    # Keeps the disk cache under budget for as long as the app runs — see
+    # cache_gc.py. Skipped in tests: it's a disk-scanning background loop
+    # with nothing to do against the tests' throwaway cache dir, and no
+    # test asserts on it.
+    gc_task = None if settings.testing else asyncio.create_task(run_periodic_gc())
+
     yield
+
+    if gc_task is not None:
+        gc_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await gc_task
     await hf_client.aclose()
 
 
