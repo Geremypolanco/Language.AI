@@ -22,7 +22,7 @@ methodologies:
   model knows, so a language missing a TTS mapping still teaches fully via
   text, just without narrated audio.
 
-On top of that, a Hugging Face model powers three things static courses can't do:
+On top of that, AI powers three things static courses can't do:
 
 1. **Personalized exercises** — generated per lesson from the learner's level,
    native/target language pair, stated interests, and recent mistakes, instead
@@ -40,13 +40,13 @@ On top of that, a Hugging Face model powers three things static courses can't do
 ```
 backend/
   main.py          FastAPI app + static frontend mount
-  config.py         env-based settings (HF_TOKEN, Google OAuth, Supabase, model IDs, ports)
+  config.py         env-based settings (Pollinations, HF_TOKEN, Google OAuth, Supabase, model IDs, ports)
   auth.py              Google Sign-In + signed session/state cookies (no server-side store)
   models.py          Pydantic/enum domain models (CEFR levels, exercise types)
   db.py               Persistence: Supabase Postgres in production, SQLite fallback locally/in tests
   curriculum.py    language-agnostic skill tree + HF prompt templates
   srs.py               SM-2 spaced repetition + XP/streak/leveling logic
-  hf_client.py      HF Inference API wrapper: chat, text-to-image, TTS, STT
+  hf_client.py      AI client: chat + text-to-image on Pollinations.ai (free, keyless), TTS/STT/video on Hugging Face (optional)
   routers/             auth, users, lessons, content (media), progress, conversation (WebSocket)
 frontend/            vanilla HTML/CSS/JS SPA — no build step
 tests/                  pytest suite (SRS, curriculum, auth, and full API flow)
@@ -72,12 +72,15 @@ database role needs.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # then add your HF_TOKEN
+cp .env.example .env
 ```
 
-Get a Hugging Face token at https://huggingface.co/settings/tokens (read
-access is enough — it's used against the free-tier serverless Inference API /
-Inference Providers).
+Chat and image generation run on [Pollinations.ai](https://pollinations.ai) —
+free and keyless, no setup required. `HF_TOKEN` is optional: it only enables
+text-to-speech, speech-to-text, and video generation, plus a chat fallback for
+when Pollinations' small anonymous request budget is exhausted. Get one at
+https://huggingface.co/settings/tokens (read access is enough) if you want
+those.
 
 ### Google Sign-In setup
 
@@ -174,10 +177,13 @@ uvicorn backend.main:app --reload --port 8100
 
 Then open http://localhost:8100/.
 
-Without `HF_TOKEN` set, the app still runs in **demo mode**: the skill tree,
-gamification, and lesson flow all work end-to-end, but exercises use
-placeholder template text and there's no audio/image/voice generation. Set
-`HF_TOKEN` for the real, personalized experience.
+Chat and images (personalized exercises, tutor conversation, vocabulary
+illustrations) work out of the box via Pollinations — no token needed.
+Without `HF_TOKEN` set, there's just no text-to-speech, speech-to-text, or
+video generation, and chat has no fallback if Pollinations' free tier is
+temporarily exhausted (the app degrades gracefully to offline template
+content in that case, never a broken request). Set `HF_TOKEN` for those
+extras.
 
 ### Test
 
@@ -187,18 +193,28 @@ pytest
 
 The test suite (SRS scheduling, curriculum/prompt logic, auth signing, and a
 full onboarding→lesson→progress API flow) runs entirely offline against an
-isolated temp SQLite file per test — no HF network calls, no shared state
-with dev data.
+isolated temp SQLite file per test — no real network calls, no shared state
+with dev data (`LINGUA_TESTING=1`, set automatically by `tests/conftest.py`,
+short-circuits every AI call before it reaches the network).
 
-## Models used (all via Hugging Face Inference API, overridable via env vars)
+## Models used (overridable via env vars)
 
-| Purpose                          | Default model                       |
-|-----------------------------------|--------------------------------------|
-| Exercise generation / tutor chat  | `Qwen/Qwen2.5-7B-Instruct`           |
-| Vocabulary illustrations          | `black-forest-labs/FLUX.1-schnell`  |
-| Speech-to-text (conversation mode)| `openai/whisper-large-v3`           |
-| Text-to-speech                    | `facebook/mms-tts-<lang>` (per target language) |
-| Academy topic videos              | `damo-vilab/text-to-video-ms-1.7b`  |
+| Purpose                             | Provider                    | Default model                       |
+|--------------------------------------|------------------------------|---------------------------------------|
+| Exercise generation / tutor chat     | Pollinations (HF fallback)  | `openai` (Pollinations) / `Qwen/Qwen2.5-7B-Instruct` (HF) |
+| Vocabulary illustrations             | Pollinations                 | `flux`                               |
+| Speech-to-text (conversation mode)   | Hugging Face (optional)     | `openai/whisper-large-v3`           |
+| Text-to-speech                       | Hugging Face (optional)     | `facebook/mms-tts-<lang>` (per target language) |
+| Academy topic videos                 | Hugging Face (optional)     | `damo-vilab/text-to-video-ms-1.7b`  |
+
+Chat and images run on Pollinations.ai — free, keyless, no signup. Chat falls
+back to Hugging Face (if `HF_TOKEN` is set) when Pollinations' small
+anonymous request budget is temporarily exhausted. TTS, speech-to-text, and
+video generation stay on the optional Hugging Face path: Pollinations'
+image generation is solid and free, but it no longer offers keyless
+transcription or audio (its old free audio endpoint now requires a paid
+`enter.pollinations.ai` API key), so those three features simply aren't
+available without `HF_TOKEN` — gracefully, not as a broken request.
 
 ### Vocabulary flashcard images: free Google Image Search (optional)
 
@@ -248,8 +264,9 @@ To ship it the first time:
 fly volumes create lingua_data --size 1 --region ord --app language-ai-x90j9w
 fly secrets set \
   GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... LINGUA_SESSION_SECRET=... \
-  SUPABASE_DB_URL=... HF_TOKEN=... \
+  SUPABASE_DB_URL=... \
   --app language-ai-x90j9w
+# HF_TOKEN is optional — only needed for TTS/STT/video and the chat fallback
 fly deploy --app language-ai-x90j9w --remote-only
 ```
 

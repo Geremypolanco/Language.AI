@@ -12,9 +12,9 @@ from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
 
-# Gated behind "signed in" (any account, not a specific user_id) — these calls
-# hit paid HF inference, so they shouldn't be reachable by anonymous traffic
-# on a public deployment.
+# Gated behind "signed in" (any account, not a specific user_id) — video and
+# speech-to-text still hit optional paid HF inference, so none of these
+# should be reachable by anonymous traffic on a public deployment.
 router = APIRouter(prefix="/api/content", tags=["content"], dependencies=[Depends(auth.require_session)])
 
 
@@ -27,7 +27,7 @@ class TTSRequest(BaseModel):
 async def text_to_speech(payload: TTSRequest) -> Response:
     audio = await hf_client.text_to_speech(payload.text, payload.target_lang)
     if audio is None:
-        raise HTTPException(status_code=503, detail="Audio no disponible — configura HF_TOKEN para activar texto a voz")
+        raise HTTPException(status_code=503, detail="Audio no disponible en este momento — inténtalo de nuevo")
     return Response(content=audio, media_type="audio/flac")
 
 
@@ -44,10 +44,7 @@ async def generate_image(payload: ImageRequest) -> Response:
     if image is None:
         image = await hf_client.generate_image(payload.prompt)
     if image is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Imagen no disponible — configura GOOGLE_CSE_API_KEY/GOOGLE_CSE_CX o HF_TOKEN para activar imágenes",
-        )
+        raise HTTPException(status_code=503, detail="Imagen no disponible en este momento — inténtalo de nuevo")
     return Response(content=image, media_type="image/jpeg")
 
 

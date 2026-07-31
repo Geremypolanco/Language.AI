@@ -1,10 +1,20 @@
-"""Thin wrapper around Hugging Face's Inference API for the four modalities
-this app needs: chat/text generation (tutor + exercise authoring), text-to-image
-(vocabulary flashcards), text-to-speech, and speech-to-text (conversation mode).
+"""AI client for the four modalities this app needs: chat/text generation
+(tutor + exercise authoring), text-to-image (vocabulary flashcards),
+text-to-speech, and speech-to-text (conversation mode).
 
-Falls back to a small local template generator when HF_TOKEN isn't configured,
-so the app is fully runnable/demoable offline — but every call here is a real
-HF request when a token is present (no mocked "success" responses).
+Chat and images run on Pollinations.ai first — free, keyless, no signup, no
+billing (see settings.pollinations_*) — replacing Hugging Face's Inference
+Providers as the primary engine after that account's free monthly credits
+ran out (HTTP 402) and, separately, after Hugging Face retired the old
+api-inference.huggingface.co host outright. Chat falls back to Hugging Face
+(if configured) when Pollinations' small anonymous budget is exhausted.
+TTS, speech-to-text, and video generation all stay on the optional Hugging
+Face path (settings.hf_token) — Pollinations' image generation is solid and
+free, but it no longer offers keyless TTS or transcription, and video is a
+lower-stakes best-effort extra — so those three gracefully degrade to
+"unavailable" with no token/credits, same as before. Nothing here uses
+mocked "success" responses; a failure is always a real failure, never
+faked.
 """
 
 from __future__ import annotations
@@ -15,6 +25,7 @@ import json
 import logging
 import os
 import re
+import urllib.parse
 from typing import TYPE_CHECKING
 
 import httpx
@@ -29,88 +40,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger("lingua.hf_client")
 
 # ISO 639-1 -> MMS-TTS ISO 639-3 code, covering every language offered in the
-# frontend's picker (frontend/app.js LANGS). Exercise/chat generation is fully
-# language-agnostic (any language the chat model knows works), so this map
-# only controls which voice narrates audio; a target language missing here
+# frontend's picker (frontend/app.js LANGS). A target language missing here
 # still teaches fully via text, it just falls back to an English voice.
 _MMS_LANG_CODES = {
-    "en": "eng",
-    "es": "spa",
-    "fr": "fra",
-    "de": "deu",
-    "it": "ita",
-    "pt": "por",
-    "ja": "jpn",
-    "ko": "kor",
-    "zh": "cmn",
-    "ru": "rus",
-    "ar": "ara",
-    "nl": "nld",
-    "sv": "swe",
-    "pl": "pol",
-    "tr": "tur",
-    "hi": "hin",
-    "id": "ind",
-    "vi": "vie",
-    "th": "tha",
-    "uk": "ukr",
-    "el": "ell",
-    "he": "heb",
-    "cs": "ces",
-    "ro": "ron",
-    "hu": "hun",
-    "fi": "fin",
-    "da": "dan",
-    "no": "nob",
-    "bg": "bul",
-    "sk": "slk",
-    "hr": "hrv",
-    "sr": "srp",
-    "lt": "lit",
-    "lv": "lav",
-    "et": "est",
-    "sl": "slv",
-    "fa": "fas",
-    "ur": "urd",
-    "bn": "ben",
-    "ta": "tam",
-    "te": "tel",
-    "mr": "mar",
-    "gu": "guj",
-    "pa": "pan",
-    "ml": "mal",
-    "kn": "kan",
-    "ne": "nep",
-    "si": "sin",
-    "my": "mya",
-    "km": "khm",
-    "lo": "lao",
-    "ms": "zlm",
-    "tl": "tgl",
-    "sw": "swh",
-    "am": "amh",
-    "so": "som",
-    "ha": "hau",
-    "yo": "yor",
-    "ig": "ibo",
-    "zu": "zul",
-    "xh": "xho",
-    "af": "afr",
-    "is": "isl",
-    "ga": "gle",
-    "cy": "cym",
-    "mt": "mlt",
-    "eu": "eus",
-    "ca": "cat",
-    "gl": "glg",
-    "az": "azj",
-    "kk": "kaz",
-    "uz": "uzn",
-    "mn": "khk",
-    "ka": "kat",
-    "hy": "hye",
-    "sq": "als",
-    "mk": "mkd",
+    "en": "eng", "es": "spa", "fr": "fra", "de": "deu", "it": "ita", "pt": "por",
+    "ja": "jpn", "ko": "kor", "zh": "cmn", "ru": "rus", "ar": "ara", "nl": "nld",
+    "sv": "swe", "pl": "pol", "tr": "tur", "hi": "hin", "id": "ind", "vi": "vie",
+    "th": "tha", "uk": "ukr", "el": "ell", "he": "heb", "cs": "ces", "ro": "ron",
+    "hu": "hun", "fi": "fin", "da": "dan", "no": "nob", "bg": "bul", "sk": "slk",
+    "hr": "hrv", "sr": "srp", "lt": "lit", "lv": "lav", "et": "est", "sl": "slv",
+    "fa": "fas", "ur": "urd", "bn": "ben", "ta": "tam", "te": "tel", "mr": "mar",
+    "gu": "guj", "pa": "pan", "ml": "mal", "kn": "kan", "ne": "nep", "si": "sin",
+    "my": "mya", "km": "khm", "lo": "lao", "ms": "zlm", "tl": "tgl", "sw": "swh",
+    "am": "amh", "so": "som", "ha": "hau", "yo": "yor", "ig": "ibo", "zu": "zul",
+    "xh": "xho", "af": "afr", "is": "isl", "ga": "gle", "cy": "cym", "mt": "mlt",
+    "eu": "eus", "ca": "cat", "gl": "glg", "az": "azj", "kk": "kaz", "uz": "uzn",
+    "mn": "khk", "ka": "kat", "hy": "hye", "sq": "als", "mk": "mkd",
 }
 
 
@@ -126,8 +71,11 @@ class HFClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    def _headers(self) -> dict[str, str]:
+    def _hf_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {settings.hf_token}"}
+
+    def _pollinations_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {settings.pollinations_token}"} if settings.pollinations_token else {}
 
     def _cache_path(self, namespace: str, key: str, ext: str) -> str:
         digest = hashlib.sha256(key.encode()).hexdigest()[:32]
@@ -137,11 +85,9 @@ class HFClient:
 
     async def _post_with_retry(self, url: str, **kwargs) -> httpx.Response:
         """One retry on a transient network failure (DNS blip, connection
-        reset) before giving up — this was the actual, repeated cause of AI
-        calls (chat, images, TTS, video, STT) silently failing in production
-        with httpx.ConnectError: "No address associated with hostname", even
-        though HF_TOKEN was configured and working. Used by every outbound
-        HF call in this client so none of them are exposed to this alone."""
+        reset) before giving up — every outbound call in this client goes
+        through this (or _get_with_retry below) so none of them are exposed
+        to a bare network hiccup alone."""
         for attempt in range(2):
             try:
                 return await self._http.post(url, **kwargs)
@@ -151,23 +97,51 @@ class HFClient:
                 await asyncio.sleep(0.5)
         raise AssertionError("unreachable")  # loop always returns or raises
 
+    async def _get_with_retry(self, url: str, **kwargs) -> httpx.Response:
+        for attempt in range(2):
+            try:
+                return await self._http.get(url, **kwargs)
+            except httpx.TransportError:
+                if attempt == 1:
+                    raise
+                await asyncio.sleep(0.5)
+        raise AssertionError("unreachable")
+
     async def chat(self, messages: list[dict[str, str]], max_tokens: int = 700, temperature: float = 0.7) -> str:
-        if not settings.hf_configured:
-            raise HFClientError("HF_TOKEN not configured")
-        payload = {
-            "model": settings.chat_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
+        """Tries Pollinations first (free, keyless — but its anonymous tier
+        has a small, easily-exhausted per-source budget, confirmed by
+        directly hitting it: the first call succeeded, the next one got HTTP
+        402 "API key budget too low ... this key has 0.0000"). Falls back to
+        Hugging Face — if HF_TOKEN is set and has credits — before finally
+        raising, so whichever provider currently has room wins instead of
+        the app depending on exactly one of them being up."""
+        if settings.testing:
+            raise HFClientError("AI disabled in test environment")
         try:
-            resp = await self._post_with_retry(settings.hf_chat_endpoint, headers=self._headers(), json=payload)
+            resp = await self._post_with_retry(
+                settings.pollinations_chat_endpoint,
+                headers=self._pollinations_headers(),
+                json={"model": settings.chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"]
+            logger.warning("Pollinations chat HTTP %s: %s", resp.status_code, resp.text[:300])
+        except httpx.TransportError:
+            logger.warning("Pollinations chat network error, trying Hugging Face fallback")
+
+        if not settings.hf_configured:
+            raise HFClientError("Pollinations chat failed and no HF_TOKEN fallback is configured")
+        try:
+            resp = await self._post_with_retry(
+                settings.hf_chat_endpoint,
+                headers=self._hf_headers(),
+                json={"model": settings.hf_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+            )
         except httpx.TransportError as exc:
             raise HFClientError(f"HF chat network error: {exc}") from exc
         if resp.status_code != 200:
             raise HFClientError(f"HF chat HTTP {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        return resp.json()["choices"][0]["message"]["content"]
 
     async def generate_exercises(
         self, req: LessonRequest, mix_override: list[ExerciseType] | None = None
@@ -193,32 +167,30 @@ class HFClient:
             with open(cache_path, encoding="utf-8") as f:
                 return [Exercise(**item) for item in json.load(f)]
 
-        if settings.hf_configured:
-            prompt = build_exercise_generation_prompt(req, mix_override)
-            try:
-                raw = await self.chat(
-                    [
-                        {"role": "system", "content": "You output only valid JSON, nothing else."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    max_tokens=1500,
-                )
-                exercises = _parse_exercises(raw)
-                with open(cache_path, "w", encoding="utf-8") as f:
-                    json.dump([e.model_dump() for e in exercises], f)
-                return exercises
-            except Exception:
-                logger.exception("HF exercise generation failed, using offline fallback content")
+        prompt = build_exercise_generation_prompt(req, mix_override)
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1500,
+            )
+            exercises = _parse_exercises(raw)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump([e.model_dump() for e in exercises], f)
+            return exercises
+        except Exception:
+            logger.exception("AI exercise generation failed, using offline fallback content")
         return _fallback_exercises(req, mix_override)
 
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
-        if not settings.hf_configured:
-            return (
-                "(modo demo — configura HF_TOKEN para activar al tutor de IA real) "
-                "¡Qué bien, cuéntame más!"
-            )
         messages = [{"role": "system", "content": system_prompt}, *history]
-        return await self.chat(messages, max_tokens=300, temperature=0.8)
+        try:
+            return await self.chat(messages, max_tokens=300, temperature=0.8)
+        except Exception:
+            logger.exception("AI conversation reply failed")
+            return "(no se pudo generar una respuesta en este momento — inténtalo de nuevo) ¡Qué bien, cuéntame más!"
 
     # ── Library (on-demand AI-generated books) ──────────────────────────
 
@@ -232,14 +204,6 @@ class HFClient:
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
                 return f.read()
-
-        if not settings.hf_configured:
-            return (
-                f"(Modo demo — configura HF_TOKEN para generar el libro completo con IA)\n\n"
-                f'"{stub.title}" es una historia de {stub.genre_label.lower()} pensada para el nivel '
-                f"{stub.level.value} en {target_lang}. Cuando actives tu clave de Hugging Face, esta "
-                f"página mostrará el libro completo, generado especialmente para ti."
-            )
 
         prompt = build_book_generation_prompt(stub, target_lang, native_lang)
         try:
@@ -257,7 +221,7 @@ class HFClient:
                 temperature=0.85,
             )
         except Exception:
-            logger.exception("HF book generation failed, using offline fallback content")
+            logger.exception("AI book generation failed, using offline fallback content")
             return (
                 f"(No se pudo generar el libro en este momento — inténtalo de nuevo en un momento)\n\n"
                 f'"{stub.title}" — {stub.genre_label}, nivel {stub.level.value}.'
@@ -287,9 +251,6 @@ class HFClient:
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
 
-        if not settings.hf_configured:
-            return _fallback_curriculum(field, level)
-
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, field.name)
@@ -313,7 +274,7 @@ class HFClient:
                 if item.get("title")
             ]
         except Exception:
-            logger.exception("HF curriculum generation failed, using offline fallback content")
+            logger.exception("AI curriculum generation failed, using offline fallback content")
             return _fallback_curriculum(field, level)
 
         # Only successful HF generations are cached — same rule as books: a
@@ -341,19 +302,6 @@ class HFClient:
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
 
-        if not settings.hf_configured:
-            return [
-                {
-                    "title": "Modo demo",
-                    "content": (
-                        f"(Modo demo — configura HF_TOKEN para generar el contenido completo del curso con IA)\n\n"
-                        f'"{course_title}" — {course_description}\n\n'
-                        f"Cuando actives tu clave de Hugging Face, este curso mostrará varios módulos de "
-                        f"contenido completo, generados especialmente para tu carrera."
-                    ),
-                }
-            ]
-
         from . import rag
 
         context = await rag.fetch_arxiv_context(field.id, course_title)
@@ -377,7 +325,7 @@ class HFClient:
                 if item.get("content")
             ]
         except Exception:
-            logger.exception("HF course generation failed, using offline fallback content")
+            logger.exception("AI course generation failed, using offline fallback content")
             return [
                 {
                     "title": "No se pudo generar el curso",
@@ -413,12 +361,6 @@ class HFClient:
             with open(cache_path, encoding="utf-8") as f:
                 return f.read()
 
-        if not settings.hf_configured:
-            return (
-                f"(Modo demo — configura HF_TOKEN para generar un caso práctico real)\n\n"
-                f'Practica lo aprendido en "{course_title}" resolviendo un caso real una vez actives tu clave de Hugging Face.'
-            )
-
         prompt = build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang)
         try:
             content = await self.chat(
@@ -434,7 +376,7 @@ class HFClient:
                 temperature=0.8,
             )
         except Exception:
-            logger.exception("HF scenario generation failed, using offline fallback content")
+            logger.exception("AI scenario generation failed, using offline fallback content")
             return "No se pudo generar el caso práctico en este momento — inténtalo de nuevo."
 
         with open(cache_path, "w", encoding="utf-8") as f:
@@ -445,10 +387,6 @@ class HFClient:
         """Feedback on the learner's own answer to a practice scenario — not
         cached, since it depends on what they personally wrote. Written in
         native_lang, same rationale as the rest of the academy."""
-        if not settings.hf_configured:
-            return (
-                "(Modo demo — configura HF_TOKEN para recibir retroalimentación real de IA sobre tu respuesta)"
-            )
         prompt = (
             f"A student was given this practice scenario:\n\n{scenario}\n\n"
             f"Their response:\n\n{user_response}\n\n"
@@ -462,7 +400,7 @@ class HFClient:
                 temperature=0.7,
             )
         except Exception:
-            logger.exception("HF scenario feedback failed")
+            logger.exception("AI scenario feedback failed")
             return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
 
     async def generate_assignments(
@@ -487,16 +425,6 @@ class HFClient:
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
 
-        if not settings.hf_configured:
-            return [
-                {
-                    "id": f"{course_id}:demo",
-                    "type": "tarea",
-                    "title": "Modo demo",
-                    "instructions": "Configura HF_TOKEN para generar tareas, informes y proyectos reales para este curso.",
-                }
-            ]
-
         prompt = build_assignments_prompt(field, level.label_es, course_title, course_description, native_lang)
         try:
             raw = await self.chat(
@@ -520,7 +448,7 @@ class HFClient:
                 if item.get("instructions")
             ]
         except Exception:
-            logger.exception("HF assignment generation failed, using offline fallback content")
+            logger.exception("AI assignment generation failed, using offline fallback content")
             return [
                 {
                     "id": f"{course_id}:0",
@@ -540,11 +468,6 @@ class HFClient:
         """Grades a learner's submitted tarea/informe/proyecto — not cached,
         since it depends on what they personally wrote. Returns a short
         qualitative grade plus feedback, written in native_lang."""
-        if not settings.hf_configured:
-            return {
-                "grade": "Modo demo",
-                "feedback": "Configura HF_TOKEN para recibir una calificación real de IA sobre tu entrega.",
-            }
         prompt = (
             f"A student was assigned this schoolwork:\n\nTitle: {assignment_title}\n"
             f"Instructions: {instructions}\n\n"
@@ -567,7 +490,7 @@ class HFClient:
             data = json.loads(cleaned)
             return {"grade": data.get("grade", ""), "feedback": data.get("feedback", "")}
         except Exception:
-            logger.exception("HF assignment grading failed")
+            logger.exception("AI assignment grading failed")
             return {"grade": "", "feedback": "No se pudo calificar la entrega en este momento — inténtalo de nuevo."}
 
     # ── Recommendations (books, songs, and other media) ─────────────────
@@ -583,29 +506,6 @@ class HFClient:
         if os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
-
-        if not settings.hf_configured:
-            interest_note = f" relacionado con {interests[0]}" if interests else ""
-            return [
-                {
-                    "kind": "book",
-                    "title": f"Busca cuentos ilustrados para nivel {level}",
-                    "creator": f"En {target_lang}",
-                    "reason": f"Ideal para tu nivel{interest_note} — configura HF_TOKEN para recomendaciones con IA.",
-                },
-                {
-                    "kind": "song",
-                    "title": f"Explora listas de música popular en {target_lang}",
-                    "creator": "Playlists para principiantes",
-                    "reason": "Escuchar música es una forma natural de entrenar el oído.",
-                },
-                {
-                    "kind": "podcast",
-                    "title": f"Busca podcasts para aprender {target_lang}",
-                    "creator": "Episodios cortos y lentos",
-                    "reason": "Los podcasts para estudiantes narran más despacio y repiten vocabulario clave.",
-                },
-            ]
 
         interests_note = f" The learner is interested in: {', '.join(interests)}." if interests else ""
         prompt = (
@@ -637,7 +537,7 @@ class HFClient:
                 for item in items
             ]
         except Exception:
-            logger.exception("HF recommendations generation failed, using offline fallback content")
+            logger.exception("AI recommendations generation failed, using offline fallback content")
             return [
                 {
                     "kind": "book",
@@ -654,34 +554,36 @@ class HFClient:
     # ── Text-to-image (vocab flashcards) ────────────────────────────────
 
     async def generate_image(self, prompt: str) -> bytes | None:
+        """Pollinations' image endpoint is a plain keyless GET that returns
+        the image bytes directly — no request body, no JSON envelope."""
         cache_path = self._cache_path("img", prompt, "jpg")
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
                 return f.read()
-        if not settings.hf_configured:
+        if settings.testing:
             return None
         try:
-            resp = await self._post_with_retry(
-                f"{settings.hf_models_endpoint}/{settings.image_model}",
-                headers=self._headers(),
-                json={"inputs": prompt},
+            url = f"{settings.pollinations_image_endpoint}/{urllib.parse.quote(prompt)}"
+            resp = await self._get_with_retry(
+                url, headers=self._pollinations_headers(), params={"model": settings.image_model}
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content
-            logger.warning("HF image generation HTTP %s: %s", resp.status_code, resp.text[:200])
+            logger.warning("Pollinations image generation HTTP %s: %s", resp.status_code, resp.text[:200])
         except Exception:
-            logger.exception("HF image generation failed")
+            logger.exception("Pollinations image generation failed")
         return None
 
     # ── Text-to-video (short topic clips) ───────────────────────────────
 
     async def generate_video(self, prompt: str) -> bytes | None:
-        """Same best-effort/cache/graceful-failure shape as generate_image —
-        video generation has much narrower free-serverless model support and
-        runs slower, so a longer per-call timeout and a clean None on
-        failure (never a broken video) matter even more here."""
+        """Video generation stays on the optional Hugging Face path —
+        Pollinations doesn't offer it, and video has much narrower
+        serverless model support in general, so a longer per-call timeout
+        and a clean None on failure (never a broken video) matter even more
+        here. Best-effort by design: no HF_TOKEN just means no video."""
         cache_path = self._cache_path("video", prompt, "mp4")
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
@@ -691,7 +593,7 @@ class HFClient:
         try:
             resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{settings.video_model}",
-                headers=self._headers(),
+                headers=self._hf_headers(),
                 json={"inputs": prompt},
                 timeout=150.0,
             )
@@ -707,6 +609,12 @@ class HFClient:
     # ── Text-to-speech ──────────────────────────────────────────────────
 
     async def text_to_speech(self, text: str, target_lang: str) -> bytes | None:
+        """Stays on the Hugging Face path — Pollinations' TTS moved behind a
+        paid API key (its old keyless audio endpoint now 404s: "Model not
+        found: openai-audio... visit https://enter.pollinations.ai"), so
+        there's no free keyless TTS option to swap in right now. Best-effort
+        by design, same as before: no HF_TOKEN/credits just means no audio,
+        gracefully, not a broken request."""
         lang_code = _MMS_LANG_CODES.get(target_lang.lower()[:2], "eng")
         model = f"{settings.tts_model_prefix}-{lang_code}"
         cache_path = self._cache_path("tts", f"{model}:{text}", "flac")
@@ -718,7 +626,7 @@ class HFClient:
         try:
             resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{model}",
-                headers=self._headers(),
+                headers=self._hf_headers(),
                 json={"inputs": text},
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
@@ -733,12 +641,16 @@ class HFClient:
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
+        """Stays on the optional Hugging Face path — Pollinations doesn't
+        offer transcription. No HF_TOKEN just means no auto-transcript; the
+        speak_repeat exercise already has the learner self-check in that
+        case (see frontend/app.js)."""
         if not settings.hf_configured:
             return ""
         try:
             resp = await self._post_with_retry(
                 f"{settings.hf_models_endpoint}/{settings.stt_model}",
-                headers={**self._headers(), "Content-Type": content_type},
+                headers={**self._hf_headers(), "Content-Type": content_type},
                 content=audio_bytes,
             )
             if resp.status_code == 200:
@@ -773,11 +685,12 @@ def _parse_exercises(raw: str) -> list[Exercise]:
 
 
 def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> list[Exercise]:
-    """Deterministic, network-free content used when the AI call isn't
-    available — no HF_TOKEN configured, or a transient failure survived the
-    one retry in chat(). Clearly lower quality than the real LLM-generated,
-    personalized content, and says so directly in the exercise's own prompt
-    text so a user never mistakes this for a broken real exercise."""
+    """Deterministic, network-free content used when the AI call genuinely
+    fails (a transient failure that survived the one retry in chat(), or
+    Pollinations itself being unreachable/down). Clearly lower quality than
+    the real LLM-generated, personalized content, and says so directly in
+    the exercise's own prompt text so a user never mistakes this for a
+    broken real exercise."""
     from .curriculum import exercise_mix_for
 
     mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
@@ -807,12 +720,12 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
 
 
 def _fallback_curriculum(field: "AcademicField", level: "AcademicLevel") -> list[dict]:
-    """Deterministic, network-free course list so the academy works with no
-    HF_TOKEN — same role as _fallback_exercises for lessons."""
+    """Deterministic, network-free course list for when generation genuinely
+    fails — same role as _fallback_exercises for lessons."""
     return [
         {
             "title": f"{field.name} — módulo {i + 1}",
-            "description": "(Modo demo — configura HF_TOKEN para un plan de estudios completo con IA)",
+            "description": "(No se pudo generar el plan de estudios en este momento — inténtalo de nuevo)",
         }
         for i in range(level.course_count)
     ]

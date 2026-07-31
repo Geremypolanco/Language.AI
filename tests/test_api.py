@@ -347,7 +347,12 @@ def test_library_catalog_filters_by_level_and_genre():
         assert all(b["level"] == "A1" and b["genre"] == "adventure" for b in books)
 
 
-def test_library_book_content_generates_demo_fallback_without_hf_token():
+def test_library_book_content_generates_offline_fallback_in_test_env():
+    # AI calls run through Pollinations (free, keyless — always "configured"),
+    # so settings.testing is what keeps the suite offline: chat() raises
+    # immediately instead of attempting a real network request, and this
+    # exercises that fallback path rather than a "missing token" state that
+    # no longer exists.
     with TestClient(app) as client:
         user = _onboard(client, email="library3@example.com")
         catalog_res = client.get(f"/api/library/{user['id']}/catalog", params={"limit": 1})
@@ -357,7 +362,7 @@ def test_library_book_content_generates_demo_fallback_without_hf_token():
         assert res.status_code == 200
         body = res.json()
         assert body["id"] == book_id
-        assert "modo demo" in body["content"].lower()
+        assert "no se pudo generar" in body["content"].lower()
 
 
 def test_library_book_not_found_returns_404():

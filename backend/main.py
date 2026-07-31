@@ -76,6 +76,10 @@ app.include_router(feedback.router)
 def health() -> dict:
     return {
         "status": "ok",
+        # Chat/images run on Pollinations, which needs no configuration at
+        # all — always on. hf_configured only reflects the optional,
+        # secondary Hugging Face path (chat fallback, TTS, speech-to-text,
+        # video generation).
         "hf_configured": settings.hf_configured,
         "google_configured": settings.google_configured,
     }

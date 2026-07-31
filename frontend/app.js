@@ -1620,7 +1620,7 @@ async function playAudio(text, targetLang) {
     const blob = await res.blob();
     new Audio(URL.createObjectURL(blob)).play().catch(() => {});
   } catch {
-    // best-effort; missing HF_TOKEN just means silent demo mode
+    // best-effort; a transient failure here just means silent playback
   }
 }
 
@@ -1635,7 +1635,7 @@ async function loadImage(imgEl, prompt) {
     const blob = await res.blob();
     imgEl.src = URL.createObjectURL(blob);
   } catch {
-    // demo mode without HF_TOKEN: leave placeholder background
+    // best-effort; a transient failure here just means the placeholder stays
   }
 }
 

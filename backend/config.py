@@ -36,13 +36,16 @@ _load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+    # Hugging Face is now the *secondary* provider: an automatic fallback for
+    # chat if Pollinations' anonymous budget is exhausted (see chat() in
+    # hf_client.py), plus the only option this app has for TTS, speech-to-
+    # text, and video generation. Needs a paid Inference Providers plan or
+    # credits — which this deployment's account has exhausted — and even
+    # with credits, Hugging Face retired the old api-inference.huggingface.co
+    # host, so the endpoint below is the current unified router.
     hf_token: str = field(default_factory=lambda: os.environ.get("HF_TOKEN", "") or os.environ.get("HF_API_KEY", ""))
-
-    # Model choices — overridable via env, defaulting to models known to be served
-    # on HF's free Inference Providers tier.
-    chat_model: str = field(default_factory=lambda: os.environ.get("LINGUA_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
-    image_model: str = field(
-        default_factory=lambda: os.environ.get("LINGUA_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+    hf_chat_model: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_HF_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct")
     )
     stt_model: str = field(default_factory=lambda: os.environ.get("LINGUA_STT_MODEL", "openai/whisper-large-v3"))
     tts_model_prefix: str = field(
@@ -50,19 +53,35 @@ class Settings:
     )
     # Text-to-video has much narrower serverless Inference API support than
     # text/image/audio — this is the model most commonly available there.
-    # Best-effort by design, same as image/TTS: a slow or unavailable model
-    # degrades to "video unavailable" rather than breaking the request.
+    # Best-effort by design: a slow or unavailable model degrades to "video
+    # unavailable" rather than breaking the request.
     video_model: str = field(
         default_factory=lambda: os.environ.get("LINGUA_VIDEO_MODEL", "damo-vilab/text-to-video-ms-1.7b")
     )
-
-    # Hugging Face retired the old api-inference.huggingface.co host in favor
-    # of a unified router — the old hostname now fails DNS resolution
-    # entirely (confirmed independently from two different networks, not a
-    # transient blip), which silently sent every AI feature in this app
-    # (chat, images, TTS, STT) into offline fallback mode in production.
     hf_chat_endpoint: str = "https://router.huggingface.co/v1/chat/completions"
     hf_models_endpoint: str = "https://router.huggingface.co/hf-inference/models"
+
+    # ── Pollinations.ai — primary provider for chat and images ──────────
+    # Free, keyless, no signup, no billing. Image generation (Flux) is
+    # confirmed solid and effectively unlimited. Chat's anonymous tier works
+    # but has a small, easily-exhausted per-source request budget (confirmed
+    # directly: the first call succeeded, the next got HTTP 402 "budget too
+    # low") — chat() falls back to Hugging Face when that happens, see
+    # above. Pollinations no longer offers keyless TTS (their audio endpoint
+    # now requires a paid API key), so text_to_speech() stays on the
+    # Hugging Face path only. An optional token (POLLINATIONS_API_TOKEN)
+    # raises the chat/image rate limit but nothing here requires one.
+    pollinations_token: str = field(default_factory=lambda: os.environ.get("POLLINATIONS_API_TOKEN", ""))
+    pollinations_chat_endpoint: str = "https://text.pollinations.ai/openai"
+    pollinations_image_endpoint: str = "https://image.pollinations.ai/prompt"
+    chat_model: str = field(default_factory=lambda: os.environ.get("LINGUA_CHAT_MODEL", "openai"))
+    image_model: str = field(default_factory=lambda: os.environ.get("LINGUA_IMAGE_MODEL", "flux"))
+
+    # Set by tests/conftest.py so the suite stays fully offline and
+    # deterministic — Pollinations needs no token, so without this flag
+    # every AI call in the test run would be a real network request instead
+    # of hitting the fallback content the tests assert on.
+    testing: bool = field(default_factory=lambda: os.environ.get("LINGUA_TESTING", "") == "1")
 
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))

@@ -1,7 +1,14 @@
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+# Must be set before backend.config is first imported (it reads this once,
+# at module load, into a frozen Settings singleton) — keeps the whole test
+# suite offline and deterministic even though Pollinations itself needs no
+# token and would otherwise happily make a real network call.
+os.environ["LINGUA_TESTING"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
