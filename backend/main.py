@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .hf_client import hf_client
 from .routers import auth as auth_router
-from .routers import content, conversation, lessons, library, placement, progress, shop, users
+from .routers import academy, content, conversation, lessons, library, placement, progress, shop, users
 
 logger = logging.getLogger("lingua.main")
 
@@ -66,6 +66,7 @@ app.include_router(shop.router)
 app.include_router(placement.router)
 app.include_router(conversation.router)
 app.include_router(library.router)
+app.include_router(academy.router)
 
 
 @app.get("/api/health")

@@ -163,6 +163,77 @@ class BookContent(BaseModel):
     content: str
 
 
+class AcademicLevel(StrEnum):
+    """Self-paced study depth — explicitly NOT an accredited credential (see
+    the disclaimer shown everywhere this appears in the UI). Named after the
+    real-world credential each track's scope roughly mirrors, purely so
+    learners have a sense of how much ground it covers."""
+
+    ASSOCIATE = "ASSOCIATE"
+    BACHELOR = "BACHELOR"
+    MASTER = "MASTER"
+
+    @property
+    def label_es(self) -> str:
+        return {
+            AcademicLevel.ASSOCIATE: "Técnico (equivalente a Asociado)",
+            AcademicLevel.BACHELOR: "Profesional (equivalente a Licenciatura)",
+            AcademicLevel.MASTER: "Avanzado (equivalente a Maestría)",
+        }[self]
+
+    @property
+    def course_count(self) -> int:
+        return {AcademicLevel.ASSOCIATE: 12, AcademicLevel.BACHELOR: 24, AcademicLevel.MASTER: 10}[self]
+
+
+class AcademicField(BaseModel):
+    id: str
+    name: str
+    category: str
+    icon: str
+    description: str
+
+
+class CourseStub(BaseModel):
+    id: str
+    order: int
+    title: str
+    description: str
+
+
+class Curriculum(BaseModel):
+    field_id: str
+    field_name: str
+    level: AcademicLevel
+    level_label: str
+    courses: list[CourseStub]
+
+
+class CourseModule(BaseModel):
+    title: str
+    content: str
+
+
+class CourseContent(BaseModel):
+    id: str
+    title: str
+    modules: list[CourseModule]
+
+
+class AcademyEnrollment(BaseModel):
+    field_id: str
+    field_name: str
+    level: AcademicLevel
+    level_label: str
+    enrolled_at: str
+
+
+class AcademyProgress(BaseModel):
+    enrollment: AcademyEnrollment | None
+    completed_course_ids: list[str] = Field(default_factory=list)
+    total_courses: int = 0
+
+
 class Recommendation(BaseModel):
     kind: str  # "book" | "song" | "podcast" | "show"
     title: str

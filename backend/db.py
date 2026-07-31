@@ -91,6 +91,20 @@ CREATE TABLE IF NOT EXISTS conversation_log (
     content TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS academy_enrollment (
+    user_id TEXT PRIMARY KEY,
+    field_id TEXT NOT NULL,
+    level TEXT NOT NULL,
+    enrolled_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_course_progress (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -147,6 +161,20 @@ CREATE TABLE IF NOT EXISTS conversation_log (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_enrollment (
+    user_id TEXT PRIMARY KEY,
+    field_id TEXT NOT NULL,
+    level TEXT NOT NULL,
+    enrolled_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_course_progress (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);

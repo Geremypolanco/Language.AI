@@ -374,3 +374,91 @@ def test_recommendations_gives_demo_mode_suggestions_without_hf_token():
         body = res.json()
         assert len(body) > 0
         assert all({"kind", "title", "creator", "reason"} <= item.keys() for item in body)
+
+
+def test_academy_fields_lists_30_plus_fields_across_categories():
+    with TestClient(app) as client:
+        res = client.get("/api/academy/fields")
+        assert res.status_code == 200
+        fields = res.json()
+        assert len(fields) >= 30
+        assert len({f["category"] for f in fields}) >= 5
+
+
+def test_academy_curriculum_requires_enrollment_first():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy1@example.com")
+        res = client.get(f"/api/academy/{user['id']}/curriculum")
+        assert res.status_code == 404
+
+
+def test_academy_enroll_curriculum_course_and_complete_flow():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy2@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+
+        enroll_res = client.post(
+            f"/api/academy/{user['id']}/enroll",
+            json={"field_id": field_id, "level": "ASSOCIATE"},
+        )
+        assert enroll_res.status_code == 200
+        enrollment = enroll_res.json()
+        assert enrollment["field_id"] == field_id
+        assert enrollment["level"] == "ASSOCIATE"
+        assert "no otorga" not in enrollment["level_label"].lower()  # label itself is short; disclaimer lives in the UI
+
+        curriculum_res = client.get(f"/api/academy/{user['id']}/curriculum")
+        assert curriculum_res.status_code == 200
+        courses = curriculum_res.json()["courses"]
+        assert len(courses) == 12  # ASSOCIATE.course_count
+        course_id = courses[0]["id"]
+
+        course_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}")
+        assert course_res.status_code == 200
+        assert len(course_res.json()["modules"]) > 0
+
+        complete_res = client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete")
+        assert complete_res.status_code == 200
+        progress = complete_res.json()
+        assert progress["completed_course_ids"] == [course_id]
+        assert progress["total_courses"] == 12
+
+        # Completing again is idempotent, not double-counted.
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete")
+        progress2 = client.get(f"/api/academy/{user['id']}/progress").json()
+        assert progress2["completed_course_ids"] == [course_id]
+
+
+def test_academy_re_enrolling_switches_field_and_level():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy3@example.com")
+        fields = client.get("/api/academy/fields").json()
+
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": fields[0]["id"], "level": "ASSOCIATE"})
+        res = client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": fields[1]["id"], "level": "MASTER"})
+        assert res.status_code == 200
+        assert res.json()["field_id"] == fields[1]["id"]
+        assert res.json()["level"] == "MASTER"
+
+        progress = client.get(f"/api/academy/{user['id']}/progress").json()
+        assert progress["enrollment"]["field_id"] == fields[1]["id"]
+        assert progress["total_courses"] == 10  # MASTER.course_count
+
+
+def test_academy_progress_with_no_enrollment_returns_null():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy4@example.com")
+        res = client.get(f"/api/academy/{user['id']}/progress")
+        assert res.status_code == 200
+        assert res.json()["enrollment"] is None
+
+
+def test_academy_enroll_requires_ownership():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy5@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        res = client.post(
+            f"/api/academy/{user['id']}not-mine/enroll",
+            json={"field_id": field_id, "level": "ASSOCIATE"},
+        )
+        assert res.status_code == 403

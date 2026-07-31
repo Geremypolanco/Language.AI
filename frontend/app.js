@@ -918,6 +918,139 @@ function setupRecommendations() {
   }
 }
 
+// ---------- University-prep academy (self-paced, explicitly non-accredited) ----------
+
+const ACADEMY_LEVEL_LABELS = {
+  ASSOCIATE: "Técnico (equivalente a Asociado)",
+  BACHELOR: "Profesional (equivalente a Licenciatura)",
+  MASTER: "Avanzado (equivalente a Maestría)",
+};
+
+const _academyState = { fieldsLoaded: false, currentCourseId: null };
+
+async function setupAcademy() {
+  if (!_academyState.fieldsLoaded) {
+    _academyState.fieldsLoaded = true;
+    await loadAcademyFields();
+    $("#academy-switch-btn").addEventListener("click", showAcademyPicker);
+    $("#course-exit").addEventListener("click", () => showScreen("#screen-main"));
+    $("#course-complete-btn").addEventListener("click", completeCurrentCourse);
+  }
+  const progress = await api(`/api/academy/${state.userId}/progress`);
+  if (progress.enrollment) {
+    showAcademyCurriculum(progress);
+  } else {
+    showAcademyPicker();
+  }
+}
+
+async function loadAcademyFields() {
+  const fields = await api("/api/academy/fields");
+  const container = $("#academy-fields");
+  container.innerHTML = "";
+  const byCategory = {};
+  for (const field of fields) {
+    (byCategory[field.category] ||= []).push(field);
+  }
+  for (const [category, items] of Object.entries(byCategory)) {
+    const heading = document.createElement("div");
+    heading.className = "academy-category-heading";
+    heading.textContent = category;
+    container.appendChild(heading);
+
+    const grid = document.createElement("div");
+    grid.className = "academy-fields-grid";
+    for (const field of items) {
+      const card = document.createElement("button");
+      card.className = "field-card";
+      card.innerHTML = `
+        <p class="field-card-title">${field.name}</p>
+        <p class="field-card-desc">${field.description}</p>
+      `;
+      card.addEventListener("click", () => enrollInField(field.id));
+      grid.appendChild(card);
+    }
+    container.appendChild(grid);
+  }
+}
+
+async function enrollInField(fieldId) {
+  const level = $("#academy-level-select").value;
+  const progress = await api(`/api/academy/${state.userId}/enroll`, {
+    method: "POST",
+    body: JSON.stringify({ field_id: fieldId, level }),
+  }).then(async () => api(`/api/academy/${state.userId}/progress`));
+  showAcademyCurriculum(progress);
+}
+
+function showAcademyPicker() {
+  $("#academy-picker").classList.remove("hidden");
+  $("#academy-curriculum").classList.add("hidden");
+}
+
+async function showAcademyCurriculum(progress) {
+  $("#academy-picker").classList.add("hidden");
+  $("#academy-curriculum").classList.remove("hidden");
+
+  $("#academy-current-field").textContent = progress.enrollment.field_name;
+  $("#academy-current-level").textContent = ACADEMY_LEVEL_LABELS[progress.enrollment.level] || progress.enrollment.level;
+
+  const pct = progress.total_courses ? Math.round((progress.completed_course_ids.length / progress.total_courses) * 100) : 0;
+  $("#academy-progress-fill").style.width = `${pct}%`;
+  $("#academy-progress-caption").textContent = `${progress.completed_course_ids.length} de ${progress.total_courses} cursos completados`;
+
+  const list = $("#academy-course-list");
+  list.innerHTML = `<p class="recommendations-empty">Generando tu plan de estudios…</p>`;
+  const curriculum = await api(`/api/academy/${state.userId}/curriculum`);
+  list.innerHTML = "";
+  const completedIds = new Set(progress.completed_course_ids);
+  curriculum.courses.forEach((course, i) => {
+    const done = completedIds.has(course.id);
+    const row = document.createElement("button");
+    row.className = `course-item ${done ? "completed" : ""}`;
+    row.innerHTML = `
+      <span class="course-item-check">${done ? iconSvg("check") : i + 1}</span>
+      <div>
+        <p class="course-item-title">${course.title}</p>
+        <p class="course-item-desc">${course.description}</p>
+      </div>
+    `;
+    row.addEventListener("click", () => openCourse(course.id, course.title));
+    list.appendChild(row);
+  });
+}
+
+async function openCourse(courseId, title) {
+  _academyState.currentCourseId = courseId;
+  showScreen("#screen-course");
+  $("#course-title").textContent = title;
+  const modulesEl = $("#course-modules");
+  modulesEl.innerHTML = `<p class="recommendations-empty">Generando tu curso…</p>`;
+  try {
+    const course = await api(`/api/academy/${state.userId}/courses/${courseId}`);
+    modulesEl.innerHTML = "";
+    for (const mod of course.modules) {
+      const section = document.createElement("div");
+      section.innerHTML = `
+        <h3 class="course-module-title">${mod.title}</h3>
+        <p class="course-module-content">${mod.content}</p>
+      `;
+      modulesEl.appendChild(section);
+    }
+  } catch (err) {
+    modulesEl.innerHTML = `<p class="recommendations-empty">No se pudo generar el curso: ${err.message}</p>`;
+  }
+}
+
+async function completeCurrentCourse() {
+  if (!_academyState.currentCourseId) return;
+  const progress = await api(`/api/academy/${state.userId}/courses/${_academyState.currentCourseId}/complete`, {
+    method: "POST",
+  });
+  showScreen("#screen-main");
+  showAcademyCurriculum(progress);
+}
+
 // ---------- Tabs ----------
 
 function setupTabs() {
@@ -929,6 +1062,7 @@ function setupTabs() {
       $(`#tab-${btn.dataset.tab}`).classList.remove("hidden");
       if (btn.dataset.tab === "practice") setupPractice();
       if (btn.dataset.tab === "library") setupLibrary();
+      if (btn.dataset.tab === "academy") setupAcademy();
       if (btn.dataset.tab === "talk") ensureConversationSocket();
       if (btn.dataset.tab === "progress") loadDashboard();
     });

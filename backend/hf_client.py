@@ -23,7 +23,7 @@ from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_e
 from .models import Exercise, ExerciseType
 
 if TYPE_CHECKING:
-    from .models import BookStub
+    from .models import AcademicField, AcademicLevel, BookStub
 
 logger = logging.getLogger("lingua.hf_client")
 
@@ -229,6 +229,111 @@ class HFClient:
             f.write(content)
         return content
 
+    # ── Academy (on-demand AI-generated accelerated study curricula) ────
+
+    async def generate_curriculum(self, field: "AcademicField", level: "AcademicLevel", native_lang: str) -> list[dict]:
+        """Generates (once) and caches the ordered course list for a
+        (field, academic level) pair — analogous to generate_book_content,
+        but for a curriculum outline instead of a story."""
+        from .academy import build_curriculum_prompt
+
+        cache_key = f"{field.id}:{level.value}:{native_lang}"
+        cache_path = self._cache_path("curriculum", cache_key, "json")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return json.load(f)
+
+        if not settings.hf_configured:
+            return _fallback_curriculum(field, level)
+
+        prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1600,
+                temperature=0.5,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            items = json.loads(cleaned)
+            courses = [
+                {"title": item.get("title", ""), "description": item.get("description", "")}
+                for item in items
+                if item.get("title")
+            ]
+        except Exception:
+            logger.exception("HF curriculum generation failed, using offline fallback content")
+            return _fallback_curriculum(field, level)
+
+        # Only successful HF generations are cached — same rule as books: a
+        # fallback must never get stuck on disk once a token is configured.
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(courses, f)
+        return courses
+
+    async def generate_course_content(
+        self,
+        field: "AcademicField",
+        level: "AcademicLevel",
+        course_id: str,
+        course_title: str,
+        course_description: str,
+        native_lang: str,
+    ) -> list[dict]:
+        """Generates (once) and caches a course's module content."""
+        from .academy import build_course_prompt
+
+        cache_key = f"{course_id}:{native_lang}"
+        cache_path = self._cache_path("course", cache_key, "json")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return json.load(f)
+
+        if not settings.hf_configured:
+            return [
+                {
+                    "title": "Modo demo",
+                    "content": (
+                        f"(Modo demo — configura HF_TOKEN para generar el contenido completo del curso con IA)\n\n"
+                        f'"{course_title}" — {course_description}\n\n'
+                        f"Cuando actives tu clave de Hugging Face, este curso mostrará varios módulos de "
+                        f"contenido completo, generados especialmente para tu carrera."
+                    ),
+                }
+            ]
+
+        prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1800,
+                temperature=0.6,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            items = json.loads(cleaned)
+            modules = [
+                {"title": item.get("title", ""), "content": item.get("content", "")}
+                for item in items
+                if item.get("content")
+            ]
+        except Exception:
+            logger.exception("HF course generation failed, using offline fallback content")
+            return [
+                {
+                    "title": "No se pudo generar el curso",
+                    "content": "Inténtalo de nuevo en un momento.",
+                }
+            ]
+
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(modules, f)
+        return modules
+
     # ── Recommendations (books, songs, and other media) ─────────────────
 
     async def generate_recommendations(
@@ -419,6 +524,18 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
             )
         )
     return exercises
+
+
+def _fallback_curriculum(field: "AcademicField", level: "AcademicLevel") -> list[dict]:
+    """Deterministic, network-free course list so the academy works with no
+    HF_TOKEN — same role as _fallback_exercises for lessons."""
+    return [
+        {
+            "title": f"{field.name} — módulo {i + 1}",
+            "description": "(Modo demo — configura HF_TOKEN para un plan de estudios completo con IA)",
+        }
+        for i in range(level.course_count)
+    ]
 
 
 hf_client = HFClient()

@@ -216,6 +216,7 @@
           <button class="tab-btn active" data-tab="path">Camino</button>
           <button class="tab-btn" data-tab="practice">Practicar</button>
           <button class="tab-btn" data-tab="library">Biblioteca</button>
+          <button class="tab-btn" data-tab="academy">Universidad</button>
           <button class="tab-btn" data-tab="talk">Hablar en vivo</button>
           <button class="tab-btn" data-tab="progress">Progreso</button>
           <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
@@ -270,6 +271,41 @@
           <div id="library-grid" class="library-grid"></div>
           <div class="library-load-more-row">
             <button id="library-load-more" class="btn btn-secondary hidden">Cargar más</button>
+          </div>
+        </div>
+
+        <div id="tab-academy" class="tab-panel hidden">
+          <div class="academy-disclaimer">
+            <svg class="icon"><use href="#icon-clock"/></svg>
+            <p>Ruta de estudio acelerada y autodirigida creada por IA — <strong>no es un programa acreditado</strong> ni otorga créditos, certificados ni títulos oficiales. Es solo para aprender; para un título real necesitas inscribirte en una universidad acreditada.</p>
+          </div>
+
+          <div id="academy-picker">
+            <div class="library-intro">
+              <h2>¿Qué quieres estudiar?</h2>
+              <p class="subtitle">Elige una carrera y un nivel de profundidad — tú decides el ritmo.</p>
+              <div class="library-filters">
+                <select id="academy-level-select">
+                  <option value="ASSOCIATE">Técnico (equivalente a Asociado) — más rápido</option>
+                  <option value="BACHELOR">Profesional (equivalente a Licenciatura)</option>
+                  <option value="MASTER">Avanzado (equivalente a Maestría)</option>
+                </select>
+              </div>
+            </div>
+            <div id="academy-fields"></div>
+          </div>
+
+          <div id="academy-curriculum" class="hidden">
+            <div class="academy-curriculum-header">
+              <div>
+                <h2 id="academy-current-field"></h2>
+                <p class="subtitle" id="academy-current-level"></p>
+              </div>
+              <button id="academy-switch-btn" class="link-btn" type="button">Cambiar carrera</button>
+            </div>
+            <div class="meter-track academy-progress-track"><div id="academy-progress-fill" class="meter-fill"></div></div>
+            <p class="subtitle" id="academy-progress-caption"></p>
+            <div id="academy-course-list" class="academy-course-list"></div>
           </div>
         </div>
 
@@ -513,6 +549,18 @@
         </div>
         <h2 id="reader-title" class="reader-title"></h2>
         <div id="reader-body" class="reader-body"></div>
+      </div>
+    </section>
+
+    <!-- Academy course reader overlay -->
+    <section id="screen-course" class="screen hidden overlay">
+      <div class="reader-frame">
+        <div class="reader-header">
+          <button id="course-exit" class="btn-icon"><svg class="icon"><use href="#icon-x"/></svg></button>
+        </div>
+        <h2 id="course-title" class="reader-title"></h2>
+        <div id="course-modules" class="course-modules"></div>
+        <button id="course-complete-btn" class="btn btn-primary">Marcar como completado</button>
       </div>
     </section>
 
