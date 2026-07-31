@@ -9,6 +9,7 @@ HF request when a token is present (no mocked "success" responses).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -120,13 +121,14 @@ _MMS_LANG_CODES = {
 # exactly these 8 training languages — en/fr/es/pt/pl/de/it/nl — matching
 # PARLER_LANGS below exactly. As of this check it has no confirmed live
 # entry under HF's Inference Providers (only community Spaces run it), so
-# this call is genuinely best-effort — same resilience contract as every
-# other HF call in this file: try, log, fall through. If it 404s/errors in
-# production, the documented, verified-working alternative is to call one
-# of its community Spaces (e.g. hf.co/spaces/etrotta/parler-tts-mini-
-# multilingual-v1.1) via gradio_client instead of the raw model endpoint —
-# not implemented here since it couldn't be exercised end-to-end from this
-# environment (Space invocation is disabled in this session's tooling).
+# the direct endpoint below is best-effort; text_to_speech's second tier
+# calls a verified community Space (PARLER_SPACE_ID / _call_parler_space)
+# via gradio_client instead. Neither tier could be executed end-to-end
+# from the environment this was written in — this session's HF MCP tools
+# have Space invocation disabled, and this sandbox's own outbound network
+# policy separately blocks huggingface.co directly — so both are shipped
+# as genuinely best-effort, same resilience contract as everything else in
+# this file: try, log, fall through to the shared MMS voice on any failure.
 #
 # Kokoro-82M was considered and deliberately rejected for this role: its
 # model card lists English only (no Spanish/multilingual coverage this app
@@ -134,6 +136,47 @@ _MMS_LANG_CODES = {
 # (fal-ai) currently shows an error status on the Hub rather than "live".
 PARLER_MODEL = "parler-tts/parler-tts-mini-multilingual-v1.1"
 PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
+
+# A real, verified community Space running parler-tts-mini-multilingual-v1.1
+# — confirmed by reading its app.py source directly (via the HF Hub) rather
+# than assumed: it exposes exactly one endpoint, gen_tts(text, description),
+# and internally fixes a generation seed, which is what makes reusing the
+# same persona voice_description string across calls give a consistently-
+# sounding voice rather than "random voice characteristics" (Parler-TTS's
+# default behavior per that Space's own README). It's ZeroGPU-backed, so
+# it can be slow or quota-limited under load — a real fallback tier, not a
+# replacement for a dedicated Inference Endpoint in a production deployment
+# with real traffic.
+PARLER_SPACE_ID = "etrotta/parler-tts-mini-multilingual-v1.1"
+
+
+def _call_parler_space(text: str, description: str) -> bytes | None:
+    """Synchronous by necessity (gradio_client isn't async) — always called
+    through asyncio.to_thread. Handles the couple of shapes gradio_client
+    is known to return for an Audio-typed output (a local temp file path,
+    or a dict/FileData wrapper around one) since the exact shape can vary
+    by gradio_client version and this couldn't be executed end-to-end from
+    the development environment this was written in (Space access was
+    blocked at the network level there) — any shape this doesn't recognize
+    just returns None and the caller falls back to MMS, same as any other
+    failure here."""
+    from gradio_client import Client
+
+    client = Client(PARLER_SPACE_ID, hf_token=settings.hf_token or None)
+    result = client.predict(text, description, api_name="/gen_tts")
+
+    path = None
+    if isinstance(result, str):
+        path = result
+    elif isinstance(result, dict):
+        path = result.get("path") or result.get("name")
+    elif isinstance(result, (list, tuple)) and result and isinstance(result[-1], str):
+        path = result[-1]
+
+    if path and os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read()
+    return None
 
 
 class HFClientError(RuntimeError):
@@ -517,6 +560,9 @@ class HFClient:
             if os.path.exists(parler_cache_path):
                 with open(parler_cache_path, "rb") as f:
                     return f.read()
+
+            # Tier 1: direct serverless model endpoint — cheap and fast if
+            # HF ever lists this model on a live Inference Provider.
             try:
                 resp = await self._http.post(
                     f"{settings.hf_models_endpoint}/{PARLER_MODEL}",
@@ -529,7 +575,20 @@ class HFClient:
                     return resp.content
                 logger.warning("HF Parler-TTS HTTP %s: %s", resp.status_code, resp.text[:200])
             except Exception:
-                logger.exception("HF Parler-TTS failed, falling back to the shared MMS voice")
+                logger.exception("HF Parler-TTS direct endpoint failed, trying the verified Space fallback")
+
+            # Tier 2: the verified community Space (see PARLER_SPACE_ID) —
+            # confirmed live by reading its actual app.py source. Slower
+            # (ZeroGPU-backed) and quota-limited, so it's a fallback, not
+            # the first attempt.
+            try:
+                audio_bytes = await asyncio.to_thread(_call_parler_space, text, voice_description)
+                if audio_bytes:
+                    with open(parler_cache_path, "wb") as f:
+                        f.write(audio_bytes)
+                    return audio_bytes
+            except Exception:
+                logger.exception("Parler-TTS Space fallback failed, falling back to the shared MMS voice")
 
         lang_code = _MMS_LANG_CODES.get(lang_code2, "eng")
         model = f"{settings.tts_model_prefix}-{lang_code}"

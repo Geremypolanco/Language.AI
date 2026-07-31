@@ -16,5 +16,10 @@ psycopg[binary]==3.2.3
 # so this stays the only new dependency for the whole RAG pipeline.
 chromadb==1.5.9
 
+# Fallback path for persona voices (backend/hf_client.py PARLER_SPACE_ID) —
+# calls a verified community Space running Parler-TTS when the direct
+# serverless model endpoint isn't hosted. Lightweight, pure-Python client.
+gradio_client==2.6.0
+
 # Test suite
 pytest==8.3.3

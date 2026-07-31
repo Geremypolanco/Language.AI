@@ -325,7 +325,7 @@ rather than assumed:
 |---|---|
 | `black-forest-labs/FLUX.1-schnell` | Gated (license must be accepted once), live on multiple Inference Providers (nscale, fal-ai, together, wavespeed) |
 | `openai/whisper-large-v3` | Live on the `hf-inference` provider |
-| `parler-tts/parler-tts-mini-multilingual-v1.1` | Apache-2.0, confirmed 8-language coverage matches this app's `PARLER_LANGS` exactly; no confirmed live Inference Provider at time of writing — best-effort, same as any HF call here, with a documented (not yet implemented) Space-based fallback in `hf_client.py`'s comments |
+| `parler-tts/parler-tts-mini-multilingual-v1.1` | Apache-2.0, confirmed 8-language coverage matches this app's `PARLER_LANGS` exactly; no confirmed live Inference Provider at time of writing, so `text_to_speech` tries the direct endpoint first, then a verified community Space (`hf.co/spaces/etrotta/parler-tts-mini-multilingual-v1.1`, read directly to confirm its real API — see `hf_client.PARLER_SPACE_ID`) via `gradio_client`, then the shared MMS voice — best-effort at every tier, like any HF call here |
 | `hexgrad/Kokoro-82M` | Considered and rejected — English-only, and its one listed provider (fal-ai) shows an error status |
 
 ## Domain & deployment
