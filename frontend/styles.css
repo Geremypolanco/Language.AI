@@ -246,21 +246,60 @@ h1, h2, h3, .brand, .card-title, .level-meter-row, .stat-value,
 
 main { max-width: 720px; margin: 0 auto; padding: 24px; }
 
-.skill-path { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 0; }
-.level-heading { font-weight: 800; color: #999; margin: 24px 0 4px; letter-spacing: 0.08em; }
+.skill-path { display: flex; flex-direction: column; align-items: center; padding: 24px 0; }
+
+.level-heading {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  font-weight: 800; color: #fff; background: var(--orange); margin: 28px 0 8px;
+  letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.78rem;
+  padding: 8px 20px; border-radius: 20px; box-shadow: 0 4px 0 var(--orange-dark);
+}
+.level-heading .icon { width: 0.9rem; height: 0.9rem; }
+
+.skill-path-track { position: relative; margin: 0 auto; }
+.skill-path-svg { position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none; }
+.skill-path-segment { stroke: var(--gray-border); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 2 16; }
+.skill-path-segment.done { stroke: var(--gold); }
+@media (prefers-color-scheme: dark) { .skill-path-segment { stroke: #2b3940; } }
+
 .unit-node {
-  width: 84px; height: 84px;
+  position: absolute; width: 84px; height: 84px; z-index: 1;
   border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 0.75rem; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 0.72rem; text-align: center;
   border: none;
   cursor: pointer;
   color: #fff;
   padding: 8px;
+  transition: transform 0.12s ease;
 }
+.unit-node:hover { transform: scale(1.06); }
+.unit-node:active { transform: scale(0.96); }
 .unit-node.available { background: var(--blue); box-shadow: 0 6px 0 #0e88c2; }
 .unit-node.mastered { background: var(--gold); box-shadow: 0 6px 0 #cc9f00; }
 .unit-node.locked { background: #ccc; box-shadow: 0 6px 0 #a9a9a9; cursor: not-allowed; }
+
+.unit-node-badge {
+  position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border-radius: 50%;
+  background: #fff; color: var(--gold-dark); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.unit-node-badge .icon { width: 0.85rem; height: 0.85rem; }
+
+.unit-node.frontier { animation: unit-node-pulse 1.8s ease-in-out infinite; }
+@keyframes unit-node-pulse {
+  0%, 100% { box-shadow: 0 6px 0 #0e88c2, 0 0 0 0 rgba(28,176,246,0.5); }
+  50% { box-shadow: 0 6px 0 #0e88c2, 0 0 0 10px rgba(28,176,246,0); }
+}
+.unit-node-flag {
+  position: absolute; top: -34px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: #fff; font-size: 0.68rem; font-weight: 800;
+  padding: 5px 10px; border-radius: 8px; white-space: nowrap; pointer-events: none;
+}
+.unit-node-flag::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--text);
+}
 
 .practice-intro { max-width: 640px; margin: 0 auto 24px; text-align: center; }
 .practice-intro h2 { font-size: 1.4rem; margin: 0 0 6px; }

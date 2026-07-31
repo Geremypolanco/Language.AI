@@ -870,25 +870,108 @@ function setupShop(data) {
   };
 }
 
+// ---------- Skill path ("Camino") — a winding, illustrated trail instead of
+// a plain vertical stack of identical circles ----------
+
+const PATH_NODE_SIZE = 84;
+const PATH_AMPLITUDE = 85; // how far each node swings from center, in px
+const PATH_V_GAP = 108; // vertical distance between consecutive node centers
+
+// A smooth left-right swing with period 6 (center, out, far-out, out,
+// center, out the other way, ...) — the same winding-trail shape every
+// Duolingo-style path clone uses, built from a plain sine wave rather than
+// anything fetched/copied from a specific product.
+function pathWaveOffset(index) {
+  return Math.sin(index * (Math.PI / 3));
+}
+
+function buildPathGroup(units, globalFrontierId) {
+  const track = document.createElement("div");
+  track.className = "skill-path-track";
+  const width = PATH_AMPLITUDE * 2 + PATH_NODE_SIZE + 24;
+  const height = (units.length - 1) * PATH_V_GAP + PATH_NODE_SIZE;
+  track.style.width = `${width}px`;
+  track.style.height = `${height}px`;
+
+  const centers = units.map((unit, i) => ({
+    x: width / 2 + pathWaveOffset(i) * PATH_AMPLITUDE,
+    y: PATH_NODE_SIZE / 2 + i * PATH_V_GAP,
+  }));
+
+  // The connecting trail is drawn first (behind the nodes) as one dashed
+  // line per segment, colored solid gold up through the last mastered node
+  // so the path itself shows progress, not just each node individually.
+  const svgNs = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("class", "skill-path-svg");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  let lastMasteredIndex = -1;
+  units.forEach((u, i) => {
+    if (u.state === "mastered") lastMasteredIndex = i;
+  });
+  for (let i = 0; i < centers.length - 1; i++) {
+    const a = centers[i];
+    const b = centers[i + 1];
+    const line = document.createElementNS(svgNs, "line");
+    line.setAttribute("x1", a.x);
+    line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x);
+    line.setAttribute("y2", b.y);
+    line.setAttribute("class", i < lastMasteredIndex ? "skill-path-segment done" : "skill-path-segment");
+    svg.appendChild(line);
+  }
+  track.appendChild(svg);
+
+  units.forEach((unit, i) => {
+    const { x, y } = centers[i];
+    const isFrontier = unit.id === globalFrontierId;
+    const btn = document.createElement("button");
+    btn.className = `unit-node ${unit.state}${isFrontier ? " frontier" : ""}`;
+    btn.style.left = `${x - PATH_NODE_SIZE / 2}px`;
+    btn.style.top = `${y - PATH_NODE_SIZE / 2}px`;
+    btn.innerHTML =
+      unit.state === "mastered" ? `<span class="unit-node-badge">${iconSvg("star")}</span>` : "";
+    btn.innerHTML += `<span class="unit-node-label">${topicEs(unit.topic)}</span>`;
+    if (isFrontier) {
+      const flag = document.createElement("span");
+      flag.className = "unit-node-flag";
+      flag.textContent = "Continúa aquí";
+      btn.appendChild(flag);
+    }
+    btn.addEventListener("click", () => startLesson(unit.id));
+    track.appendChild(btn);
+  });
+
+  return track;
+}
+
 async function loadPath() {
   const units = await api(`/api/lessons/${state.userId}/path`);
   const container = $("#skill-path");
   container.innerHTML = "";
+
+  const frontier = units.find((u) => u.state !== "mastered");
+  const frontierId = frontier ? frontier.id : null;
+
   let lastLevel = null;
+  let group = [];
+  const flushGroup = () => {
+    if (group.length) container.appendChild(buildPathGroup(group, frontierId));
+    group = [];
+  };
   for (const unit of units) {
     if (unit.level !== lastLevel) {
+      flushGroup();
       const heading = document.createElement("div");
       heading.className = "level-heading";
-      heading.textContent = `Nivel ${unit.level}`;
+      heading.innerHTML = `${iconSvg("flame")} Nivel ${unit.level}`;
       container.appendChild(heading);
       lastLevel = unit.level;
     }
-    const btn = document.createElement("button");
-    btn.className = `unit-node ${unit.state}`;
-    btn.textContent = topicEs(unit.topic);
-    btn.addEventListener("click", () => startLesson(unit.id));
-    container.appendChild(btn);
+    group.push(unit);
   }
+  flushGroup();
 }
 
 // ---------- Practice mode (modality-focused, no fixed order) ----------
