@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .. import academy, auth, db, mastery, personas, telemetry
+from .. import academic_program, academy, auth, db, mastery, personas, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import (
@@ -217,3 +217,60 @@ async def ask_faculty(
     return CourseQuestionResponse(
         reply=reply["spoken_response"], critique_metrics=reply["critique_metrics"], promotion=promotion
     )
+
+
+# ── BACHELOR-track semester/credit/GPA system (backend/academic_program.py) ─
+# Scoped to AcademicLevel.BACHELOR only — see that module's docstring for why.
+
+
+class GradeSubmission(BaseModel):
+    quiz_score: float | None = None
+    midterm_score: float | None = None
+    final_score: float | None = None
+
+
+@router.post("/{user_id}/courses/{course_id}/grade")
+def submit_grade(
+    user_id: str, course_id: str, payload: GradeSubmission, session: dict = Depends(auth.require_owner)
+) -> dict:
+    get_user_by_id_or_404(user_id)
+    try:
+        field_id, level, _order = academic_program.parse_course_id(course_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="course_id inválido")
+    if level != AcademicLevel.BACHELOR:
+        raise HTTPException(
+            status_code=422, detail="El sistema de notas por semestre solo aplica a la Licenciatura"
+        )
+    if not academic_program.is_course_unlocked(user_id, course_id):
+        raise HTTPException(status_code=403, detail="Aún no has desbloqueado este curso")
+    for value in (payload.quiz_score, payload.midterm_score, payload.final_score):
+        if value is not None and not (0 <= value <= 100):
+            raise HTTPException(status_code=422, detail="Las calificaciones deben estar entre 0 y 100")
+    return academic_program.record_grade_component(
+        user_id, course_id, payload.quiz_score, payload.midterm_score, payload.final_score
+    )
+
+
+@router.get("/{user_id}/program/{field_id}/progress")
+def get_program_progress(user_id: str, field_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not academy.get_field(field_id):
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    return academic_program.compute_program_progress(user_id, field_id)
+
+
+@router.get("/{user_id}/program/{field_id}/graduation-eta")
+def get_graduation_eta(user_id: str, field_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not academy.get_field(field_id):
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    return academic_program.estimate_graduation(user_id, field_id)
+
+
+@router.get("/{user_id}/program/{field_id}/next-step")
+def get_next_step(user_id: str, field_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not academy.get_field(field_id):
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    return academic_program.get_next_step(user_id, field_id)

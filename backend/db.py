@@ -100,10 +100,22 @@ CREATE TABLE IF NOT EXISTS academy_enrollment (
     enrolled_at TEXT NOT NULL
 );
 
+-- quiz/midterm/final_score + the columns derived from them (final_percentage,
+-- letter_grade, gpa_points, passed) are only ever populated for the
+-- BACHELOR-level semester/GPA system (see backend/academic_program.py) —
+-- the simpler ASSOCIATE/MASTER/DOCTORATE course-count model just uses
+-- completed_at, same as before.
 CREATE TABLE IF NOT EXISTS academy_course_progress (
     user_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
+    quiz_score REAL,
+    midterm_score REAL,
+    final_score REAL,
+    final_percentage REAL,
+    letter_grade TEXT,
+    gpa_points REAL,
+    passed INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, course_id)
 );
 
@@ -211,10 +223,22 @@ CREATE TABLE IF NOT EXISTS academy_enrollment (
     enrolled_at TEXT NOT NULL
 );
 
+-- quiz/midterm/final_score + the columns derived from them (final_percentage,
+-- letter_grade, gpa_points, passed) are only ever populated for the
+-- BACHELOR-level semester/GPA system (see backend/academic_program.py) —
+-- the simpler ASSOCIATE/MASTER/DOCTORATE course-count model just uses
+-- completed_at, same as before.
 CREATE TABLE IF NOT EXISTS academy_course_progress (
     user_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
+    quiz_score REAL,
+    midterm_score REAL,
+    final_score REAL,
+    final_percentage REAL,
+    letter_grade TEXT,
+    gpa_points REAL,
+    passed INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, course_id)
 );
 
@@ -331,6 +355,19 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
     lesson_cols = {row[1] for row in conn.execute("PRAGMA table_info(lesson_history)").fetchall()}
     if "elapsed_seconds" not in lesson_cols:
         conn.execute("ALTER TABLE lesson_history ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0")
+
+    progress_cols = {row[1] for row in conn.execute("PRAGMA table_info(academy_course_progress)").fetchall()}
+    for col, ddl in (
+        ("quiz_score", "REAL"),
+        ("midterm_score", "REAL"),
+        ("final_score", "REAL"),
+        ("final_percentage", "REAL"),
+        ("letter_grade", "TEXT"),
+        ("gpa_points", "REAL"),
+        ("passed", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if col not in progress_cols:
+            conn.execute(f"ALTER TABLE academy_course_progress ADD COLUMN {col} {ddl}")
     conn.commit()
 
 
@@ -345,6 +382,13 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tutor_persona_id TEXT NOT NULL DEFAULT ''")
         cur.execute("ALTER TABLE lesson_history ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS quiz_score REAL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS midterm_score REAL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS final_score REAL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS final_percentage REAL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS letter_grade TEXT")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS gpa_points REAL")
+        cur.execute("ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS passed INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
