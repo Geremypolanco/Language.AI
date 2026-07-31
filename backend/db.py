@@ -129,6 +129,22 @@ CREATE TABLE IF NOT EXISTS faculty_directory (
     oer_namespace TEXT NOT NULL,
     generated_at TEXT NOT NULL
 );
+
+-- Per-turn academic grading history (see backend/mastery.py) — a real,
+-- rolling record of the academic_depth_score/structural_logical_fallacies
+-- a faculty persona assigned during a specific course's Q&A turns, used to
+-- decide whether a student has earned early completion of THAT course.
+-- Deliberately turn-level and course-scoped, not a whole-degree ledger.
+CREATE TABLE IF NOT EXISTS academy_mastery_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    academic_depth_score INTEGER,
+    fallacy_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_academy_mastery_log_user_course ON academy_mastery_log(user_id, course_id, id);
 """
 
 _SCHEMA_POSTGRES = """
@@ -225,8 +241,23 @@ CREATE TABLE IF NOT EXISTS faculty_directory (
     generated_at TEXT NOT NULL
 );
 
+-- Per-turn academic grading history (see backend/mastery.py) — a real,
+-- rolling record of the academic_depth_score/structural_logical_fallacies
+-- a faculty persona assigned during a specific course's Q&A turns, used to
+-- decide whether a student has earned early completion of THAT course.
+-- Deliberately turn-level and course-scoped, not a whole-degree ledger.
+CREATE TABLE IF NOT EXISTS academy_mastery_log (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    academic_depth_score INTEGER,
+    fallacy_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_log_user ON conversation_log(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_academy_mastery_log_user_course ON academy_mastery_log(user_id, course_id, id);
 """
 
 

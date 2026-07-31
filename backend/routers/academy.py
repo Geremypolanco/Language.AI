@@ -13,7 +13,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .. import academy, auth, db, personas
+from .. import academy, auth, db, mastery, personas
+from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import (
     AcademicField,
@@ -167,3 +168,45 @@ async def complete_course(user_id: str, course_id: str, session: dict = Depends(
             (user_id, course_id, completed_at),
         )
     return await get_progress(user_id, session)
+
+
+class CourseQuestionRequest(BaseModel):
+    question: str
+
+
+class CourseQuestionResponse(BaseModel):
+    reply: str
+    critique_metrics: dict
+    promotion: dict
+
+
+@router.post("/{user_id}/courses/{course_id}/ask", response_model=CourseQuestionResponse)
+async def ask_faculty(
+    user_id: str, course_id: str, payload: CourseQuestionRequest, session: dict = Depends(auth.require_owner)
+) -> CourseQuestionResponse:
+    """Office-hours-style Q&A with the course's own field-specific faculty
+    persona (backend/personas.build_field_faculty) — the only live call site
+    that actually exercises the ACADEMIC GRADING block of the dual-core
+    prompt (see curriculum.py), since Talk Live and the free_conversation_prompt
+    exercise both only ever resolve a core teacher, not a faculty persona.
+    Every graded turn here feeds backend/mastery.evaluate_academic_promotion,
+    so a real, sustained mastery streak can fast-track this specific course."""
+    user = get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    field = academy.get_field(row["field_id"])
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+
+    faculty = personas.build_field_faculty(field)
+    system_prompt = build_conversation_system_prompt(
+        user.target_lang, user.native_lang, user.level, user.interests, persona=faculty
+    )
+    reply = await hf_client.conversation_reply(
+        system_prompt, [{"role": "user", "content": payload.question}], temperature=faculty.sampling_temperature
+    )
+    promotion = mastery.evaluate_academic_promotion(user_id, course_id, reply["critique_metrics"])
+    return CourseQuestionResponse(
+        reply=reply["spoken_response"], critique_metrics=reply["critique_metrics"], promotion=promotion
+    )

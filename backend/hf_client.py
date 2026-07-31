@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import TYPE_CHECKING
 
 import httpx
@@ -230,10 +231,24 @@ class HFClientError(RuntimeError):
     pass
 
 
+# How long a 429 keeps the ElevenLabs tier skipped entirely once the circuit
+# breaker trips (see _call_elevenlabs) — long enough that a burst of
+# concurrent requests during a rate-limit window doesn't each pay for their
+# own doomed round-trip before falling back, short enough to notice recovery
+# without a restart.
+_ELEVENLABS_CIRCUIT_COOLDOWN_S = 60.0
+
+
 class HFClient:
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=settings.request_timeout_s)
         os.makedirs(settings.cache_dir, exist_ok=True)
+        # Circuit breaker state for the ElevenLabs tier — a monotonic
+        # timestamp; while time.monotonic() is before it, _call_elevenlabs
+        # returns None immediately without touching the network at all, so
+        # a rate-limit window degrades to "skip this tier" in microseconds
+        # rather than "retry the same 429 on every single turn."
+        self._elevenlabs_circuit_open_until: float = 0.0
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -242,7 +257,19 @@ class HFClient:
         """Real REST call — ElevenLabs' text-to-speech endpoint has been
         publicly documented and stable for years, unlike Parler-TTS's
         uncertain serverless hosting, so this needs no fallback tier of its
-        own beyond the outer try/except every HF call in this file follows."""
+        own beyond the outer try/except every HF call in this file follows.
+
+        Circuit breaker: a 429 (rate limit / quota exhaustion) opens the
+        breaker for _ELEVENLABS_CIRCUIT_COOLDOWN_S, during which this method
+        short-circuits to None without an HTTP call — text_to_speech's
+        caller then falls through to the Parler/MMS chain exactly as it
+        would on any other failure. This bounds the *added* latency of the
+        failover decision itself to a clock comparison; it can't bound the
+        total round-trip of whichever tier ends up actually serving the
+        request, since that depends on that tier's own live latency."""
+        if time.monotonic() < self._elevenlabs_circuit_open_until:
+            logger.info("ElevenLabs circuit breaker open — skipping call, falling back immediately")
+            return None
         try:
             resp = await self._http.post(
                 f"{ELEVENLABS_TTS_ENDPOINT}/{voice_id}",
@@ -255,7 +282,14 @@ class HFClient:
             )
             if resp.status_code == 200:
                 return resp.content
-            logger.warning("ElevenLabs TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+            if resp.status_code == 429:
+                self._elevenlabs_circuit_open_until = time.monotonic() + _ELEVENLABS_CIRCUIT_COOLDOWN_S
+                logger.warning(
+                    "ElevenLabs rate-limited (429) — opening circuit breaker for %.0fs",
+                    _ELEVENLABS_CIRCUIT_COOLDOWN_S,
+                )
+            else:
+                logger.warning("ElevenLabs TTS HTTP %s: %s", resp.status_code, resp.text[:200])
         except Exception:
             logger.exception("ElevenLabs TTS failed")
         return None

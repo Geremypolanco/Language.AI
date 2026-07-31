@@ -138,6 +138,78 @@ def test_preprocess_for_parler_leaves_existing_trailing_punctuation_alone():
     assert out == "Ready?"
 
 
+class _FakeResponse:
+    def __init__(self, status_code, content=b"", text=""):
+        self.status_code = status_code
+        self.content = content
+        self.text = text
+
+
+def test_elevenlabs_circuit_breaker_opens_on_429_and_skips_the_network_on_the_next_call(monkeypatch):
+    call_count = 0
+
+    async def rate_limited_post(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return _FakeResponse(429, text="rate limited")
+
+    original_breaker = hf_client._elevenlabs_circuit_open_until
+    hf_client._elevenlabs_circuit_open_until = 0.0
+    try:
+        monkeypatch.setattr(hf_client._http, "post", rate_limited_post)
+
+        first = asyncio.run(hf_client._call_elevenlabs("hola", "voice-1"))
+        assert first is None
+        assert call_count == 1
+        assert hf_client._elevenlabs_circuit_open_until > 0.0
+
+        # Breaker is open now — a second call must short-circuit without
+        # ever touching the network again.
+        second = asyncio.run(hf_client._call_elevenlabs("hola otra vez", "voice-1"))
+        assert second is None
+        assert call_count == 1
+    finally:
+        hf_client._elevenlabs_circuit_open_until = original_breaker
+
+
+def test_elevenlabs_circuit_breaker_closes_again_after_the_cooldown_elapses(monkeypatch):
+    call_count = 0
+
+    async def succeeding_post(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return _FakeResponse(200, content=b"FAKE_ELEVENLABS_AUDIO")
+
+    fake_now = 1000.0
+    monkeypatch.setattr(hf_client_module.time, "monotonic", lambda: fake_now)
+
+    original_breaker = hf_client._elevenlabs_circuit_open_until
+    # Simulate a breaker opened by an earlier 429 that has since expired.
+    hf_client._elevenlabs_circuit_open_until = fake_now - 1.0
+    try:
+        monkeypatch.setattr(hf_client._http, "post", succeeding_post)
+        audio = asyncio.run(hf_client._call_elevenlabs("hola", "voice-1"))
+        assert audio == b"FAKE_ELEVENLABS_AUDIO"
+        assert call_count == 1
+    finally:
+        hf_client._elevenlabs_circuit_open_until = original_breaker
+
+
+def test_elevenlabs_non_429_failures_do_not_open_the_circuit_breaker(monkeypatch):
+    async def server_error_post(*args, **kwargs):
+        return _FakeResponse(500, text="internal error")
+
+    original_breaker = hf_client._elevenlabs_circuit_open_until
+    hf_client._elevenlabs_circuit_open_until = 0.0
+    try:
+        monkeypatch.setattr(hf_client._http, "post", server_error_post)
+        audio = asyncio.run(hf_client._call_elevenlabs("hola", "voice-1"))
+        assert audio is None
+        assert hf_client._elevenlabs_circuit_open_until == 0.0
+    finally:
+        hf_client._elevenlabs_circuit_open_until = original_breaker
+
+
 def test_text_to_speech_uses_elevenlabs_when_persona_voice_is_mapped(monkeypatch, tmp_path):
     async def fake_elevenlabs_call(text, voice_id):
         assert voice_id == "voice-elena-123"
