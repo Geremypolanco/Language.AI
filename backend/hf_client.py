@@ -246,7 +246,12 @@ class HFClient:
         if not settings.hf_configured:
             return _fallback_curriculum(field, level)
 
+        from . import rag
+
+        context = await rag.fetch_arxiv_context(field.id, field.name)
         prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
+        if context:
+            prompt = f"{context}\n\n{prompt}"
         try:
             raw = await self.chat(
                 [
@@ -304,7 +309,12 @@ class HFClient:
                 }
             ]
 
+        from . import rag
+
+        context = await rag.fetch_arxiv_context(field.id, course_title)
         prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
+        if context:
+            prompt = f"{context}\n\n{prompt}"
         try:
             raw = await self.chat(
                 [
