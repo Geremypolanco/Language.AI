@@ -334,6 +334,80 @@ class HFClient:
             json.dump(modules, f)
         return modules
 
+    async def generate_practice_scenario(
+        self,
+        field: "AcademicField",
+        level: "AcademicLevel",
+        course_id: str,
+        course_title: str,
+        course_description: str,
+        native_lang: str,
+    ) -> str:
+        """Hands-on fields (nursing, engineering, business, ...) need more than
+        theory — this generates a realistic case/scenario the learner responds
+        to in their own words, with AI feedback on their answer (see
+        grade_practice_response). Cached per course like the lesson content;
+        this is deliberately a text-based simulation, not real clinical/lab
+        practice — the honest, buildable version of "practice, not just
+        theory" for a software-only product."""
+        from .academy import build_practice_scenario_prompt
+
+        cache_path = self._cache_path("scenario", f"{course_id}:{native_lang}", "txt")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return f.read()
+
+        if not settings.hf_configured:
+            return (
+                f"(Modo demo — configura HF_TOKEN para generar un caso práctico real)\n\n"
+                f'Practica lo aprendido en "{course_title}" resolviendo un caso real una vez actives tu clave de Hugging Face.'
+            )
+
+        prompt = build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang)
+        try:
+            content = await self.chat(
+                [
+                    {
+                        "role": "system",
+                        "content": "You design realistic, hands-on practice scenarios for students. Output only "
+                        "the scenario text, no meta-commentary.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=500,
+                temperature=0.8,
+            )
+        except Exception:
+            logger.exception("HF scenario generation failed, using offline fallback content")
+            return "No se pudo generar el caso práctico en este momento — inténtalo de nuevo."
+
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return content
+
+    async def grade_practice_response(self, scenario: str, user_response: str, native_lang: str) -> str:
+        """Feedback on the learner's own answer to a practice scenario — not
+        cached, since it depends on what they personally wrote."""
+        if not settings.hf_configured:
+            return (
+                "(Modo demo — configura HF_TOKEN para recibir retroalimentación real de IA sobre tu respuesta)"
+            )
+        prompt = (
+            f"A student was given this practice scenario:\n\n{scenario}\n\n"
+            f"Their response:\n\n{user_response}\n\n"
+            f"Give short, constructive feedback in {native_lang} (3-5 sentences): what they got right, what to "
+            f"improve, and one concrete tip. Be encouraging but honest."
+        )
+        try:
+            return await self.chat(
+                [{"role": "user", "content": prompt}],
+                max_tokens=300,
+                temperature=0.7,
+            )
+        except Exception:
+            logger.exception("HF scenario feedback failed")
+            return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
+
     # ── Recommendations (books, songs, and other media) ─────────────────
 
     async def generate_recommendations(

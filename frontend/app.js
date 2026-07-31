@@ -314,8 +314,33 @@ async function signOut() {
 async function enterApp() {
   state.user = await api(`/api/users/${state.userId}`);
   showScreen("#screen-main");
-  await Promise.all([loadPath(), loadProgress()]);
+  const [, progress] = await Promise.all([loadPath(), loadProgress()]);
+  showCoachGreeting(progress);
 }
+
+function coachGreetingFor(progress) {
+  if (progress.xp === 0 && progress.streak_days === 0) {
+    return "¡Bienvenido a Lingua! Ve a Camino y elige tu primera lección, o toca Practicar si quieres entrenar una destreza específica primero.";
+  }
+  if (progress.due_reviews > 0) {
+    return `Tienes ${progress.due_reviews} palabra${progress.due_reviews === 1 ? "" : "s"} para repasar. Sigue en Camino para reforzarlas antes de avanzar.`;
+  }
+  if (progress.streak_days > 0) {
+    return `¡Racha de ${progress.streak_days} ${diaWord(progress.streak_days)}! ¿Lista o listo para tu próxima lección?`;
+  }
+  return "¡Bienvenido de nuevo! ¿Seguimos aprendiendo?";
+}
+
+function showCoachGreeting(progress) {
+  if (sessionStorage.getItem("lingua_coach_shown")) return;
+  sessionStorage.setItem("lingua_coach_shown", "1");
+  const message = coachGreetingFor(progress);
+  $("#coach-toast-message").textContent = message;
+  $("#coach-toast").classList.remove("hidden");
+  $("#coach-toast-listen").onclick = () => playAudio(message, "es");
+}
+
+$("#coach-toast-close").addEventListener("click", () => $("#coach-toast").classList.add("hidden"));
 
 function refreshTopbar(progress) {
   $("#stat-xp").textContent = progress.xp;
@@ -926,6 +951,28 @@ const ACADEMY_LEVEL_LABELS = {
   MASTER: "Avanzado (equivalente a Maestría)",
 };
 
+// Each of the 31 fields has a named tutor; visual identity comes from a
+// per-category color pair + the field's own icon, rather than 31 bespoke
+// illustrations — a sustainable way to give every subject a distinct face.
+const ACADEMY_CATEGORY_COLORS = {
+  "Tecnología": ["#2dd4bf", "#0f766e"],
+  "Negocios": ["#ffc800", "#b45309"],
+  "Salud": ["#fb7185", "#be123c"],
+  "Ciencias": ["#c084fc", "#7c3aed"],
+  "Ingeniería": ["#94a3b8", "#475569"],
+  "Humanidades": ["#d97706", "#92400e"],
+  "Artes": ["#f472b6", "#a21caf"],
+};
+
+function tutorAvatarSvg(field) {
+  const [light, dark] = ACADEMY_CATEGORY_COLORS[field.category] || ["#2dd4bf", "#0f766e"];
+  return `
+    <span class="tutor-avatar" style="background: linear-gradient(135deg, ${light}, ${dark})">
+      <svg class="icon"><use href="#icon-${field.icon}"/></svg>
+    </span>
+  `;
+}
+
 const _academyState = { fieldsLoaded: false, currentCourseId: null };
 
 async function setupAcademy() {
@@ -935,6 +982,7 @@ async function setupAcademy() {
     $("#academy-switch-btn").addEventListener("click", showAcademyPicker);
     $("#course-exit").addEventListener("click", () => showScreen("#screen-main"));
     $("#course-complete-btn").addEventListener("click", completeCurrentCourse);
+    $("#course-practice-btn").addEventListener("click", startPracticeScenario);
   }
   const progress = await api(`/api/academy/${state.userId}/progress`);
   if (progress.enrollment) {
@@ -964,7 +1012,9 @@ async function loadAcademyFields() {
       const card = document.createElement("button");
       card.className = "field-card";
       card.innerHTML = `
+        ${tutorAvatarSvg(field)}
         <p class="field-card-title">${field.name}</p>
+        <p class="field-card-tutor">Tu tutor: ${field.tutor_name}</p>
         <p class="field-card-desc">${field.description}</p>
       `;
       card.addEventListener("click", () => enrollInField(field.id));
@@ -994,6 +1044,9 @@ async function showAcademyCurriculum(progress) {
 
   $("#academy-current-field").textContent = progress.enrollment.field_name;
   $("#academy-current-level").textContent = ACADEMY_LEVEL_LABELS[progress.enrollment.level] || progress.enrollment.level;
+  $("#academy-current-tutor").textContent = `Tu tutor: ${progress.enrollment.tutor_name}`;
+  $("#academy-tutor-avatar").innerHTML = tutorAvatarSvg(progress.enrollment);
+  _academyState.currentTutor = { name: progress.enrollment.tutor_name, icon: progress.enrollment.icon, category: progress.enrollment.category };
 
   const pct = progress.total_courses ? Math.round((progress.completed_course_ids.length / progress.total_courses) * 100) : 0;
   $("#academy-progress-fill").style.width = `${pct}%`;
@@ -1020,10 +1073,18 @@ async function showAcademyCurriculum(progress) {
   });
 }
 
+function youtubeSearchUrl(query) {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
 async function openCourse(courseId, title) {
   _academyState.currentCourseId = courseId;
   showScreen("#screen-course");
   $("#course-title").textContent = title;
+
+  const fieldName = _academyState.currentTutor ? $("#academy-current-field").textContent : "";
+  $("#course-youtube-link").href = youtubeSearchUrl(`${title} ${fieldName}`.trim());
+
   const modulesEl = $("#course-modules");
   modulesEl.innerHTML = `<p class="recommendations-empty">Generando tu curso…</p>`;
   try {
@@ -1040,6 +1101,9 @@ async function openCourse(courseId, title) {
   } catch (err) {
     modulesEl.innerHTML = `<p class="recommendations-empty">No se pudo generar el curso: ${err.message}</p>`;
   }
+
+  $("#practice-scenario-box").classList.add("hidden");
+  $("#practice-scenario-box").innerHTML = "";
 }
 
 async function completeCurrentCourse() {
@@ -1049,6 +1113,43 @@ async function completeCurrentCourse() {
   });
   showScreen("#screen-main");
   showAcademyCurriculum(progress);
+}
+
+async function startPracticeScenario() {
+  const box = $("#practice-scenario-box");
+  box.classList.remove("hidden");
+  box.innerHTML = `<p class="recommendations-empty">Generando un caso práctico…</p>`;
+  try {
+    const { scenario } = await api(`/api/academy/${state.userId}/courses/${_academyState.currentCourseId}/scenario`);
+    box.innerHTML = `
+      <p class="practice-scenario-label">Caso práctico</p>
+      <p class="practice-scenario-text">${scenario}</p>
+      <textarea id="practice-response-input" placeholder="Escribe qué harías…" rows="4"></textarea>
+      <button id="practice-response-submit" class="btn btn-primary">Enviar respuesta</button>
+      <div id="practice-feedback" class="practice-feedback hidden"></div>
+    `;
+    box.dataset.scenario = scenario;
+    $("#practice-response-submit").addEventListener("click", () => submitPracticeResponse(scenario));
+  } catch (err) {
+    box.innerHTML = `<p class="recommendations-empty">No se pudo generar el caso: ${err.message}</p>`;
+  }
+}
+
+async function submitPracticeResponse(scenario) {
+  const response = $("#practice-response-input").value.trim();
+  if (!response) return;
+  const feedbackEl = $("#practice-feedback");
+  feedbackEl.classList.remove("hidden");
+  feedbackEl.textContent = "Analizando tu respuesta…";
+  try {
+    const { feedback } = await api(`/api/academy/${state.userId}/courses/${_academyState.currentCourseId}/scenario/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ scenario, response }),
+    });
+    feedbackEl.textContent = feedback;
+  } catch (err) {
+    feedbackEl.textContent = `No se pudo generar retroalimentación: ${err.message}`;
+  }
 }
 
 // ---------- Tabs ----------

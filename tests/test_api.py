@@ -462,3 +462,30 @@ def test_academy_enroll_requires_ownership():
             json={"field_id": field_id, "level": "ASSOCIATE"},
         )
         assert res.status_code == 403
+
+
+def test_academy_fields_include_tutor_name():
+    with TestClient(app) as client:
+        fields = client.get("/api/academy/fields").json()
+        assert all(f["tutor_name"] for f in fields)
+        assert len({f["tutor_name"] for f in fields}) == len(fields)  # every tutor name is unique
+
+
+def test_academy_practice_scenario_and_feedback_demo_mode():
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy6@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+
+        scenario_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}/scenario")
+        assert scenario_res.status_code == 200
+        scenario = scenario_res.json()["scenario"]
+        assert scenario
+
+        feedback_res = client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/scenario/feedback",
+            json={"scenario": scenario, "response": "Yo haría un diagnóstico paso a paso."},
+        )
+        assert feedback_res.status_code == 200
+        assert feedback_res.json()["feedback"]

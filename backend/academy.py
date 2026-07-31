@@ -21,73 +21,104 @@ from .models import AcademicField
 _FIELDS: list[AcademicField] = [
     # Tecnología
     AcademicField(id="computer-science", name="Ciencia de la Computación", category="Tecnología", icon="pencil",
-                  description="Algoritmos, estructuras de datos, sistemas y fundamentos de programación."),
+                  description="Algoritmos, estructuras de datos, sistemas y fundamentos de programación.",
+                  tutor_name="Iván"),
     AcademicField(id="software-engineering", name="Ingeniería de Software", category="Tecnología", icon="pencil",
-                  description="Diseño de software, arquitectura, pruebas y desarrollo de aplicaciones."),
+                  description="Diseño de software, arquitectura, pruebas y desarrollo de aplicaciones.",
+                  tutor_name="Sofía"),
     AcademicField(id="data-science", name="Ciencia de Datos", category="Tecnología", icon="sparkle",
-                  description="Estadística, análisis de datos, machine learning y visualización."),
+                  description="Estadística, análisis de datos, machine learning y visualización.",
+                  tutor_name="Max"),
     AcademicField(id="artificial-intelligence", name="Inteligencia Artificial", category="Tecnología", icon="sparkle",
-                  description="Aprendizaje automático, redes neuronales, y ética de la IA."),
+                  description="Aprendizaje automático, redes neuronales, y ética de la IA.",
+                  tutor_name="Nova"),
     AcademicField(id="cybersecurity", name="Ciberseguridad", category="Tecnología", icon="lock",
-                  description="Seguridad de redes, criptografía y defensa de sistemas."),
+                  description="Seguridad de redes, criptografía y defensa de sistemas.",
+                  tutor_name="Iris"),
     # Negocios
     AcademicField(id="business-administration", name="Administración de Empresas", category="Negocios", icon="trophy",
-                  description="Gestión, operaciones, liderazgo y estrategia empresarial."),
+                  description="Gestión, operaciones, liderazgo y estrategia empresarial.",
+                  tutor_name="Carlos"),
     AcademicField(id="accounting", name="Contabilidad", category="Negocios", icon="book",
-                  description="Contabilidad financiera, costos, auditoría e impuestos."),
+                  description="Contabilidad financiera, costos, auditoría e impuestos.",
+                  tutor_name="Elena"),
     AcademicField(id="marketing", name="Marketing", category="Negocios", icon="sparkle",
-                  description="Marketing digital, branding, investigación de mercado y ventas."),
+                  description="Marketing digital, branding, investigación de mercado y ventas.",
+                  tutor_name="Luna"),
     AcademicField(id="finance", name="Finanzas", category="Negocios", icon="gem",
-                  description="Finanzas corporativas, inversión, mercados y análisis financiero."),
+                  description="Finanzas corporativas, inversión, mercados y análisis financiero.",
+                  tutor_name="Mateo"),
     AcademicField(id="entrepreneurship", name="Emprendimiento", category="Negocios", icon="flame",
-                  description="Creación de startups, modelos de negocio y levantamiento de capital."),
+                  description="Creación de startups, modelos de negocio y levantamiento de capital.",
+                  tutor_name="Valentina"),
     # Salud (teoría — no clínica ni de licenciatura profesional)
     AcademicField(id="nursing-foundations", name="Fundamentos de Enfermería", category="Salud", icon="heart",
-                  description="Anatomía, fisiología y fundamentos teóricos del cuidado de la salud."),
+                  description="Anatomía, fisiología y fundamentos teóricos del cuidado de la salud.",
+                  tutor_name="Clara"),
     AcademicField(id="nutrition", name="Nutrición", category="Salud", icon="heart",
-                  description="Ciencia de la nutrición, dietética y salud alimentaria."),
+                  description="Ciencia de la nutrición, dietética y salud alimentaria.",
+                  tutor_name="Julia"),
     AcademicField(id="public-health", name="Salud Pública", category="Salud", icon="heart",
-                  description="Epidemiología, políticas de salud y salud comunitaria."),
+                  description="Epidemiología, políticas de salud y salud comunitaria.",
+                  tutor_name="Marcos"),
     AcademicField(id="psychology", name="Psicología", category="Salud", icon="chat",
-                  description="Psicología del desarrollo, cognitiva, clínica y social."),
+                  description="Psicología del desarrollo, cognitiva, clínica y social.",
+                  tutor_name="Renata"),
     # Ciencias
     AcademicField(id="biology", name="Biología", category="Ciencias", icon="sparkle",
-                  description="Biología celular, genética, ecología y evolución."),
+                  description="Biología celular, genética, ecología y evolución.",
+                  tutor_name="Diego"),
     AcademicField(id="chemistry", name="Química", category="Ciencias", icon="sparkle",
-                  description="Química general, orgánica, inorgánica y bioquímica."),
+                  description="Química general, orgánica, inorgánica y bioquímica.",
+                  tutor_name="Ana"),
     AcademicField(id="physics", name="Física", category="Ciencias", icon="sparkle",
-                  description="Mecánica, electromagnetismo, termodinámica y física moderna."),
+                  description="Mecánica, electromagnetismo, termodinámica y física moderna.",
+                  tutor_name="Bruno"),
     AcademicField(id="mathematics", name="Matemáticas", category="Ciencias", icon="pencil",
-                  description="Cálculo, álgebra lineal, estadística y matemática discreta."),
+                  description="Cálculo, álgebra lineal, estadística y matemática discreta.",
+                  tutor_name="Leo"),
     AcademicField(id="environmental-science", name="Ciencias Ambientales", category="Ciencias", icon="sparkle",
-                  description="Ecología, cambio climático, sostenibilidad y gestión ambiental."),
+                  description="Ecología, cambio climático, sostenibilidad y gestión ambiental.",
+                  tutor_name="Sara"),
     # Ingeniería
     AcademicField(id="civil-engineering", name="Ingeniería Civil", category="Ingeniería", icon="pencil",
-                  description="Estructuras, materiales, construcción e infraestructura."),
+                  description="Estructuras, materiales, construcción e infraestructura.",
+                  tutor_name="Hugo"),
     AcademicField(id="mechanical-engineering", name="Ingeniería Mecánica", category="Ingeniería", icon="pencil",
-                  description="Termodinámica, mecánica, diseño de máquinas y manufactura."),
+                  description="Termodinámica, mecánica, diseño de máquinas y manufactura.",
+                  tutor_name="Tomás"),
     AcademicField(id="electrical-engineering", name="Ingeniería Eléctrica", category="Ingeniería", icon="pencil",
-                  description="Circuitos, electrónica, señales y sistemas de potencia."),
+                  description="Circuitos, electrónica, señales y sistemas de potencia.",
+                  tutor_name="Nico"),
     # Humanidades y Ciencias Sociales
     AcademicField(id="history", name="Historia", category="Humanidades", icon="book",
-                  description="Historia mundial, civilizaciones y pensamiento histórico."),
+                  description="Historia mundial, civilizaciones y pensamiento histórico.",
+                  tutor_name="Rodrigo"),
     AcademicField(id="philosophy", name="Filosofía", category="Humanidades", icon="book",
-                  description="Ética, lógica, metafísica e historia de la filosofía."),
+                  description="Ética, lógica, metafísica e historia de la filosofía.",
+                  tutor_name="Emilio"),
     AcademicField(id="political-science", name="Ciencias Políticas", category="Humanidades", icon="trophy",
-                  description="Teoría política, gobierno, políticas públicas y relaciones de poder."),
+                  description="Teoría política, gobierno, políticas públicas y relaciones de poder.",
+                  tutor_name="Camila"),
     AcademicField(id="economics", name="Economía", category="Humanidades", icon="gem",
-                  description="Microeconomía, macroeconomía y economía del desarrollo."),
+                  description="Microeconomía, macroeconomía y economía del desarrollo.",
+                  tutor_name="Andrés"),
     AcademicField(id="sociology", name="Sociología", category="Humanidades", icon="chat",
-                  description="Estructuras sociales, cultura, desigualdad e instituciones."),
+                  description="Estructuras sociales, cultura, desigualdad e instituciones.",
+                  tutor_name="Paula"),
     AcademicField(id="international-relations", name="Relaciones Internacionales", category="Humanidades", icon="wave",
-                  description="Diplomacia, política exterior y organismos internacionales."),
+                  description="Diplomacia, política exterior y organismos internacionales.",
+                  tutor_name="Gabriel"),
     # Artes y Comunicación
     AcademicField(id="graphic-design", name="Diseño Gráfico", category="Artes", icon="image",
-                  description="Teoría del color, tipografía, composición y diseño digital."),
+                  description="Teoría del color, tipografía, composición y diseño digital.",
+                  tutor_name="Mía"),
     AcademicField(id="journalism", name="Comunicación y Periodismo", category="Artes", icon="chat",
-                  description="Redacción periodística, medios digitales y ética de la comunicación."),
+                  description="Redacción periodística, medios digitales y ética de la comunicación.",
+                  tutor_name="Lucas"),
     AcademicField(id="music", name="Música", category="Artes", icon="volume",
-                  description="Teoría musical, armonía, composición e historia de la música."),
+                  description="Teoría musical, armonía, composición e historia de la música.",
+                  tutor_name="Isabela"),
 ]
 
 CATEGORIES: list[str] = sorted({f.category for f in _FIELDS})
@@ -122,4 +153,18 @@ def build_course_prompt(field: AcademicField, level_label: str, course_title: st
         f"cover — with clear explanations and at least one concrete example per module. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'
+    )
+
+
+def build_practice_scenario_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str
+) -> str:
+    return (
+        f"Write a short, realistic hands-on practice scenario in {native_lang} for a student studying "
+        f"\"{course_title}\" ({course_description}) in {field.name}, at a {level_label} depth. "
+        f"Describe a concrete situation the student must respond to — e.g. a case to analyze, a problem "
+        f"to solve, a decision to make — appropriate for this field (a clinical-style case for health "
+        f"fields, a design/debugging problem for engineering or computer science, a business case for "
+        f"business fields, a text/argument to analyze for humanities, etc). End with a direct question "
+        f"asking what the student would do. 2 to 4 short paragraphs. Output ONLY the scenario text."
     )

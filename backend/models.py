@@ -192,6 +192,7 @@ class AcademicField(BaseModel):
     category: str
     icon: str
     description: str
+    tutor_name: str
 
 
 class CourseStub(BaseModel):
@@ -223,6 +224,9 @@ class CourseContent(BaseModel):
 class AcademyEnrollment(BaseModel):
     field_id: str
     field_name: str
+    tutor_name: str
+    icon: str
+    category: str
     level: AcademicLevel
     level_label: str
     enrolled_at: str

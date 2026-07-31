@@ -47,6 +47,13 @@ async def _load_curriculum(user_id: str, field: AcademicField, level: AcademicLe
     return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
 
 
+def _build_enrollment(field: AcademicField, level: AcademicLevel, enrolled_at: str) -> AcademyEnrollment:
+    return AcademyEnrollment(
+        field_id=field.id, field_name=field.name, tutor_name=field.tutor_name, icon=field.icon,
+        category=field.category, level=level, level_label=level.label_es, enrolled_at=enrolled_at,
+    )
+
+
 def _get_enrollment_row(user_id: str) -> Any:
     with db.cursor() as cur:
         cur.execute("SELECT field_id, level, enrolled_at FROM academy_enrollment WHERE user_id=?", (user_id,))
@@ -73,8 +80,7 @@ def enroll(user_id: str, payload: EnrollRequest, session: dict = Depends(auth.re
             "enrolled_at=excluded.enrolled_at",
             (user_id, field.id, payload.level.value, enrolled_at),
         )
-    return AcademyEnrollment(field_id=field.id, field_name=field.name, level=payload.level,
-                              level_label=payload.level.label_es, enrolled_at=enrolled_at)
+    return _build_enrollment(field, payload.level, enrolled_at)
 
 
 @router.get("/{user_id}/progress", response_model=AcademyProgress)
@@ -89,10 +95,7 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
     if not field:
         return AcademyProgress(enrollment=None)
 
-    enrollment = AcademyEnrollment(
-        field_id=field.id, field_name=field.name, level=level, level_label=level.label_es,
-        enrolled_at=row["enrolled_at"],
-    )
+    enrollment = _build_enrollment(field, level, row["enrolled_at"])
     curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
 
     with db.cursor() as cur:
@@ -115,8 +118,7 @@ async def get_curriculum(user_id: str, session: dict = Depends(auth.require_owne
     return await _load_curriculum(user_id, field, level, user.native_lang)
 
 
-@router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
-async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
+async def _resolve_course(user_id: str, course_id: str):
     user = get_user_by_id_or_404(user_id)
     row = _get_enrollment_row(user_id)
     if not row:
@@ -130,9 +132,38 @@ async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.
     stub = next((c for c in curriculum.courses if c.id == course_id), None)
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
+    return user, field, level, stub
 
+
+@router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
+async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
+    user, field, level, stub = await _resolve_course(user_id, course_id)
     modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.native_lang)
     return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
+
+
+@router.get("/{user_id}/courses/{course_id}/scenario")
+async def get_practice_scenario(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """A realistic, hands-on case/scenario for this course — the practical
+    complement to the theory in get_course, for fields (nursing, engineering,
+    business, ...) where reading alone isn't enough."""
+    user, field, level, stub = await _resolve_course(user_id, course_id)
+    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    return {"scenario": scenario}
+
+
+class ScenarioResponseRequest(BaseModel):
+    scenario: str
+    response: str
+
+
+@router.post("/{user_id}/courses/{course_id}/scenario/feedback")
+async def get_scenario_feedback(
+    user_id: str, course_id: str, payload: ScenarioResponseRequest, session: dict = Depends(auth.require_owner)
+) -> dict:
+    user = get_user_by_id_or_404(user_id)
+    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, user.native_lang)
+    return {"feedback": feedback}
 
 
 @router.post("/{user_id}/courses/{course_id}/complete", response_model=AcademyProgress)
