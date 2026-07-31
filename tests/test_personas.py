@@ -42,6 +42,22 @@ def test_conversation_prompt_fuses_instructor_and_motivator_cores():
     assert "MOTIVATOR CORE" in generic
 
 
+def test_academic_grading_only_appears_for_faculty_personas():
+    core_persona = personas.get_core_teacher("core-elena")
+    core_prompt = build_conversation_system_prompt("Spanish", "English", CEFRLevel.B1, [], persona=core_persona)
+    assert "ACADEMIC GRADING" not in core_prompt
+    assert "academic_depth_score" in core_prompt  # always in the JSON schema line
+
+    field = academy.all_fields()[0]
+    faculty_persona = personas.build_field_faculty(field)
+    faculty_prompt = build_conversation_system_prompt(
+        "Spanish", "English", CEFRLevel.B1, [], persona=faculty_persona
+    )
+    assert "ACADEMIC GRADING" in faculty_prompt
+    assert "structural_logical_fallacies" in faculty_prompt
+    assert "remediation_payload" in faculty_prompt
+
+
 def test_get_core_teacher_lookup():
     elena = personas.get_core_teacher("core-elena")
     assert elena is not None

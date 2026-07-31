@@ -76,12 +76,21 @@ def test_ingest_and_retrieve_round_trip():
     assert chunk_count == 2
     assert vectorstore.count() == 2
 
-    hits = _run(retrieval.retrieve_context("presupuesto y gestión financiera", field_id="finance", k=3))
+    # The offline pseudo-embeddings (see hf_client._offline_embedding) aren't
+    # semantically meaningful, so a query in different words than the stored
+    # text can't reliably clear a real similarity threshold here — min_similarity=0
+    # isolates "does the pipeline wire up correctly" from "is 0.82 the right bar",
+    # which is a separate, dedicated test below.
+    hits = _run(
+        retrieval.retrieve_context("presupuesto y gestión financiera", field_id="finance", k=3, min_similarity=0.0)
+    )
     assert len(hits) >= 1
     assert any(h.title == "Fundamentos de finanzas" for h in hits)
 
 
-def test_retrieve_context_falls_back_to_whole_store_when_field_has_no_hits():
+def test_retrieve_context_never_bleeds_across_fields():
+    """The isolation guarantee: a field with nothing ingested must return
+    empty, never another field's chunks — no silent cross-field fallback."""
     docs = [
         OERDocument(
             id="test:only-biology",
@@ -94,13 +103,37 @@ def test_retrieve_context_falls_back_to_whole_store_when_field_has_no_hits():
     ]
     _run(ingest.ingest_documents(docs))
 
-    # Nothing is tagged "history" yet — retrieval should still return the
-    # biology chunk rather than an empty result.
-    hits = _run(retrieval.retrieve_context("cualquier consulta", field_id="history", k=3))
-    assert len(hits) == 1
-    assert hits[0].title == "Fundamentos de biología"
+    hits = _run(retrieval.retrieve_context("cualquier consulta", field_id="history", k=3, min_similarity=0.0))
+    assert hits == []
+
+
+def test_retrieve_context_rejects_hits_below_the_similarity_threshold():
+    docs = [
+        OERDocument(
+            id="test:exact-match",
+            title="Coincidencia exacta",
+            text="texto de prueba para similitud",
+            source="test",
+            url="https://example.com/x",
+            field_id="finance",
+        ),
+    ]
+    _run(ingest.ingest_documents(docs))
+
+    # Querying with the exact same text the offline embedder saw guarantees
+    # similarity == 1.0 (identical hash-based vector), a reliable way to
+    # exercise the threshold logic without needing real embeddings.
+    high_bar_hits = _run(
+        retrieval.retrieve_context("texto de prueba para similitud", field_id="finance", k=3, min_similarity=0.999)
+    )
+    assert len(high_bar_hits) == 1
+
+    impossible_bar_hits = _run(
+        retrieval.retrieve_context("texto de prueba para similitud", field_id="finance", k=3, min_similarity=1.1)
+    )
+    assert impossible_bar_hits == []
 
 
 def test_retrieve_context_on_empty_store_returns_no_hits():
-    hits = _run(retrieval.retrieve_context("consulta sin datos ingeridos", k=3))
+    hits = _run(retrieval.retrieve_context("consulta sin datos ingeridos", k=3, min_similarity=0.0))
     assert hits == []

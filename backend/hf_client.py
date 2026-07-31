@@ -18,6 +18,7 @@ import re
 from typing import TYPE_CHECKING
 
 import httpx
+from num2words import num2words
 
 from .config import settings
 from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_es
@@ -137,6 +138,13 @@ _MMS_LANG_CODES = {
 PARLER_MODEL = "parler-tts/parler-tts-mini-multilingual-v1.1"
 PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
 
+# Preferred voice tier when configured (see config.elevenlabs_configured) —
+# verified live this session via the ElevenLabs MCP connector (generated a
+# real Spanish audio sample). Real per-persona identity requires the
+# deploying user's own voice IDs in ELEVENLABS_VOICE_MAP; this app has no
+# tool access to enumerate or assign voices on anyone's behalf.
+ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech"
+
 # A real, verified community Space running parler-tts-mini-multilingual-v1.1
 # — confirmed by reading its app.py source directly (via the HF Hub) rather
 # than assumed: it exposes exactly one endpoint, gen_tts(text, description),
@@ -155,6 +163,38 @@ PARLER_SPACE_ID = "etrotta/parler-tts-mini-multilingual-v1.1"
 # never controls the Space's internals directly; it's what makes a fixed
 # voice_description reproduce a consistent-sounding voice call to call.
 PARLER_VOICE_SEED = 42
+
+_ALLCAPS_ABBREV_PATTERN = re.compile(r"\b[A-Z][A-Z.]+\b")
+_NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?\b")
+
+
+def _preprocess_for_parler(text: str, lang: str) -> str:
+    """Mirrors the actual preprocessing the verified etrotta Parler-TTS
+    Space performs on its input (read directly from that Space's app.py) —
+    not a fabricated "phonetic marker" syntax; Parler-TTS's only inputs are
+    the raw text and the free-form natural-language `description` (see
+    TeacherPersona.voice_description), it doesn't parse phonemes. The real,
+    narrow fixes that Space's own code makes: hyphens read as odd pauses,
+    digit sequences get sounded out digit-by-digit instead of as a number,
+    and solid-caps abbreviations get pronounced as if they were a word.
+
+    Only ever applied to the copy of text sent to the TTS engine — never to
+    spoken_response itself, which stays natural for the visible transcript
+    and the conversation history the model reads back on the next turn."""
+    text = text.strip().replace("-", " ")
+
+    def _to_words(match: re.Match) -> str:
+        try:
+            return num2words(match.group(0).replace(",", "."), lang=lang)
+        except NotImplementedError:
+            return num2words(match.group(0).replace(",", "."), lang="en")
+
+    text = _NUMBER_PATTERN.sub(_to_words, text)
+    text = _ALLCAPS_ABBREV_PATTERN.sub(lambda m: " ".join(m.group(0).replace(".", "")), text)
+
+    if text and text[-1] not in ".!?":
+        text += "."
+    return text
 
 
 def _call_parler_space(text: str, description: str) -> bytes | None:
@@ -197,6 +237,28 @@ class HFClient:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    async def _call_elevenlabs(self, text: str, voice_id: str) -> bytes | None:
+        """Real REST call — ElevenLabs' text-to-speech endpoint has been
+        publicly documented and stable for years, unlike Parler-TTS's
+        uncertain serverless hosting, so this needs no fallback tier of its
+        own beyond the outer try/except every HF call in this file follows."""
+        try:
+            resp = await self._http.post(
+                f"{ELEVENLABS_TTS_ENDPOINT}/{voice_id}",
+                headers={
+                    "xi-api-key": settings.elevenlabs_api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={"text": text, "model_id": settings.elevenlabs_model_id},
+            )
+            if resp.status_code == 200:
+                return resp.content
+            logger.warning("ElevenLabs TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception:
+            logger.exception("ElevenLabs TTS failed")
+        return None
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {settings.hf_token}"}
@@ -583,13 +645,39 @@ class HFClient:
     # ── Text-to-speech ──────────────────────────────────────────────────
 
     async def text_to_speech(
-        self, text: str, target_lang: str, voice_description: str | None = None
+        self,
+        text: str,
+        target_lang: str,
+        voice_description: str | None = None,
+        persona_id: str | None = None,
     ) -> bytes | None:
-        """`voice_description` (see backend/personas.py TeacherPersona) asks
-        for a distinct persona voice via Parler-TTS when the language
-        supports it; omit it (or fall through on failure/unsupported
-        language) for the single shared per-language MMS voice."""
+        """Three tiers, tried in order, each falling through to the next on
+        any failure — same resilience contract as every HF call in this file:
+
+        0. ElevenLabs, if `persona_id` resolves to a voice ID in
+           settings.elevenlabs_voice_map (opt-in — see config.py; this app
+           has no default ElevenLabs voices of its own to assign). Real
+           per-voice identity via a stable, publicly documented REST API,
+           not a text-description hack.
+        1-2. Parler-TTS direct endpoint, then the verified Space fallback
+           (see PARLER_MODEL/PARLER_SPACE_ID), when `voice_description` is
+           given and the language is one of PARLER_LANGS.
+        3. The single shared per-language MMS voice — always available,
+           the only tier that needs neither ElevenLabs nor a persona voice."""
         lang_code2 = target_lang.lower()[:2]
+
+        voice_id = settings.elevenlabs_voice_map.get(persona_id) if persona_id else None
+        if voice_id and settings.elevenlabs_configured:
+            elevenlabs_cache_path = self._cache_path("tts-elevenlabs", f"{voice_id}::{text}", "mp3")
+            if os.path.exists(elevenlabs_cache_path):
+                with open(elevenlabs_cache_path, "rb") as f:
+                    return f.read()
+            audio = await self._call_elevenlabs(text, voice_id)
+            if audio:
+                with open(elevenlabs_cache_path, "wb") as f:
+                    f.write(audio)
+                return audio
+            logger.info("ElevenLabs tier unavailable/failed, falling back to the Parler-TTS/MMS chain")
 
         if voice_description and lang_code2 in PARLER_LANGS and settings.hf_configured:
             parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
@@ -597,13 +685,18 @@ class HFClient:
                 with open(parler_cache_path, "rb") as f:
                     return f.read()
 
+            # Only the copy sent to the model is preprocessed — spoken_response
+            # itself (the transcript/history text `text` came from) stays
+            # natural; see _preprocess_for_parler's docstring.
+            parler_text = _preprocess_for_parler(text, lang_code2)
+
             # Tier 1: direct serverless model endpoint — cheap and fast if
             # HF ever lists this model on a live Inference Provider.
             try:
                 resp = await self._http.post(
                     f"{settings.hf_models_endpoint}/{PARLER_MODEL}",
                     headers=self._headers(),
-                    json={"inputs": text, "parameters": {"description": voice_description}},
+                    json={"inputs": parler_text, "parameters": {"description": voice_description}},
                 )
                 if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
                     with open(parler_cache_path, "wb") as f:
@@ -618,7 +711,7 @@ class HFClient:
             # (ZeroGPU-backed) and quota-limited, so it's a fallback, not
             # the first attempt.
             try:
-                audio_bytes = await asyncio.to_thread(_call_parler_space, text, voice_description)
+                audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
                 if audio_bytes:
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)

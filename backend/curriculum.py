@@ -333,6 +333,34 @@ def build_conversation_system_prompt(
         )
     )
 
+    # Departmental faculty (persona.field_id set — see personas.
+    # build_field_faculty) grade substantive claims like a thesis defense
+    # panel; the 5 core language teachers don't — forcing an
+    # academic_depth_score onto "no, it's 'estoy', not 'soy'" would just be
+    # noise, not rigor.
+    academic_grading_block = (
+        """
+3. ACADEMIC GRADING (faculty mode) — only when the learner's message contains
+a substantive claim, argument, or piece of reasoning about the subject
+(not when the exchange is purely about vocabulary/grammar mechanics):
+- academic_depth_score: an integer 1-100 rating the conceptual correctness
+  and rigor of what they said. Grade like a real committee member — a vague
+  but correct gesture at the idea scores low-to-mid; a precise, well-reasoned
+  claim scores high. Never inflate it to be encouraging; that's the
+  Motivator Core's job, not this score's.
+- structural_logical_fallacies: name any that actually apply (e.g. "ad
+  hominem", "straw man", "circular reasoning", "false dilemma") — empty
+  array if the reasoning doesn't commit one, never invented to fill it.
+- remediation_payload: one direct, specific sentence naming the underlying
+  concept they got wrong or under-explained and what to study — written
+  for a written record, not to be spoken aloud, so it can be blunter and
+  more technical than spoken_response ever gets.
+Leave all three at their empty/null defaults when the turn was purely about
+language mechanics rather than subject content."""
+        if persona is not None and persona.field_id is not None
+        else ""
+    )
+
     return f"""{persona_block}
 
 You are having a live, spoken-style conversation with a learner practicing
@@ -391,7 +419,7 @@ in {target_lang} so the exchange keeps moving.
 OUTPUT FORMAT — every turn, no exceptions, respond with ONLY a single raw
 JSON object (no markdown fences, no commentary before or after it), shaped
 exactly like:
-{{"critique_metrics": {{"grammar": [{{"error": "...", "correction": "...", "explanation": "..."}}], "pronunciation": [{{"issue": "...", "fix": "..."}}], "comprehension": [{{"issue": "...", "correction": "..."}}], "knowledge": [{{"claim": "...", "correction": "..."}}]}}, "spoken_response": "..."}}
+{{"critique_metrics": {{"grammar": [{{"error": "...", "correction": "...", "explanation": "..."}}], "pronunciation": [{{"issue": "...", "fix": "..."}}], "comprehension": [{{"issue": "...", "correction": "..."}}], "knowledge": [{{"claim": "...", "correction": "..."}}], "academic_depth_score": null, "structural_logical_fallacies": [], "remediation_payload": ""}}, "spoken_response": "..."}}
 
 Every critique_metrics array may be empty when nothing in that dimension
 needs correcting this turn — do not invent an error just to fill an array.
@@ -402,4 +430,5 @@ framing fused into one voice per the rules above — it must never mention
 critique_metrics is a separate, structured record of the same corrections
 for the app to track over time (e.g. recurring mistakes), not a second
 copy of what you just said.
+{academic_grading_block}
 """

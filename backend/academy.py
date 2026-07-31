@@ -133,6 +133,18 @@ def build_course_prompt(
             f"what's in them, but prefer them over invented specifics when they cover the topic:\n\n"
             f"{excerpts}\n"
         )
+    else:
+        # No chunk in this field's OER namespace cleared the retrieval
+        # confidence threshold (see backend/oer/retrieval.py) — explicit, so
+        # the model doesn't imply a verified source backs this content when
+        # none does, and never reaches into another field's material to
+        # compensate.
+        grounding_block = (
+            f"\n\nNo verified open-educational-resource excerpt met the confidence bar for this "
+            f"specific topic yet (the ingestion pipeline is populated incrementally — see "
+            f"scripts/ingest_oer.py). Write from your own well-established disciplinary knowledge "
+            f"instead, and do not imply this content is backed by a specific ingested source."
+        )
     style_block = f"\n\n{professor_style}" if professor_style else ""
     return (
         f"Write self-study course material in {native_lang} for the course \"{course_title}\" "

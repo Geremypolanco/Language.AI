@@ -6,6 +6,7 @@ deployed and run without any dependency on ARIA's own settings module.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from dataclasses import dataclass, field
@@ -50,6 +51,23 @@ class Settings:
     )
     embedding_model: str = field(
         default_factory=lambda: os.environ.get("LINGUA_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    )
+
+    # Optional preferred voice tier over the best-effort Parler-TTS chain
+    # (see hf_client.PARLER_MODEL/PARLER_SPACE_ID) — ElevenLabs has a stable,
+    # publicly documented REST API and real named voice IDs, rather than a
+    # text-description hack. Unset by default: this app ships with zero
+    # required paid dependencies, so ElevenLabs only activates if the
+    # deploying user opts in with their own key and voice IDs.
+    elevenlabs_api_key: str = field(default_factory=lambda: os.environ.get("ELEVENLABS_API_KEY", ""))
+    # JSON object string mapping a persona id (see backend/personas.py, e.g.
+    # "core-elena" or "faculty:computer-science") to an ElevenLabs voice ID
+    # from the deploying user's own voice library — this app has no way to
+    # enumerate or assign real voice IDs on your behalf, only to use ones
+    # you provide. Example: {"core-elena": "21m00Tcm4TlvDq8ikWAM"}
+    elevenlabs_voice_map_json: str = field(default_factory=lambda: os.environ.get("ELEVENLABS_VOICE_MAP", "{}"))
+    elevenlabs_model_id: str = field(
+        default_factory=lambda: os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
     )
 
     hf_chat_endpoint: str = "https://api-inference.huggingface.co/v1/chat/completions"
@@ -113,6 +131,18 @@ class Settings:
     @property
     def hf_configured(self) -> bool:
         return bool(self.hf_token)
+
+    @property
+    def elevenlabs_configured(self) -> bool:
+        return bool(self.elevenlabs_api_key)
+
+    @property
+    def elevenlabs_voice_map(self) -> dict[str, str]:
+        try:
+            parsed = json.loads(self.elevenlabs_voice_map_json)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
     @property
     def google_configured(self) -> bool:

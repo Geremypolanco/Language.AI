@@ -123,7 +123,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history = history[-_MAX_HISTORY_TURNS:]
 
             audio = await hf_client.text_to_speech(
-                reply_text, user.target_lang, voice_description=persona.voice_description if persona else None
+                reply_text,
+                user.target_lang,
+                voice_description=persona.voice_description if persona else None,
+                persona_id=persona.id if persona else None,
             )
             audio_b64 = base64.b64encode(audio).decode() if audio else None
 

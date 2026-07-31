@@ -26,7 +26,10 @@ class TTSRequest(BaseModel):
 async def text_to_speech(payload: TTSRequest) -> Response:
     persona = personas.get_core_teacher(payload.tutor_persona_id) if payload.tutor_persona_id else None
     audio = await hf_client.text_to_speech(
-        payload.text, payload.target_lang, voice_description=persona.voice_description if persona else None
+        payload.text,
+        payload.target_lang,
+        voice_description=persona.voice_description if persona else None,
+        persona_id=persona.id if persona else None,
     )
     if audio is None:
         raise HTTPException(status_code=503, detail="Audio no disponible — configura HF_TOKEN para activar texto a voz")

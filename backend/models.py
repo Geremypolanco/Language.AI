@@ -326,3 +326,12 @@ class CritiqueMetrics(BaseModel):
     pronunciation: list[dict] = Field(default_factory=list)
     comprehension: list[dict] = Field(default_factory=list)
     knowledge: list[dict] = Field(default_factory=list)
+
+    # Populated only when the learner made a substantive subject-matter claim
+    # or argument to a faculty persona (see personas.build_field_faculty) —
+    # left null/empty for ordinary language-practice turns, where "graded
+    # like a thesis defense" doesn't apply and forcing these fields would
+    # just be noise.
+    academic_depth_score: int | None = None  # 1-100, conceptual correctness/rigor
+    structural_logical_fallacies: list[str] = Field(default_factory=list)
+    remediation_payload: str = ""  # a direct concept-level hint, kept out of spoken_response's voice

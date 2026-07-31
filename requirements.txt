@@ -21,5 +21,11 @@ chromadb==1.5.9
 # serverless model endpoint isn't hosted. Lightweight, pure-Python client.
 gradio_client==2.6.0
 
+# Text preprocessing before Parler-TTS calls (backend/hf_client.py
+# _preprocess_for_parler) — spells out digit sequences as words, mirroring
+# the verified etrotta/parler-tts-mini-multilingual-v1.1 Space's own
+# preprocessing. Pure-Python, no transitive deps.
+num2words==0.5.14
+
 # Test suite
 pytest==8.3.3
