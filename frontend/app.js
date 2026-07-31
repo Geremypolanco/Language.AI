@@ -1178,6 +1178,7 @@ async function setupAcademy() {
     $("#course-exit").addEventListener("click", () => showScreen("#screen-main"));
     $("#course-complete-btn").addEventListener("click", completeCurrentCourse);
     $("#course-practice-btn").addEventListener("click", startPracticeScenario);
+    $("#course-video-btn").addEventListener("click", generateCourseVideo);
   }
   const progress = await api(`/api/academy/${state.userId}/progress`);
   if (progress.enrollment) {
@@ -1303,6 +1304,8 @@ async function openCourse(courseId, title) {
 
   $("#practice-scenario-box").classList.add("hidden");
   $("#practice-scenario-box").innerHTML = "";
+  $("#course-video-box").classList.add("hidden");
+  $("#course-video-box").innerHTML = "";
 }
 
 async function completeCurrentCourse() {
@@ -1348,6 +1351,35 @@ async function submitPracticeResponse(scenario) {
     feedbackEl.textContent = feedback;
   } catch (err) {
     feedbackEl.textContent = `No se pudo generar retroalimentación: ${err.message}`;
+  }
+}
+
+async function generateCourseVideo() {
+  const box = $("#course-video-box");
+  box.classList.remove("hidden");
+  box.innerHTML = `<p class="recommendations-empty">Generando un video corto… puede tardar uno o dos minutos.</p>`;
+  const title = $("#course-title").textContent;
+  const fieldName = $("#academy-current-field").textContent;
+  const prompt = `A short, clear educational video explaining ${title}${fieldName ? `, part of ${fieldName}` : ""}.`;
+  try {
+    const res = await fetch("/api/content/video", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const video = document.createElement("video");
+    video.controls = true;
+    video.className = "course-video-player";
+    video.src = URL.createObjectURL(blob);
+    box.innerHTML = `<p class="practice-scenario-label">Video generado por IA</p>`;
+    box.appendChild(video);
+  } catch (err) {
+    box.innerHTML = `<p class="recommendations-empty">No se pudo generar el video: ${err.message}</p>`;
   }
 }
 

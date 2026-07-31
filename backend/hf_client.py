@@ -563,6 +563,35 @@ class HFClient:
             logger.exception("HF image generation failed")
         return None
 
+    # ── Text-to-video (short topic clips) ───────────────────────────────
+
+    async def generate_video(self, prompt: str) -> bytes | None:
+        """Same best-effort/cache/graceful-failure shape as generate_image —
+        video generation has much narrower free-serverless model support and
+        runs slower, so a longer per-call timeout and a clean None on
+        failure (never a broken video) matter even more here."""
+        cache_path = self._cache_path("video", prompt, "mp4")
+        if os.path.exists(cache_path):
+            with open(cache_path, "rb") as f:
+                return f.read()
+        if not settings.hf_configured:
+            return None
+        try:
+            resp = await self._http.post(
+                f"{settings.hf_models_endpoint}/{settings.video_model}",
+                headers=self._headers(),
+                json={"inputs": prompt},
+                timeout=150.0,
+            )
+            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("video"):
+                with open(cache_path, "wb") as f:
+                    f.write(resp.content)
+                return resp.content
+            logger.warning("HF video generation HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception:
+            logger.exception("HF video generation failed")
+        return None
+
     # ── Text-to-speech ──────────────────────────────────────────────────
 
     async def text_to_speech(self, text: str, target_lang: str) -> bytes | None:

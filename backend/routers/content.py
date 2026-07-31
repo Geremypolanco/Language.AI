@@ -1,4 +1,5 @@
-"""Media generation endpoints: TTS audio and vocab-illustration images."""
+"""Media generation endpoints: TTS audio, vocab-illustration images, and
+short topic-explainer videos."""
 
 from __future__ import annotations
 
@@ -39,6 +40,18 @@ async def generate_image(payload: ImageRequest) -> Response:
     if image is None:
         raise HTTPException(status_code=503, detail="Imagen no disponible — configura HF_TOKEN para activar la generación de imágenes")
     return Response(content=image, media_type="image/jpeg")
+
+
+class VideoRequest(BaseModel):
+    prompt: str
+
+
+@router.post("/video")
+async def generate_video(payload: VideoRequest) -> Response:
+    video = await hf_client.generate_video(payload.prompt)
+    if video is None:
+        raise HTTPException(status_code=503, detail="Video no disponible en este momento — inténtalo de nuevo más tarde")
+    return Response(content=video, media_type="video/mp4")
 
 
 @router.post("/stt")

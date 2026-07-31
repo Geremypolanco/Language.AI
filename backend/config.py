@@ -48,6 +48,13 @@ class Settings:
     tts_model_prefix: str = field(
         default_factory=lambda: os.environ.get("LINGUA_TTS_MODEL_PREFIX", "facebook/mms-tts")
     )
+    # Text-to-video has much narrower serverless Inference API support than
+    # text/image/audio — this is the model most commonly available there.
+    # Best-effort by design, same as image/TTS: a slow or unavailable model
+    # degrades to "video unavailable" rather than breaking the request.
+    video_model: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_VIDEO_MODEL", "damo-vilab/text-to-video-ms-1.7b")
+    )
 
     hf_chat_endpoint: str = "https://api-inference.huggingface.co/v1/chat/completions"
     hf_models_endpoint: str = "https://api-inference.huggingface.co/models"

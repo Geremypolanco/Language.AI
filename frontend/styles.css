@@ -789,7 +789,8 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .course-module-content { font-size: 1rem; line-height: 1.75; white-space: pre-wrap; margin: 0; }
 
 .course-youtube-link { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
-.course-practice-row { margin: 8px 0 16px; }
+.course-practice-row { margin: 8px 0 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+.course-video-player { width: 100%; max-width: 480px; border-radius: 10px; display: block; margin-top: 4px; }
 .practice-scenario-box {
   background: rgba(206,130,255,0.08); border: 1px solid rgba(206,130,255,0.25);
   border-radius: 14px; padding: 16px; margin-bottom: 20px;
