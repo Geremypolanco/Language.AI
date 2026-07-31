@@ -1,6 +1,57 @@
 // Lingua frontend — vanilla JS, no build step (mirrors the rest of this repo's
 // static-HTML deployment style, but as a fully independent app).
 
+// Every innerHTML template literal that interpolates AI-generated or
+// server-sourced free text (course content, recommendations, practice
+// scenarios, ...) must escape it first — a model glitch or a successful
+// prompt-injection attempt outputting raw HTML must never execute in the
+// page. textContent assignments elsewhere are already safe by construction;
+// this is only needed where a string is interpolated into an HTML string.
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (ch) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+  ));
+}
+
+// ---------- AI content feedback (thumbs up/down + report) ----------
+// Attachable to any piece of AI-generated content the learner is reading —
+// the direct, user-facing half of guarding against hallucinations: the
+// model output can't be perfectly self-validated, so give the reader a
+// one-click way to flag it when something reads wrong.
+
+function renderFeedbackWidget(contentType, contentId) {
+  const el = document.createElement("div");
+  el.className = "ai-feedback-widget";
+  el.innerHTML = `
+    <span class="ai-feedback-label">¿Te sirvió este contenido?</span>
+    <button type="button" class="ai-feedback-btn" data-rating="up" title="Útil">${iconSvg("thumb-up")}</button>
+    <button type="button" class="ai-feedback-btn" data-rating="down" title="No es útil">${iconSvg("thumb-down")}</button>
+    <button type="button" class="ai-feedback-btn ai-feedback-report" data-rating="report" title="Reportar un error">${iconSvg("flag")} Reportar</button>
+    <span class="ai-feedback-thanks hidden">¡Gracias por tu opinión!</span>
+  `;
+  el.querySelectorAll(".ai-feedback-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rating = btn.dataset.rating;
+      let note = "";
+      if (rating === "report") {
+        note = prompt("¿Qué salió mal? (opcional)") || "";
+      }
+      el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = true));
+      try {
+        await api("/api/feedback", {
+          method: "POST",
+          body: JSON.stringify({ content_type: contentType, content_id: contentId, rating, note }),
+        });
+        el.querySelector(".ai-feedback-thanks").classList.remove("hidden");
+      } catch (err) {
+        el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = false));
+        showToast(err.message);
+      }
+    });
+  });
+  return el;
+}
+
 // Custom SVG icons (defined in index.html's sprite) instead of emoji — emoji
 // render inconsistently across OS/browser and read as an unfinished shortcut
 // rather than a designed product.
@@ -100,11 +151,39 @@ async function api(path, opts = {}) {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
+  if (res.status === 429) {
+    const body = await res.json().catch(() => ({}));
+    showRateLimitBanner(body.retry_after_seconds || 30);
+    throw new Error(body.detail || "Demasiadas solicitudes de IA — inténtalo de nuevo en un momento.");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);
   }
   return res.status === 204 ? null : res.json();
+}
+
+let _rateLimitInterval = null;
+function showRateLimitBanner(seconds) {
+  const banner = $("#rate-limit-banner");
+  if (!banner) return;
+  let remaining = Math.max(1, Math.round(seconds));
+  const update = () => {
+    $("#rate-limit-banner-text").textContent =
+      `Demasiadas solicitudes de IA — espera ${remaining} segundo${remaining === 1 ? "" : "s"} e inténtalo de nuevo.`;
+  };
+  banner.classList.remove("hidden");
+  update();
+  clearInterval(_rateLimitInterval);
+  _rateLimitInterval = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(_rateLimitInterval);
+      banner.classList.add("hidden");
+      return;
+    }
+    update();
+  }, 1000);
 }
 
 function showScreen(id) {
@@ -879,6 +958,7 @@ async function openBook(bookId) {
   const body = $("#reader-body");
   body.textContent = "Generando tu libro…";
   body.classList.add("loading");
+  $("#reader-feedback").innerHTML = "";
   try {
     const book = await api(`/api/library/${state.userId}/books/${bookId}`);
     $("#reader-title").textContent = book.title;
@@ -886,6 +966,9 @@ async function openBook(bookId) {
     $("#reader-level-chip").textContent = book.level;
     body.textContent = book.content;
     body.classList.remove("loading");
+    const feedbackEl = $("#reader-feedback");
+    feedbackEl.innerHTML = "";
+    feedbackEl.appendChild(renderFeedbackWidget("book", bookId));
   } catch (err) {
     body.textContent = `No se pudo generar el libro: ${err.message}`;
     body.classList.remove("loading");
@@ -920,9 +1003,9 @@ async function fetchRecommendations() {
       row.innerHTML = `
         <span class="recommendation-icon">${iconSvg(kindIcons[item.kind] || "sparkle")}</span>
         <div>
-          <p class="recommendation-title">${item.title}</p>
-          <p class="recommendation-creator">${item.creator}</p>
-          <p class="recommendation-reason">${item.reason}</p>
+          <p class="recommendation-title">${escapeHtml(item.title)}</p>
+          <p class="recommendation-creator">${escapeHtml(item.creator)}</p>
+          <p class="recommendation-reason">${escapeHtml(item.reason)}</p>
         </div>
       `;
       list.appendChild(row);
@@ -1064,8 +1147,8 @@ async function showAcademyCurriculum(progress) {
     row.innerHTML = `
       <span class="course-item-check">${done ? iconSvg("check") : i + 1}</span>
       <div>
-        <p class="course-item-title">${course.title}</p>
-        <p class="course-item-desc">${course.description}</p>
+        <p class="course-item-title">${escapeHtml(course.title)}</p>
+        <p class="course-item-desc">${escapeHtml(course.description)}</p>
       </div>
     `;
     row.addEventListener("click", () => openCourse(course.id, course.title));
@@ -1087,17 +1170,21 @@ async function openCourse(courseId, title) {
 
   const modulesEl = $("#course-modules");
   modulesEl.innerHTML = `<p class="recommendations-empty">Generando tu curso…</p>`;
+  $("#course-feedback").innerHTML = "";
   try {
     const course = await api(`/api/academy/${state.userId}/courses/${courseId}`);
     modulesEl.innerHTML = "";
     for (const mod of course.modules) {
       const section = document.createElement("div");
       section.innerHTML = `
-        <h3 class="course-module-title">${mod.title}</h3>
-        <p class="course-module-content">${mod.content}</p>
+        <h3 class="course-module-title">${escapeHtml(mod.title)}</h3>
+        <p class="course-module-content">${escapeHtml(mod.content)}</p>
       `;
       modulesEl.appendChild(section);
     }
+    const feedbackEl = $("#course-feedback");
+    feedbackEl.innerHTML = "";
+    feedbackEl.appendChild(renderFeedbackWidget("course", courseId));
   } catch (err) {
     modulesEl.innerHTML = `<p class="recommendations-empty">No se pudo generar el curso: ${err.message}</p>`;
   }
@@ -1123,7 +1210,7 @@ async function startPracticeScenario() {
     const { scenario } = await api(`/api/academy/${state.userId}/courses/${_academyState.currentCourseId}/scenario`);
     box.innerHTML = `
       <p class="practice-scenario-label">Caso práctico</p>
-      <p class="practice-scenario-text">${scenario}</p>
+      <p class="practice-scenario-text">${escapeHtml(scenario)}</p>
       <textarea id="practice-response-input" placeholder="Escribe qué harías…" rows="4"></textarea>
       <button id="practice-response-submit" class="btn btn-primary">Enviar respuesta</button>
       <div id="practice-feedback" class="practice-feedback hidden"></div>
@@ -1678,6 +1765,73 @@ function setupMic() {
 
 $("#switch-user-btn").addEventListener("click", signOut);
 
+// ---------- Cookie consent (GDPR/CCPA) ----------
+// Zero-cookie-load by default: nothing but the essential session cookie
+// (already HttpOnly/Secure/SameSite=Lax, set server-side in routers/auth.py)
+// is ever set until the learner explicitly chooses. This app doesn't load
+// any analytics or marketing scripts today, so there's nothing for
+// loadScriptIfConsented() to actually gate yet — it exists so the day a
+// script is added, it plugs into this consent state instead of loading
+// unconditionally. The preference itself is recorded in a plain (non-
+// HttpOnly) cookie: HttpOnly cookies can only ever be set via a Set-Cookie
+// response header and can never be read by client JS by design (that's the
+// whole point of HttpOnly, protecting the session cookie from XSS) — a
+// banner that needs to read the learner's own choice to decide whether to
+// load a script structurally cannot use one. Secure + SameSite=Strict are
+// both compatible with a non-HttpOnly cookie and are used here.
+
+const CONSENT_COOKIE = "lingua_consent";
+
+function getConsent() {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CONSENT_COOKIE}=([^;]*)`));
+  if (!match) return null;
+  try {
+    return JSON.parse(decodeURIComponent(match[1]));
+  } catch {
+    return null;
+  }
+}
+
+function setConsent(prefs) {
+  const value = encodeURIComponent(JSON.stringify(prefs));
+  const secureFlag = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${CONSENT_COOKIE}=${value}; path=/; max-age=31536000; SameSite=Strict${secureFlag}`;
+}
+
+// Ready for the first real analytics/marketing script: only runs `onload`
+// (which should append the <script> tag) if the learner opted into
+// `category` ("analytics" | "marketing"). Currently unused — nothing in
+// this app needs it yet, but new scripts must be wired through this, not
+// loaded unconditionally in index.html.
+function loadScriptIfConsented(category, onload) {
+  const consent = getConsent();
+  if (consent && consent[category]) onload();
+}
+
+function setupCookieConsent() {
+  const banner = $("#cookie-consent-banner");
+  if (getConsent()) return; // already decided, zero re-prompt
+
+  banner.classList.remove("hidden");
+
+  $("#cookie-consent-accept").addEventListener("click", () => {
+    setConsent({ essential: true, analytics: true, marketing: true });
+    banner.classList.add("hidden");
+  });
+  $("#cookie-consent-reject").addEventListener("click", () => {
+    setConsent({ essential: true, analytics: false, marketing: false });
+    banner.classList.add("hidden");
+  });
+  $("#cookie-consent-save").addEventListener("click", () => {
+    setConsent({
+      essential: true,
+      analytics: $("#cookie-consent-analytics").checked,
+      marketing: $("#cookie-consent-marketing").checked,
+    });
+    banner.classList.add("hidden");
+  });
+}
+
 // ---------- Boot ----------
 
 async function boot() {
@@ -1686,6 +1840,7 @@ async function boot() {
   setupTabs();
   setupMic();
   setupDevLogin();
+  setupCookieConsent();
   await checkSession();
 }
 

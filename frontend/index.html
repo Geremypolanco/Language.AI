@@ -101,8 +101,48 @@
         <path d="M4 7h8M8 4 4 7l4 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M20 17h-8M16 14l4 3-4 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </symbol>
+      <symbol id="icon-thumb-up" viewBox="0 0 24 24">
+        <path d="M7 11v9H4v-9h3Zm2.5 0 3.2-6.8a1.5 1.5 0 0 1 2.7.9V10h4a2 2 0 0 1 1.94 2.49l-1.5 6A2 2 0 0 1 17.9 20H9.5v-9Z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-thumb-down" viewBox="0 0 24 24">
+        <path d="M17 13V4h3v9h-3Zm-2.5 0-3.2 6.8a1.5 1.5 0 0 1-2.7-.9V14h-4a2 2 0 0 1-1.94-2.49l1.5-6A2 2 0 0 1 6.1 4H14.5v9Z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-flag" viewBox="0 0 24 24">
+        <path d="M5 3v18" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M5 4h13l-3 4 3 4H5Z" fill="currentColor"/>
+      </symbol>
     </defs>
   </svg>
+
+  <div id="rate-limit-banner" class="rate-limit-banner hidden" role="alert">
+    <svg class="icon"><use href="#icon-clock"/></svg>
+    <span id="rate-limit-banner-text"></span>
+  </div>
+
+  <div id="cookie-consent-banner" class="cookie-consent-banner hidden" role="dialog" aria-label="Preferencias de cookies">
+    <div class="cookie-consent-inner">
+      <p class="cookie-consent-text">
+        Usamos cookies esenciales para mantener tu sesión iniciada. No usamos cookies de analítica ni de
+        marketing hoy — si eso cambia en el futuro, solo se activarán con tu permiso explícito aquí.
+      </p>
+      <div class="cookie-consent-options">
+        <label class="cookie-consent-toggle">
+          <input type="checkbox" checked disabled /> Esenciales (siempre activas)
+        </label>
+        <label class="cookie-consent-toggle">
+          <input type="checkbox" id="cookie-consent-analytics" /> Analíticas
+        </label>
+        <label class="cookie-consent-toggle">
+          <input type="checkbox" id="cookie-consent-marketing" /> Marketing
+        </label>
+      </div>
+      <div class="cookie-consent-actions">
+        <button type="button" id="cookie-consent-reject" class="btn btn-secondary">Rechazar no esenciales</button>
+        <button type="button" id="cookie-consent-save" class="btn btn-secondary">Guardar preferencias</button>
+        <button type="button" id="cookie-consent-accept" class="btn btn-primary">Aceptar todas</button>
+      </div>
+    </div>
+  </div>
 
   <div id="app">
 
@@ -419,6 +459,7 @@
                 <button type="submit">Enviar</button>
               </form>
             </div>
+            <p class="ai-disclaimer-footer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
           </div>
         </div>
 
@@ -592,6 +633,7 @@
           <div id="lesson-timer" class="lesson-timer"><svg class="icon"><use href="#icon-clock"/></svg> <span id="lesson-timer-value">0:00</span></div>
         </div>
         <div id="exercise-container" class="exercise-container"></div>
+        <p class="ai-disclaimer-footer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
       </div>
     </section>
 
@@ -652,6 +694,8 @@
         </div>
         <h2 id="reader-title" class="reader-title"></h2>
         <div id="reader-body" class="reader-body"></div>
+        <div id="reader-feedback"></div>
+        <p class="ai-disclaimer-footer">Historia generada por IA — puede contener imprecisiones.</p>
       </div>
     </section>
 
@@ -666,6 +710,7 @@
         </div>
         <h2 id="course-title" class="reader-title"></h2>
         <div id="course-modules" class="course-modules"></div>
+        <div id="course-feedback"></div>
 
         <div class="course-practice-row">
           <button id="course-practice-btn" class="btn btn-secondary" type="button">Practicar con un caso real</button>
@@ -673,6 +718,7 @@
         <div id="practice-scenario-box" class="practice-scenario-box hidden"></div>
 
         <button id="course-complete-btn" class="btn btn-primary">Marcar como completado</button>
+        <p class="ai-disclaimer-footer">Contenido generado por IA — verifica los datos importantes antes de usarlos.</p>
       </div>
     </section>
 

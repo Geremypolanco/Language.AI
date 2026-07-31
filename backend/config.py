@@ -52,6 +52,12 @@ class Settings:
     hf_chat_endpoint: str = "https://api-inference.huggingface.co/v1/chat/completions"
     hf_models_endpoint: str = "https://api-inference.huggingface.co/models"
 
+    # Requests per rolling minute, per signed-in user (or IP if signed out),
+    # across the routes that trigger an HF Inference call — see rate_limit.py.
+    ai_rate_limit_per_minute: int = field(
+        default_factory=lambda: int(os.environ.get("LINGUA_AI_RATE_LIMIT_PER_MINUTE", "10"))
+    )
+
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
 

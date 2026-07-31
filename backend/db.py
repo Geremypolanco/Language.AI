@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     completed_at TEXT NOT NULL,
     PRIMARY KEY (user_id, course_id)
 );
+
+CREATE TABLE IF NOT EXISTS ai_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content_id TEXT NOT NULL,
+    rating TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -175,6 +185,16 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     PRIMARY KEY (user_id, course_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_feedback (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content_id TEXT NOT NULL,
+    rating TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
