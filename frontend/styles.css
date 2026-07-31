@@ -483,27 +483,6 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 }
 .toast .icon { width: 1.1em; height: 1.1em; color: var(--blue); }
 
-.rate-limit-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 200;
-  background: #fff7e6;
-  color: #8a5a00;
-  border-bottom: 2px solid rgba(255,150,0,0.4);
-  padding: 10px 16px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-}
-.rate-limit-banner .icon { color: var(--orange); width: 1.1em; height: 1.1em; flex-shrink: 0; }
-@media (prefers-color-scheme: dark) { .rate-limit-banner { background: #3a2c0d; color: #ffcf7a; } }
-
 .cookie-consent-banner {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
   background: #fff; border-top: 2px solid var(--gray-border);

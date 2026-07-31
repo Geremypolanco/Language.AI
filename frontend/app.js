@@ -151,39 +151,11 @@ async function api(path, opts = {}) {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
-  if (res.status === 429) {
-    const body = await res.json().catch(() => ({}));
-    showRateLimitBanner(body.retry_after_seconds || 30);
-    throw new Error(body.detail || "Demasiadas solicitudes de IA — inténtalo de nuevo en un momento.");
-  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);
   }
   return res.status === 204 ? null : res.json();
-}
-
-let _rateLimitInterval = null;
-function showRateLimitBanner(seconds) {
-  const banner = $("#rate-limit-banner");
-  if (!banner) return;
-  let remaining = Math.max(1, Math.round(seconds));
-  const update = () => {
-    $("#rate-limit-banner-text").textContent =
-      `Demasiadas solicitudes de IA — espera ${remaining} segundo${remaining === 1 ? "" : "s"} e inténtalo de nuevo.`;
-  };
-  banner.classList.remove("hidden");
-  update();
-  clearInterval(_rateLimitInterval);
-  _rateLimitInterval = setInterval(() => {
-    remaining -= 1;
-    if (remaining <= 0) {
-      clearInterval(_rateLimitInterval);
-      banner.classList.add("hidden");
-      return;
-    }
-    update();
-  }, 1000);
 }
 
 function showScreen(id) {

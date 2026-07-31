@@ -23,7 +23,6 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .hf_client import hf_client
-from .rate_limit import RateLimitMiddleware
 from .routers import auth as auth_router
 from .routers import academy, content, conversation, feedback, lessons, library, placement, progress, shop, users
 from .security_headers import SecurityHeadersMiddleware
@@ -58,7 +57,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth_router.router)
