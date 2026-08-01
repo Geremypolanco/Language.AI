@@ -7,6 +7,7 @@ WORKDIR /app/frontend
 
 # Copy frontend files
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/patches ./patches
 COPY frontend/client ./client
 COPY frontend/server ./server
 COPY frontend/tsconfig.json frontend/vite.config.ts ./
