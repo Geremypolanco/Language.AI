@@ -159,6 +159,16 @@ def build_course_prompt(field: AcademicField, level_label: str, course_title: st
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs with diagrams if helpful"}}'
     )
 
+def build_mission_prompt(target_lang: str, level_label: str, scenario_type: str) -> str:
+    return (
+        f"Create an immersive, high-stakes language mission in {target_lang} for a {level_label} learner. "
+        f"Scenario: {scenario_type}. "
+        f"The mission should have a clear goal (e.g., 'Convince the border officer to let you in'). "
+        f"Provide a brief setup, the persona of the AI (the officer, the doctor, etc.), and the success criteria. "
+        f"Respond with ONLY a JSON object: "
+        f'{{"title": "mission title", "setup": "...", "goal": "...", "ai_persona": "...", "success_criteria": "..."}}'
+    )
+
 
 def build_practice_scenario_prompt(
     field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str

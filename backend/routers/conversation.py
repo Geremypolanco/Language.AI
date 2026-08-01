@@ -37,6 +37,20 @@ def _log_turn(user_id: str, role: str, content: str) -> None:
         )
 
 
+def _get_user_memory(user_id: str) -> str:
+    with db.cursor() as cur:
+        cur.execute("SELECT content FROM user_memories WHERE user_id=?", (user_id,))
+        row = cur.fetchone()
+        return row["content"] if row else ""
+
+def _update_user_memory(user_id: str, new_memory: str) -> None:
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO user_memories (user_id, content, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (user_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at",
+            (user_id, new_memory, db.now_iso())
+        )
+
 def _recent_history(user_id: str) -> list[dict[str, str]]:
     with db.cursor() as cur:
         cur.execute(
@@ -65,7 +79,12 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
         await websocket.close()
         return
 
-    system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests)
+    mission = websocket.query_params.get("mission")
+    memory = _get_user_memory(user_id)
+    system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
+    
+    if mission:
+        system_prompt += f"\n\n### ACTIVE MISSION:\n{mission}\nYou must act as the persona required by this mission and evaluate if the learner achieves the goal."
     history = _recent_history(user_id)
 
     await websocket.send_json(
@@ -112,19 +131,24 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             history = history[-_MAX_HISTORY_TURNS:]
 
             chat_timing: dict = {}
+            reply_text = ""
+            
+            # Start streaming the reply text to the UI
+            await websocket.send_json({"type": "reply_start"})
+            
             with telemetry.timed(chat_timing):
-                reply_text = await hf_client.conversation_reply(system_prompt, history)
+                messages = [{"role": "system", "content": system_prompt}, *history]
+                async for chunk in hf_client.stream_chat(messages):
+                    reply_text += chunk
+                    await websocket.send_json({"type": "reply_chunk", "text": chunk})
+            
+            await websocket.send_json({"type": "reply_done", "text": reply_text})
+            
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
 
-            # Text goes out immediately — the transcript doesn't need to wait
-            # on audio. Audio is then streamed sentence-by-sentence as each
-            # one finishes synthesizing (see hf_client.stream_speech), so the
-            # learner starts hearing the reply instead of waiting for the
-            # whole thing to render as one clip.
-            await websocket.send_json({"type": "reply", "text": reply_text})
-
+            # Stream audio in parallel (or after text starts)
             tts_timing: dict = {}
             sentence_count = 0
             with telemetry.timed(tts_timing):
@@ -147,5 +171,22 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 chars_out=len(reply_text),
                 sentence_count=sentence_count,
             )
+            # Background task to update memory every few turns
+            if len(history) % 4 == 0:
+                import asyncio
+                asyncio.create_task(_refresh_memory(user_id, history, memory))
     except WebSocketDisconnect:
         logger.info("Conversation socket closed for user %s", user_id)
+
+async def _refresh_memory(user_id: str, history: list[dict], old_memory: str):
+    try:
+        history_str = "\n".join([f"{m['role']}: {m['content']}" for m in history])
+        prompt = f"""Based on the following conversation history and old memory, create a concise, 
+updated long-term memory of this learner (their progress, mistakes, interests, and personality). 
+Old Memory: {old_memory}
+History: {history_str}
+New Memory (max 200 words):"""
+        new_memory = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=300)
+        _update_user_memory(user_id, new_memory)
+    except Exception:
+        pass

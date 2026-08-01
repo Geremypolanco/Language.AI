@@ -130,6 +130,8 @@ const I18N = {
     placement_question_progress: (n, total) => `Pregunta ${n} de ${total}`,
     placement_preparing: "Preparando tu siguiente pregunta…",
     placement_default_prompt: "Elige la respuesta correcta:",
+    mission_start: "Iniciando misión de élite...",
+    mission_success: "¡Misión cumplida! Has demostrado un nivel superior.",
   },
   en: {
     ob_coach_intro: "Step 1 of 2: tell me about yourself so I can prep your first lessons. At the end I'll ask a few quick questions to place your level — or you can skip it if you're already advanced.",
@@ -473,6 +475,19 @@ function showCoachGreeting(progress) {
 }
 
 $("#coach-toast-close").addEventListener("click", () => $("#coach-toast").classList.add("hidden"));
+
+function startMission(type) {
+  const missions = {
+    airport: "Control de Fronteras: Convence al oficial de que tus documentos están en regla.",
+    doctor: "Emergencia Médica: Explica tus síntomas y entiende las instrucciones del doctor.",
+    job: "Entrevista de Trabajo: Consigue el puesto de tus sueños."
+  };
+  state.activeMission = missions[type];
+  showTab("talk");
+  showToast(`Iniciando misión: ${type}`, "flame");
+  if (state.ws) state.ws.close();
+  ensureConversationSocket();
+}
 
 function refreshTopbar(progress) {
   $("#stat-xp").textContent = progress.xp;
@@ -2058,16 +2073,26 @@ $("#complete-continue").addEventListener("click", async () => {
 function ensureConversationSocket() {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}`);
+  const missionParam = state.activeMission ? `?mission=${encodeURIComponent(state.activeMission)}` : "";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}${missionParam}`);
   state.ws = ws;
 
-  ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "ready") {
       $("#call-status").textContent = msg.message;
       updateTutorStatus(true);
     } else if (msg.type === "transcript") {
       addTranscriptBubble("user", msg.text);
+    } else if (msg.type === "reply_start") {
+      resetConversationAudioQueue();
+      _streamingBubble = null;
+      addTranscriptBubble("assistant", "", true);
+    } else if (msg.type === "reply_chunk") {
+      addTranscriptBubble("assistant", msg.text, true);
+    } else if (msg.type === "reply_done") {
+      if (_streamingBubble) _streamingBubble.textContent = msg.text;
+      _streamingBubble = null;
     } else if (msg.type === "reply") {
       resetConversationAudioQueue();
       addTranscriptBubble("assistant", msg.text);
@@ -2091,12 +2116,28 @@ function updateTutorStatus(isActive) {
   }
 }
 
-function addTranscriptBubble(role, text) {
+let _streamingBubble = null;
+
+function addTranscriptBubble(role, text, isStreaming = false) {
+  if (isStreaming && _streamingBubble && role === "assistant") {
+    _streamingBubble.textContent += text;
+    $("#transcript").scrollTop = $("#transcript").scrollHeight;
+    
+    // Elite: Detect mission success in the stream
+    if (_streamingBubble.textContent.toLowerCase().includes("misión cumplida") || 
+        _streamingBubble.textContent.toLowerCase().includes("mission accomplished")) {
+      triggerCelebration();
+    }
+    
+    return _streamingBubble;
+  }
   const div = document.createElement("div");
-  div.className = `msg ${role}`;
+  div.className = `msg ${role} animate-slide`;
   div.textContent = text;
   $("#transcript").appendChild(div);
   $("#transcript").scrollTop = $("#transcript").scrollHeight;
+  if (isStreaming && role === "assistant") _streamingBubble = div;
+  return div;
 }
 
 const _conversationAudioQueue = [];

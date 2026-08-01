@@ -269,9 +269,10 @@ Respond with raw JSON only, no markdown fences, no commentary."""
 
 
 def build_conversation_system_prompt(
-    target_lang: str, native_lang: str, level: CEFRLevel, interests: list[str]
+    target_lang: str, native_lang: str, level: CEFRLevel, interests: list[str], memory: str = ""
 ) -> str:
     interests_s = ", ".join(interests) if interests else "general topics"
+    memory_note = f"LONG-TERM MEMORY OF THIS LEARNER:\n{memory}\n" if memory else ""
     level_note = (
         "Use only very simple, high-frequency vocabulary and short sentences. "
         "If the learner writes in their native language, gently reply with the "
@@ -287,6 +288,8 @@ def build_conversation_system_prompt(
 language learner practicing {target_lang} in a live voice-call-style session.
 The learner's native language is {native_lang}. Their level is {level.value}.
 Their interests include: {interests_s} — steer small talk toward these when natural.
+
+{memory_note}
 
 Rules:
 - Reply primarily in {target_lang}.

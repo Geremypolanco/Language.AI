@@ -124,7 +124,7 @@ class HFClient:
                 resp = await self._post_with_retry(
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {groq_key}"},
-                    json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+                    json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": False},
                 )
                 if resp.status_code == 200:
                     return resp.json()["choices"][0]["message"]["content"]
@@ -158,6 +158,42 @@ class HFClient:
                 pass
                 
         raise HFClientError("All AI chat providers failed")
+
+    async def stream_chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7):
+        """Streams chat completions from Groq for zero-latency UI."""
+        groq_key = os.environ.get("GROQ_API_KEY")
+        if not groq_key:
+            # Fallback to non-streaming if no Groq key
+            yield await self.chat(messages, max_tokens, temperature)
+            return
+
+        try:
+            async with self._http.stream(
+                "POST",
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}"},
+                json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True},
+                timeout=60.0
+            ) as resp:
+                if resp.status_code != 200:
+                    yield await self.chat(messages, max_tokens, temperature)
+                    return
+                
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        content = chunk["choices"][0]["delta"].get("content", "")
+                        if content:
+                            yield content
+                    except Exception:
+                        continue
+        except Exception:
+            yield await self.chat(messages, max_tokens, temperature)
 
     async def generate_exercises(
         self, req: LessonRequest, mix_override: list[ExerciseType] | None = None

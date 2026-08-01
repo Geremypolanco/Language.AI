@@ -126,6 +126,12 @@ CREATE TABLE IF NOT EXISTS academy_assignment_submission (
     submitted_at TEXT NOT NULL,
     PRIMARY KEY (user_id, assignment_id)
 );
+
+CREATE TABLE IF NOT EXISTS user_memories (
+    user_id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -217,6 +223,12 @@ CREATE TABLE IF NOT EXISTS academy_assignment_submission (
     grade TEXT NOT NULL,
     submitted_at TEXT NOT NULL,
     PRIMARY KEY (user_id, assignment_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_memories (
+    user_id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
