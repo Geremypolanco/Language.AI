@@ -17,10 +17,12 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db, srs, telemetry
+from .. import auth, db, personas, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
+
+_DEFAULT_PERSONA_ID = "core-marcus"  # warm, conversational — the closest match to the old generic tutor voice
 
 logger = logging.getLogger("lingua.conversation")
 
@@ -80,19 +82,19 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
         return
 
     mission = websocket.query_params.get("mission")
-    persona = websocket.query_params.get("persona", "friendly")
+    requested_persona_id = websocket.query_params.get("persona") or user.tutor_persona_id or _DEFAULT_PERSONA_ID
+    teacher = personas.get_core_teacher(requested_persona_id) or personas.get_core_teacher(_DEFAULT_PERSONA_ID)
     debate = websocket.query_params.get("debate") == "true"
     memory = _get_user_memory(user_id)
     system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
-    
-    # Elite Personas
-    personas = {
-        "friendly": "You are Sofia, a warm and encouraging best friend.",
-        "strict": "You are Sergeant Max, a strict but effective drill instructor. No mercy for grammar mistakes.",
-        "zen": "You are Master Hiro, a calm philosopher who speaks in metaphors and values wisdom."
-    }
-    system_prompt = f"{personas.get(persona, personas['friendly'])}\n\n{system_prompt}"
-    
+
+    # Dual-core persona voice: the Instructor Core (system_voice) sets this
+    # teacher's specific correction philosophy; the Motivator Core
+    # (motivational_style) sets how a correction gets framed so it lands as
+    # progress rather than pure criticism — both run in the same reply, one
+    # coherent voice, not two separate turns (see backend/personas.py).
+    system_prompt = f"{teacher.system_voice}\n\n{teacher.motivational_style}\n\n{system_prompt}"
+
     if debate:
         system_prompt += "\n\n### DEBATE MODE ACTIVE: You are two distinct personas: 'Optimist' and 'Skeptic'. When replying, you must provide a short dialogue between them, and then ask the user for their opinion as the moderator."
     
@@ -117,6 +119,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             # code colliding with the Spanish word "en").
             "type": "ready",
             "message": f"Conversación lista — nivel {user.level.value} ({user.target_lang.upper()}).",
+            "persona": personas.to_persona_info(teacher).model_dump(),
         }
     )
 
@@ -169,7 +172,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                         adjusted_system_prompt += "\n\n### ADAPTIVE MODE: The user seems to be struggling. Be extra patient, use simpler words, and offer more encouragement."
 
                     messages = [{"role": "system", "content": adjusted_system_prompt}, *history]
-                    async for chunk in hf_client.stream_chat(messages):
+                    async for chunk in hf_client.stream_chat(messages, temperature=teacher.sampling_temperature):
                         reply_text += chunk
                         await websocket.send_json({"type": "reply_chunk", "text": chunk})
             except Exception:
@@ -193,7 +196,9 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             sentence_count = 0
             try:
                 with telemetry.timed(tts_timing):
-                    async for sentence, audio, media_type in hf_client.stream_speech(reply_text, user.target_lang):
+                    async for sentence, audio, media_type in hf_client.stream_speech(
+                        reply_text, user.target_lang, teacher.voice_description, teacher.id
+                    ):
                         sentence_count += 1
                         await websocket.send_json(
                             {

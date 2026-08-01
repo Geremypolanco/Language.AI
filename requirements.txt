@@ -15,5 +15,12 @@ psycopg[binary]==3.2.3
 # wheel for its phonemizer dependency, so it doesn't install on this image).
 piper-tts==1.6.0
 
+# Optional per-persona voice tier (backend/personas.py, hf_client.py) — only
+# exercised when a persona's voice_description is set; Piper above stays
+# the universal default. gradio_client talks to the verified Parler-TTS
+# Space fallback; num2words preprocesses digits for that model's input.
+gradio_client==2.6.0
+num2words==0.5.14
+
 # Test suite
 pytest==8.3.3

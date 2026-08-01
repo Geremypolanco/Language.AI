@@ -6,6 +6,7 @@ deployed and run without any dependency on ARIA's own settings module.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from dataclasses import dataclass, field
@@ -76,6 +77,27 @@ class Settings:
     pollinations_image_endpoint: str = "https://image.pollinations.ai/prompt"
     chat_model: str = field(default_factory=lambda: os.environ.get("LINGUA_CHAT_MODEL", "openai"))
     image_model: str = field(default_factory=lambda: os.environ.get("LINGUA_IMAGE_MODEL", "flux"))
+
+    # ── Optional persona voice tier (backend/personas.py) ────────────────
+    # Piper (piper_tts.py) stays the universal, free, unlimited default for
+    # every TTS call in the app. This tier only activates for Talk Live's
+    # per-persona voices, layered in *front* of Piper — never a replacement
+    # — so a missing/expired key or a rate limit just falls through to the
+    # same Piper/MMS chain everything else already uses, not silence.
+    # ElevenLabs: stable, publicly documented REST API with real named
+    # voice IDs. Unset by default — this app ships with zero required paid
+    # dependencies; it only activates if the deploying user opts in with
+    # their own key and voice IDs.
+    elevenlabs_api_key: str = field(default_factory=lambda: os.environ.get("ELEVENLABS_API_KEY", ""))
+    # JSON object string mapping a persona id (see backend/personas.py, e.g.
+    # "core-elena" or "faculty:computer-science") to an ElevenLabs voice ID
+    # from the deploying user's own voice library — this app has no way to
+    # enumerate or assign real voice IDs on your behalf, only to use ones
+    # you provide. Example: {"core-elena": "21m00Tcm4TlvDq8ikWAM"}
+    elevenlabs_voice_map_json: str = field(default_factory=lambda: os.environ.get("ELEVENLABS_VOICE_MAP", "{}"))
+    elevenlabs_model_id: str = field(
+        default_factory=lambda: os.environ.get("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+    )
 
     # Set by tests/conftest.py so the suite stays fully offline and
     # deterministic — Pollinations needs no token, so without this flag
@@ -149,6 +171,18 @@ class Settings:
     @property
     def hf_configured(self) -> bool:
         return bool(self.hf_token)
+
+    @property
+    def elevenlabs_configured(self) -> bool:
+        return bool(self.elevenlabs_api_key)
+
+    @property
+    def elevenlabs_voice_map(self) -> dict[str, str]:
+        try:
+            parsed = json.loads(self.elevenlabs_voice_map_json)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
     @property
     def google_configured(self) -> bool:

@@ -94,6 +94,20 @@ class UserProfile(BaseModel):
     daily_goal_minutes: int = 15
     created_at: str = ""
     last_active_date: str = ""
+    tutor_persona_id: str = ""
+
+
+class PersonaInfo(BaseModel):
+    """Public-facing view of a backend.personas.TeacherPersona — leaves out
+    the raw system/voice/portrait prompts, which are prompt-engineering
+    internals rather than something the picker UI needs to display."""
+
+    id: str
+    name: str
+    title: str
+    philosophy: str
+    correction_focus: str
+    portrait_url: str
 
 
 class AnswerSubmission(BaseModel):

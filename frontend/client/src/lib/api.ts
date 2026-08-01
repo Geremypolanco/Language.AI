@@ -43,6 +43,17 @@ export interface User {
   xp: number;
   streak_days: number;
   gems: number;
+  tutor_persona_id: string;
+}
+
+// Public view of a backend.personas.TeacherPersona (see backend/personas.py)
+export interface PersonaInfo {
+  id: string;
+  name: string;
+  title: string;
+  philosophy: string;
+  correction_focus: string;
+  portrait_url: string;
 }
 
 // UnitNode — what /api/lessons/{id}/path actually returns (see backend/routers/lessons.py)
@@ -338,9 +349,22 @@ class ApiClient {
   }
 
   // ===== TALK (WebSocket) =====
-  connectConversation(userId: string): WebSocket {
+  connectConversation(userId: string, personaId?: string): WebSocket {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return new WebSocket(`${protocol}//${window.location.host}/ws/conversation/${userId}`);
+    const query = personaId ? `?persona=${encodeURIComponent(personaId)}` : "";
+    return new WebSocket(`${protocol}//${window.location.host}/ws/conversation/${userId}${query}`);
+  }
+
+  // ===== PERSONAS (Talk Live teacher picker — see backend/personas.py) =====
+  async getPersonas(): Promise<PersonaInfo[]> {
+    return this.request("/api/personas");
+  }
+
+  async setTutorPersona(userId: string, personaId: string): Promise<User> {
+    return this.request(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ tutor_persona_id: personaId }),
+    });
   }
 
   // ===== LIBRARY =====

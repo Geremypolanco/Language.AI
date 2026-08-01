@@ -28,10 +28,12 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.parse
 from typing import TYPE_CHECKING
 
 import httpx
+from num2words import num2words
 
 from .config import settings
 from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_es
@@ -62,6 +64,99 @@ _MMS_LANG_CODES = {
 }
 
 
+# ── Optional per-persona voice tier (backend/personas.py) ────────────────
+# Tried ahead of the universal Piper/MMS chain in text_to_speech() only when
+# a persona's voice_description/id is passed in (Talk Live) — every other
+# caller (lessons, library, news, ...) never sets these and goes straight
+# to Piper, unaffected by any of this.
+
+# ElevenLabs — stable, publicly documented REST API with real named voice
+# IDs, gated behind settings.elevenlabs_configured (opt-in, no default key).
+ELEVENLABS_TTS_ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech"
+# How long a 429 keeps the ElevenLabs tier skipped entirely once the circuit
+# breaker trips (see HFClient._call_elevenlabs) — long enough that a burst
+# of concurrent requests during a rate-limit window doesn't each pay for
+# their own doomed round-trip before falling back, short enough to notice
+# recovery without a restart.
+_ELEVENLABS_CIRCUIT_COOLDOWN_S = 60.0
+
+# Parler-TTS — voice steered via a natural-language description prompt
+# (see TeacherPersona.voice_description) rather than literal speaker
+# cloning; that's the model's own documented mechanism for distinct,
+# describable voice identity.
+PARLER_MODEL = "parler-tts/parler-tts-mini-multilingual-v1.1"
+PARLER_LANGS = {"en", "fr", "es", "pt", "pl", "de", "it", "nl"}
+# Verified live community Space (its app.py source was read directly to
+# confirm the /gen_tts API and the preprocessing _preprocess_for_parler
+# mirrors below) — used as a fallback when the direct serverless model
+# endpoint isn't hosted, since Parler-TTS has much narrower Inference
+# Providers coverage than the chat/image models this app otherwise relies on.
+PARLER_SPACE_ID = "etrotta/parler-tts-mini-multilingual-v1.1"
+# The fixed generation seed that Space's own gen_tts() hardcodes internally
+# (read directly from its app.py source: `SEED = 42; set_seed(SEED)` before
+# every generation) — documented here, not re-implemented, since the app
+# never controls the Space's internals directly; it's what makes a fixed
+# voice_description reproduce a consistent-sounding voice call to call.
+PARLER_VOICE_SEED = 42
+
+_ALLCAPS_ABBREV_PATTERN = re.compile(r"\b[A-Z][A-Z.]+\b")
+_NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?\b")
+
+
+def _preprocess_for_parler(text: str, lang: str) -> str:
+    """Mirrors the actual preprocessing the verified etrotta Parler-TTS
+    Space performs on its input (read directly from that Space's app.py) —
+    not a fabricated "phonetic marker" syntax; Parler-TTS's only inputs are
+    the raw text and the free-form natural-language `description` (see
+    TeacherPersona.voice_description), it doesn't parse phonemes. The real,
+    narrow fixes that Space's own code makes: hyphens read as odd pauses,
+    digit sequences get sounded out digit-by-digit instead of as a number,
+    and solid-caps abbreviations get pronounced as if they were a word.
+
+    Only ever applied to the copy of text sent to the TTS engine — never to
+    the visible transcript/conversation history, which stays natural."""
+    text = text.strip().replace("-", " ")
+
+    def _to_words(match: re.Match) -> str:
+        try:
+            return num2words(match.group(0).replace(",", "."), lang=lang)
+        except NotImplementedError:
+            return num2words(match.group(0).replace(",", "."), lang="en")
+
+    text = _NUMBER_PATTERN.sub(_to_words, text)
+    text = _ALLCAPS_ABBREV_PATTERN.sub(lambda m: " ".join(m.group(0).replace(".", "")), text)
+
+    if text and text[-1] not in ".!?":
+        text += "."
+    return text
+
+
+def _call_parler_space(text: str, description: str) -> bytes | None:
+    """Synchronous by necessity (gradio_client isn't async) — always called
+    through asyncio.to_thread. Handles the couple of shapes gradio_client is
+    known to return for an Audio-typed output (a local temp file path, or a
+    dict/FileData wrapper around one); any shape this doesn't recognize just
+    returns None and the caller falls back to MMS, same as any other
+    failure here."""
+    from gradio_client import Client
+
+    client = Client(PARLER_SPACE_ID, hf_token=settings.hf_token or None)
+    result = client.predict(text, description, api_name="/gen_tts")
+
+    path = None
+    if isinstance(result, str):
+        path = result
+    elif isinstance(result, dict):
+        path = result.get("path") or result.get("name")
+    elif isinstance(result, (list, tuple)) and result and isinstance(result[-1], str):
+        path = result[-1]
+
+    if path and os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read()
+    return None
+
+
 class HFClientError(RuntimeError):
     pass
 
@@ -71,9 +166,55 @@ class HFClient:
         self._http = httpx.AsyncClient(timeout=settings.request_timeout_s)
         self._groq_api_key = os.environ.get("GROQ_API_KEY")
         os.makedirs(settings.cache_dir, exist_ok=True)
+        # Circuit breaker state for the ElevenLabs tier — a monotonic
+        # timestamp; while time.monotonic() is before it, _call_elevenlabs
+        # returns None immediately without touching the network, so a
+        # rate-limit window degrades to "skip this tier" in microseconds
+        # rather than retrying the same 429 on every single turn.
+        self._elevenlabs_circuit_open_until: float = 0.0
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    def elevenlabs_circuit_breaker_engaged(self) -> bool:
+        return time.monotonic() < self._elevenlabs_circuit_open_until
+
+    async def _call_elevenlabs(self, text: str, voice_id: str) -> bytes | None:
+        """Real REST call — ElevenLabs' text-to-speech endpoint has been
+        publicly documented and stable for years, so this needs no fallback
+        tier of its own beyond the outer try/except every call here follows.
+
+        Circuit breaker: a 429 (rate limit / quota exhaustion) opens the
+        breaker for _ELEVENLABS_CIRCUIT_COOLDOWN_S, during which this method
+        short-circuits to None without an HTTP call — text_to_speech's
+        caller then falls through to the Parler/Piper/MMS chain exactly as
+        it would on any other failure."""
+        if time.monotonic() < self._elevenlabs_circuit_open_until:
+            logger.info("ElevenLabs circuit breaker open — skipping call, falling back immediately")
+            return None
+        try:
+            resp = await self._http.post(
+                f"{ELEVENLABS_TTS_ENDPOINT}/{voice_id}",
+                headers={
+                    "xi-api-key": settings.elevenlabs_api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={"text": text, "model_id": settings.elevenlabs_model_id},
+            )
+            if resp.status_code == 200:
+                return resp.content
+            if resp.status_code == 429:
+                self._elevenlabs_circuit_open_until = time.monotonic() + _ELEVENLABS_CIRCUIT_COOLDOWN_S
+                logger.warning(
+                    "ElevenLabs rate-limited (429) — opening circuit breaker for %.0fs",
+                    _ELEVENLABS_CIRCUIT_COOLDOWN_S,
+                )
+            else:
+                logger.warning("ElevenLabs TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception:
+            logger.exception("ElevenLabs TTS failed")
+        return None
 
     def _hf_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {settings.hf_token}"}
@@ -668,7 +809,13 @@ class HFClient:
 
     # ── Text-to-speech ──────────────────────────────────────────────────
 
-    async def text_to_speech(self, text: str, target_lang: str) -> tuple[bytes, str] | None:
+    async def text_to_speech(
+        self,
+        text: str,
+        target_lang: str,
+        voice_description: str | None = None,
+        persona_id: str | None = None,
+    ) -> tuple[bytes, str] | None:
         """Piper first (self-hosted, free, and genuinely unlimited — see
         piper_tts.py — for the ~53 languages it covers), falling back to the
         Hugging Face MMS-TTS path for everything else, or if Piper's
@@ -678,7 +825,66 @@ class HFClient:
         free keyless TTS on that side to use. Returns (audio_bytes,
         media_type) rather than bare bytes because the two engines produce
         different containers (Piper: WAV, HF/MMS: FLAC) and callers need to
-        label the response correctly rather than guessing."""
+        label the response correctly rather than guessing.
+
+        When `persona_id`/`voice_description` are given (Talk Live's chosen
+        teacher persona — see backend/personas.py), two optional tiers are
+        tried ahead of the universal Piper/MMS chain above, so a persona
+        actually sounds distinct rather than sharing the one shared voice
+        per language: ElevenLabs (if that persona has a mapped voice ID and
+        settings.elevenlabs_configured) first, then Parler-TTS (steered by
+        the free-form voice_description) if the language supports it and
+        HF is configured. Either falling through — no key, no mapping, a
+        rate limit, a cold Space — degrades straight to Piper/MMS below,
+        never to silence."""
+        lang_code2 = target_lang.lower()[:2]
+
+        voice_id = settings.elevenlabs_voice_map.get(persona_id) if persona_id else None
+        if voice_id and settings.elevenlabs_configured:
+            elevenlabs_cache_path = self._cache_path("tts-elevenlabs", f"{voice_id}::{text}", "mp3")
+            if os.path.exists(elevenlabs_cache_path):
+                with open(elevenlabs_cache_path, "rb") as f:
+                    return f.read(), "audio/mpeg"
+            audio = await self._call_elevenlabs(text, voice_id)
+            if audio:
+                with open(elevenlabs_cache_path, "wb") as f:
+                    f.write(audio)
+                return audio, "audio/mpeg"
+            logger.info("ElevenLabs tier unavailable/failed, falling back to the Parler-TTS/Piper chain")
+
+        if voice_description and lang_code2 in PARLER_LANGS and settings.hf_configured and not settings.testing:
+            parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
+            if os.path.exists(parler_cache_path):
+                with open(parler_cache_path, "rb") as f:
+                    return f.read(), "audio/flac"
+
+            # Only the copy sent to the model is preprocessed — the visible
+            # transcript/history stays natural; see _preprocess_for_parler.
+            parler_text = _preprocess_for_parler(text, lang_code2)
+
+            try:
+                resp = await self._post_with_retry(
+                    f"{settings.hf_models_endpoint}/{PARLER_MODEL}",
+                    headers=self._hf_headers(),
+                    json={"inputs": parler_text, "parameters": {"description": voice_description}},
+                )
+                if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                    with open(parler_cache_path, "wb") as f:
+                        f.write(resp.content)
+                    return resp.content, "audio/flac"
+                logger.warning("HF Parler-TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+            except Exception:
+                logger.exception("HF Parler-TTS direct endpoint failed, trying the verified Space fallback")
+
+            try:
+                audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
+                if audio_bytes:
+                    with open(parler_cache_path, "wb") as f:
+                        f.write(audio_bytes)
+                    return audio_bytes, "audio/flac"
+            except Exception:
+                logger.exception("Parler-TTS Space fallback failed, falling back to Piper/MMS")
+
         from . import piper_tts
 
         piper_voice = piper_tts.voice_key_for(target_lang)
@@ -717,7 +923,13 @@ class HFClient:
             logger.exception("HF TTS failed")
         return None
 
-    async def stream_speech(self, text: str, target_lang: str):
+    async def stream_speech(
+        self,
+        text: str,
+        target_lang: str,
+        voice_description: str | None = None,
+        persona_id: str | None = None,
+    ):
         """Splits `text` into sentences (piper_tts.split_into_sentences) and
         synthesizes+yields each one's audio as soon as it's ready, instead
         of waiting for the whole block. This is what actually shortens
@@ -727,11 +939,16 @@ class HFClient:
         while sentence 2+ are still being synthesized, rather than making
         the caller wait on one TTS call sized to the entire reply. Skips
         (not yields) any sentence whose synthesis genuinely fails — a
-        dropped clause in a spoken reply beats aborting the whole turn."""
+        dropped clause in a spoken reply beats aborting the whole turn.
+
+        `voice_description`/`persona_id` are forwarded to text_to_speech's
+        optional ElevenLabs/Parler-TTS persona-voice tiers (see
+        backend/personas.py) — omit both for the plain shared-per-language
+        voice used everywhere else in the app."""
         from . import piper_tts
 
         for sentence in piper_tts.split_into_sentences(text):
-            result = await self.text_to_speech(sentence, target_lang)
+            result = await self.text_to_speech(sentence, target_lang, voice_description, persona_id)
             if result is not None:
                 yield sentence, result[0], result[1]
 

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import { api, PersonaInfo } from "@/lib/api";
 import { toast } from "sonner";
 
 interface Message {
@@ -15,7 +15,8 @@ interface Message {
 
 // Mirrors backend/routers/conversation.py's websocket message contract.
 type ServerEvent =
-  | { type: "ready" | "error"; message: string }
+  | { type: "ready"; message: string; persona: PersonaInfo }
+  | { type: "error"; message: string }
   | { type: "transcript"; text: string }
   | { type: "reply_start" }
   | { type: "reply_chunk"; text: string }
@@ -31,8 +32,30 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function TeacherAvatar({ persona, className }: { persona: PersonaInfo; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) {
+    return (
+      <div className={`flex items-center justify-center bg-primary/10 text-primary font-bold rounded-full ${className}`}>
+        {persona.name.charAt(0)}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={persona.portrait_url}
+      alt={persona.name}
+      className={`object-cover rounded-full bg-muted ${className}`}
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
 export default function Talk() {
   const { user } = useAuth();
+  const [personas, setPersonas] = useState<PersonaInfo[]>([]);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [activePersona, setActivePersona] = useState<PersonaInfo | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -44,9 +67,23 @@ export default function Talk() {
   const playingRef = useRef(false);
   const currentTutorMsgId = useRef<string | null>(null);
 
+  // Load the roster of selectable teachers once, and default to the
+  // learner's previously-saved persona (if any) so returning users don't
+  // have to re-pick every session.
   useEffect(() => {
-    if (!user?.id) return;
-    const ws = api.connectConversation(user.id);
+    api
+      .getPersonas()
+      .then(setPersonas)
+      .catch((err) => toast.error(err instanceof Error ? err.message : "No se pudieron cargar los maestros"));
+  }, []);
+
+  useEffect(() => {
+    if (user?.tutor_persona_id) setSelectedPersonaId(user.tutor_persona_id);
+  }, [user?.tutor_persona_id]);
+
+  useEffect(() => {
+    if (!user?.id || !selectedPersonaId) return;
+    const ws = api.connectConversation(user.id, selectedPersonaId);
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
@@ -57,6 +94,7 @@ export default function Talk() {
       const msg: ServerEvent = JSON.parse(event.data);
       switch (msg.type) {
         case "ready":
+          setActivePersona(msg.persona);
           setMessages([{ id: "greeting", role: "tutor", text: msg.message }]);
           break;
         case "error":
@@ -97,7 +135,7 @@ export default function Talk() {
 
     return () => ws.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, selectedPersonaId]);
 
   const playNextAudio = () => {
     if (playingRef.current) return;
@@ -146,14 +184,67 @@ export default function Talk() {
     setInput("");
   };
 
+  const choosePersona = async (personaId: string) => {
+    setSelectedPersonaId(personaId);
+    if (user?.id) {
+      try {
+        await api.setTutorPersona(user.id, personaId);
+      } catch {
+        // Saving the default is a nicety — a failed save shouldn't block
+        // starting the conversation with the persona the learner just picked.
+      }
+    }
+  };
+
+  if (!selectedPersonaId) {
+    return (
+      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-foreground mb-2">Choose your teacher</h1>
+            <p className="text-muted-foreground">Each one has a different teaching style and voice.</p>
+          </div>
+          {personas.length === 0 ? (
+            <p className="text-muted-foreground">Loading teachers...</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {personas.map((p) => (
+                <Card
+                  key={p.id}
+                  className="p-5 flex gap-4 items-start hover:shadow-lg transition-smooth cursor-pointer"
+                  onClick={() => choosePersona(p.id)}
+                >
+                  <TeacherAvatar persona={p} className="w-16 h-16 flex-shrink-0 text-xl" />
+                  <div>
+                    <h3 className="font-bold text-foreground">{p.name}</h3>
+                    <p className="text-xs text-primary font-medium mb-1">{p.title}</p>
+                    <p className="text-sm text-muted-foreground">{p.philosophy}</p>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
       <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Talk Live</h1>
-          <p className="text-muted-foreground">
-            Speak or type with your AI tutor {!connected && "(connecting...)"}
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {activePersona && <TeacherAvatar persona={activePersona} className="w-12 h-12" />}
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{activePersona?.name || "Talk Live"}</h1>
+              <p className="text-sm text-muted-foreground">
+                {activePersona?.title || (!connected && "connecting...")}
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setSelectedPersonaId(null)}>
+            Change teacher
+          </Button>
         </div>
 
         <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4 min-h-[300px]">
