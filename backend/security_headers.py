@@ -15,7 +15,13 @@ URLs directly in <img>/<iframe> (frontend/app.js loadVisualAids/loadLibraryPage)
 rather than proxying bytes through /api/content/image like the rest of the
 app's AI-generated images — every one of those requests was silently
 CSP-blocked (confirmed via a real browser console, not just code reading)
-until this was added."""
+until this was added.
+
+script-src also allow-lists cdn.jsdelivr.net: index.html loads Mermaid
+straight from that CDN instead of vendoring it locally like the other two
+third-party scripts (frontend/vendor/{chart.umd,confetti.browser}.min.js) —
+under plain 'self', the browser silently refused to execute it and the
+diagram feature never ran at all."""
 
 from __future__ import annotations
 
@@ -27,7 +33,7 @@ from .config import settings
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' https://cdn.jsdelivr.net; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data: blob: https://image.pollinations.ai; "
