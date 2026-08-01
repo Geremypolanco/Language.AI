@@ -293,6 +293,10 @@
 
       <main>
         <div id="tab-path" class="tab-panel">
+          <div class="path-header">
+            <h2 data-i18n="path_title">Tu Camino de Aprendizaje</h2>
+            <p class="subtitle" data-i18n="path_subtitle">Completa unidades para desbloquear nuevos niveles e historias.</p>
+          </div>
           <div id="skill-path" class="skill-path"></div>
         </div>
 
@@ -389,6 +393,7 @@
               <div class="tutor-video-bg">
                 <img src="/public/tutor_avatar_main.png" class="tutor-real-face" id="tutor-face-img" alt="Tutor" />
                 <div class="tutor-speaking-ring" id="tutor-speaking-ring"></div>
+                <div class="tutor-visualizer" id="tutor-visualizer"></div>
               </div>
               <div class="tutor-info-overlay">
                 <div class="tutor-name-badge">
@@ -400,6 +405,7 @@
               <!-- User self-view (small pip) -->
               <div class="self-view-pip" id="self-view-pip">
                 <div class="self-view-inner">
+                  <div class="user-visualizer" id="user-visualizer"></div>
                   <svg class="icon self-view-icon"><use href="#icon-mic"/></svg>
                 </div>
               </div>
@@ -410,18 +416,20 @@
 
             <!-- Controls -->
             <div class="call-controls">
-              <button id="mic-btn" class="mic-btn" aria-label="Mantén presionado para hablar">
-                <span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span>
-                <span class="mic-btn-label" data-i18n="talk_mic_btn">Mantén presionado para hablar</span>
-              </button>
+              <div class="mic-container">
+                <button id="mic-btn" class="mic-btn-round" aria-label="Mantén presionado para hablar">
+                  <svg class="icon"><use href="#icon-mic"/></svg>
+                </button>
+                <p class="mic-hint" data-i18n="talk_mic_hint">Mantén presionado para hablar</p>
+              </div>
               <form id="text-fallback-form" class="text-fallback">
-                <input type="text" id="text-fallback-input" placeholder="…o escribe aquí" data-i18n-placeholder="talk_text_placeholder" />
+                <input type="text" id="text-fallback-input" placeholder="Escribe un mensaje…" data-i18n-placeholder="talk_text_placeholder" />
                 <button type="submit" class="text-fallback-send" data-i18n="talk_send_btn">
                   <svg class="icon"><use href="#icon-chat"/></svg>
                 </button>
               </form>
             </div>
-            <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
+            <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA de élite puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
           </div>
         </div>
 
@@ -639,6 +647,8 @@
   </div>
 
   <script src="/static/vendor/chart.umd.min.js"></script>
+  <script src="/static/vendor/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

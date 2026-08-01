@@ -146,17 +146,17 @@ def build_curriculum_prompt(field: AcademicField, level_label: str, course_count
 
 def build_course_prompt(field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str) -> str:
     return (
-        f"Write self-study course material in {native_lang} for the course \"{course_title}\" "
+        f"Write ELITE self-study course material in {native_lang} for the course \"{course_title}\" "
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
         f"{level_label} depth. Structure it as 4 to 6 modules. Each module should teach real, accurate, "
         f"standard content for this topic — the kind of material an actual textbook or course would "
         f"cover, using the correct professional/technical terms this field actually uses — with clear "
-        f"explanations and at least one concrete example per module. Explain each term the first time it "
-        f"appears clearly enough that a bright 10-year-old could follow the explanation, even though the "
-        f"terminology itself stays accurate and professional — simplify the explanation, never the "
-        f"vocabulary. "
+        f"explanations and at least one concrete example per module. "
+        f"If a concept is complex, include a Mermaid.js diagram in the content using the format [DIAGRAM: graph TD...]. "
+        f"Explain each term the first time it appears clearly enough that a bright 10-year-old could follow the explanation, "
+        f"even though the terminology itself stays accurate and professional — simplify the explanation, never the vocabulary. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
-        f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs"}}'
+        f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs with diagrams if helpful"}}'
     )
 
 

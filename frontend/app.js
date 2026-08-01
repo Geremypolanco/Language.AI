@@ -888,10 +888,26 @@ function renderLeaderboard(data) {
 
 function showToast(text, icon) {
   const toast = $("#toast");
+  if (!toast) return;
   toast.innerHTML = icon ? `${iconSvg(icon)} ${text}` : text;
   toast.classList.remove("hidden");
+  toast.classList.add("animate-slide");
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.add("hidden"), 2600);
+  showToast._t = setTimeout(() => {
+    toast.classList.add("hidden");
+    toast.classList.remove("animate-slide");
+  }, 3000);
+}
+
+function triggerCelebration() {
+  if (typeof confetti === 'function') {
+    confetti({
+      particleCount: 150,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#10b981', '#2dd4bf', '#3b82f6']
+    });
+  }
 }
 
 function setupShop(data) {
@@ -1260,11 +1276,12 @@ async function loadAcademyFields() {
     grid.className = "academy-fields-grid";
     for (const field of items) {
       const card = document.createElement("button");
-      card.className = "field-card";
+      card.className = "field-card animate-scale";
+      card.dataset.id = field.id;
       card.innerHTML = `
         ${tutorAvatarSvg(field)}
         <p class="field-card-title">${field.name}</p>
-        <p class="field-card-tutor">Tu tutor: ${field.tutor_name}</p>
+        <p class="field-card-tutor">Tutor: ${field.tutor_name}</p>
         <p class="field-card-desc">${field.description}</p>
       `;
       card.addEventListener("click", () => enrollInField(field.id));
@@ -1275,12 +1292,32 @@ async function loadAcademyFields() {
 }
 
 async function enrollInField(fieldId) {
+  if (!state.userId) {
+    showToast("Error: No se encontró el ID de usuario. Por favor, inicia sesión de nuevo.");
+    return;
+  }
+  
   const level = $("#academy-level-select").value;
-  const progress = await api(`/api/academy/${state.userId}/enroll`, {
-    method: "POST",
-    body: JSON.stringify({ field_id: fieldId, level }),
-  }).then(async () => api(`/api/academy/${state.userId}/progress`));
-  showAcademyCurriculum(progress);
+  const card = document.querySelector(`.field-card[data-id="${fieldId}"]`);
+  if (card) card.classList.add("loading");
+  
+  try {
+    showToast("Inscribiéndote en la carrera...", "sparkle");
+    const progress = await api(`/api/academy/${state.userId}/enroll`, {
+      method: "POST",
+      body: JSON.stringify({ field_id: fieldId, level }),
+    }).then(async () => api(`/api/academy/${state.userId}/progress`));
+    
+    // Celebration!
+    triggerCelebration();
+    showAcademyCurriculum(progress);
+    showToast("¡Inscripción exitosa!", "check");
+  } catch (err) {
+    console.error("Enrollment failed:", err);
+    showToast(`Error al inscribirse: ${err.message}`, "x");
+  } finally {
+    if (card) card.classList.remove("loading");
+  }
 }
 
 function showAcademyPicker() {
@@ -1350,11 +1387,22 @@ async function openCourse(courseId, title) {
     modulesEl.innerHTML = "";
     for (const mod of course.modules) {
       const section = document.createElement("div");
+      section.className = "course-module animate-fade";
+      
+      // Elite: Detect and render diagrams if present
+      let contentHtml = escapeHtml(mod.content);
+      if (contentHtml.includes("graph ") || contentHtml.includes("sequenceDiagram") || contentHtml.includes("pie ")) {
+        contentHtml = contentHtml.replace(/\[DIAGRAM:([\s\S]*?)\]/g, '<pre class="mermaid">$1</pre>');
+      }
+      
       section.innerHTML = `
         <h3 class="course-module-title">${escapeHtml(mod.title)}</h3>
-        <p class="course-module-content">${escapeHtml(mod.content)}</p>
+        <div class="course-module-content">${contentHtml}</div>
       `;
       modulesEl.appendChild(section);
+    }
+    if (window.mermaid) {
+      mermaid.init(undefined, ".mermaid");
     }
     const feedbackEl = $("#course-feedback");
     feedbackEl.innerHTML = "";
@@ -1973,10 +2021,15 @@ async function finishLesson() {
   const score = exercises.length ? correctCount / exercises.length : 0;
   const elapsedSeconds = lessonElapsedSeconds();
   stopLessonTimer();
+  
+  // Celebration for finishing!
+  if (score >= 0.8) triggerCelebration();
+  
   const result = await api(`/api/lessons/${state.userId}/complete`, {
     method: "POST",
     body: JSON.stringify({ unit_id: unitId, score, elapsed_seconds: elapsedSeconds }),
   });
+  
   $("#complete-xp-pill").textContent = result.xp_gained;
   $("#complete-gems-pill").textContent = result.gems_gained;
   $("#complete-streak").innerHTML = result.streak_freeze_used
@@ -1989,6 +2042,7 @@ async function finishLesson() {
       : "Sigue practicando esta unidad para dominarla.";
   $("#complete-mascot").classList.toggle("mood-fire", !!result.leveled_up);
   $("#complete-mascot-badge").innerHTML = iconSvg(result.leveled_up ? "sparkle" : "star");
+  
   showScreen("#screen-complete");
 }
 
@@ -2066,6 +2120,7 @@ function _playNextConversationAudio() {
     _conversationAudioPlaying = false;
     if (tutorFace) tutorFace.classList.remove("speaking");
     if (speakingRing) speakingRing.classList.remove("active");
+    stopVisualizer("tutor-visualizer");
     return;
   }
   _conversationAudioPlaying = true;
@@ -2074,10 +2129,80 @@ function _playNextConversationAudio() {
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
   const blob = new Blob([arr], { type: next.mimeType });
   const audio = new Audio(URL.createObjectURL(blob));
+  
   if (tutorFace) tutorFace.classList.add("speaking");
   if (speakingRing) speakingRing.classList.add("active");
-  audio.addEventListener("ended", _playNextConversationAudio);
+  
+  // Start visualizer for tutor
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioContext.createMediaElementSource(audio);
+  startVisualizer("tutor-visualizer", null, source, audioContext);
+  
+  audio.addEventListener("ended", () => {
+    audioContext.close();
+    _playNextConversationAudio();
+  });
   audio.play().catch(_playNextConversationAudio);
+}
+
+const _visualizers = {};
+
+function startVisualizer(id, stream, source, context) {
+  const container = document.getElementById(id);
+  if (!container) return;
+  container.innerHTML = "";
+  
+  const audioContext = context || new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = audioContext.createAnalyser();
+  const sourceNode = source || audioContext.createMediaStreamSource(stream);
+  sourceNode.connect(analyser);
+  if (source) analyser.connect(audioContext.destination);
+  
+  analyser.fftSize = 32;
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  
+  const bars = [];
+  for (let i = 0; i < 8; i++) {
+    const bar = document.createElement("div");
+    bar.className = "visualizer-bar";
+    bar.style.width = "4px";
+    bar.style.height = "4px";
+    bar.style.background = id.includes("user") ? "white" : "var(--green)";
+    bar.style.borderRadius = "2px";
+    bar.style.margin = "0 2px";
+    bar.style.transition = "height 0.1s ease";
+    container.appendChild(bar);
+    bars.push(bar);
+  }
+  container.style.display = "flex";
+  container.style.alignItems = "center";
+  container.style.justifyContent = "center";
+  
+  function draw() {
+    if (!_visualizers[id]) return;
+    requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+    for (let i = 0; i < bars.length; i++) {
+      const val = dataArray[i] || 0;
+      const height = Math.max(4, (val / 255) * 40);
+      bars[i].style.height = height + "px";
+    }
+  }
+  
+  _visualizers[id] = { audioContext, draw };
+  draw();
+}
+
+function stopVisualizer(id) {
+  if (_visualizers[id]) {
+    if (!_visualizers[id].isExternalContext) {
+      // _visualizers[id].audioContext.close(); // Careful with shared context
+    }
+    _visualizers[id] = null;
+    const container = document.getElementById(id);
+    if (container) container.innerHTML = "";
+  }
 }
 
 function blobToBase64(blob) {
@@ -2094,31 +2219,39 @@ function setupMic() {
   let stream = null;
 
   const start = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     ensureConversationSocket();
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    state.audioChunks = [];
-    state.mediaRecorder = new MediaRecorder(stream);
-    state.mediaRecorder.ondataavailable = (ev) => state.audioChunks.push(ev.data);
-    state.mediaRecorder.start();
-    micBtn.classList.add("recording");
-    micBtn.innerHTML = `<span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span><span class="mic-btn-label">Escuchando…</span>`;
-    if (tutorFace) tutorFace.classList.add("listening");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      state.audioChunks = [];
+      state.mediaRecorder = new MediaRecorder(stream);
+      state.mediaRecorder.ondataavailable = (ev) => state.audioChunks.push(ev.data);
+      state.mediaRecorder.start();
+      micBtn.classList.add("recording");
+      if (tutorFace) tutorFace.classList.add("listening");
+      startVisualizer("user-visualizer", stream);
+      showToast("Escuchando...", "mic");
+    } catch (err) {
+      showToast("Error al acceder al micrófono: " + err.message, "x");
+    }
   };
 
   const stop = async () => {
     if (!state.mediaRecorder || state.mediaRecorder.state === "inactive") return;
     state.mediaRecorder.stop();
     micBtn.classList.remove("recording");
-    micBtn.innerHTML = `<span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span><span class="mic-btn-label" data-i18n="talk_mic_btn">Mantén presionado para hablar</span>`;
     if (tutorFace) tutorFace.classList.remove("listening");
+    stopVisualizer("user-visualizer");
+    
     await new Promise((resolve) => (state.mediaRecorder.onstop = resolve));
     stream.getTracks().forEach((t) => t.stop());
     const blob = new Blob(state.audioChunks, { type: state.mediaRecorder.mimeType || "audio/webm" });
-    if (blob.size < 500) return; // too short to be real speech
+    if (blob.size < 500) return;
+    
     const b64 = await blobToBase64(blob);
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify({ type: "audio", data: b64, content_type: blob.type }));
+      showToast("Procesando audio...", "sparkle");
     }
   };
 

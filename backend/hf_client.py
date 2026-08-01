@@ -69,6 +69,7 @@ class HFClientError(RuntimeError):
 class HFClient:
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=settings.request_timeout_s)
+        self._groq_api_key = os.environ.get("GROQ_API_KEY")
         os.makedirs(settings.cache_dir, exist_ok=True)
 
     async def aclose(self) -> None:
@@ -110,16 +111,28 @@ class HFClient:
                 await asyncio.sleep(0.5)
         raise AssertionError("unreachable")
 
-    async def chat(self, messages: list[dict[str, str]], max_tokens: int = 700, temperature: float = 0.7) -> str:
-        """Tries Pollinations first (free, keyless — but its anonymous tier
-        has a small, easily-exhausted per-source budget, confirmed by
-        directly hitting it: the first call succeeded, the next one got HTTP
-        402 "API key budget too low ... this key has 0.0000"). Falls back to
-        Hugging Face — if HF_TOKEN is set and has credits — before finally
-        raising, so whichever provider currently has room wins instead of
-        the app depending on exactly one of them being up."""
+    async def chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7) -> str:
+        """Uses Groq as the primary elite free provider (Llama 3.1 70B), 
+        falling back to Pollinations/HF if Groq is unavailable."""
         if settings.testing:
             raise HFClientError("AI disabled in test environment")
+            
+        # Try Groq first (Elite speed and quality)
+        groq_key = os.environ.get("GROQ_API_KEY")
+        if groq_key:
+            try:
+                resp = await self._post_with_retry(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+                logger.warning("Groq chat HTTP %s: %s", resp.status_code, resp.text[:300])
+            except Exception as e:
+                logger.warning("Groq chat failed: %s", e)
+
+        # Fallback to Pollinations
         try:
             resp = await self._post_with_retry(
                 settings.pollinations_chat_endpoint,
@@ -128,23 +141,23 @@ class HFClient:
             )
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"]
-            logger.warning("Pollinations chat HTTP %s: %s", resp.status_code, resp.text[:300])
-        except httpx.TransportError:
-            logger.warning("Pollinations chat network error, trying Hugging Face fallback")
+        except Exception:
+            pass
 
-        if not settings.hf_configured:
-            raise HFClientError("Pollinations chat failed and no HF_TOKEN fallback is configured")
-        try:
-            resp = await self._post_with_retry(
-                settings.hf_chat_endpoint,
-                headers=self._hf_headers(),
-                json={"model": settings.hf_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-            )
-        except httpx.TransportError as exc:
-            raise HFClientError(f"HF chat network error: {exc}") from exc
-        if resp.status_code != 200:
-            raise HFClientError(f"HF chat HTTP {resp.status_code}: {resp.text[:300]}")
-        return resp.json()["choices"][0]["message"]["content"]
+        # Final fallback to Hugging Face
+        if settings.hf_configured:
+            try:
+                resp = await self._post_with_retry(
+                    settings.hf_chat_endpoint,
+                    headers=self._hf_headers(),
+                    json={"model": settings.hf_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+            except Exception:
+                pass
+                
+        raise HFClientError("All AI chat providers failed")
 
     async def generate_exercises(
         self, req: LessonRequest, mix_override: list[ExerciseType] | None = None
@@ -687,24 +700,38 @@ class HFClient:
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
-        """Stays on the optional Hugging Face path — Pollinations doesn't
-        offer transcription. No HF_TOKEN just means no auto-transcript; the
-        speak_repeat exercise already has the learner self-check in that
-        case (see frontend/app.js)."""
-        if not settings.hf_configured:
-            return ""
-        try:
-            resp = await self._post_with_retry(
-                f"{settings.hf_models_endpoint}/{settings.stt_model}",
-                headers={**self._hf_headers(), "Content-Type": content_type},
-                content=audio_bytes,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("text", "").strip()
-            logger.warning("HF STT HTTP %s: %s", resp.status_code, resp.text[:200])
-        except Exception:
-            logger.exception("HF STT failed")
+        """Uses Groq Whisper (instant, elite quality) as primary, 
+        falling back to Hugging Face Whisper."""
+        groq_key = os.environ.get("GROQ_API_KEY")
+        if groq_key:
+            try:
+                # Groq requires multipart/form-data for translations/transcriptions
+                files = {"file": ("audio.webm", audio_bytes, content_type), "model": (None, "whisper-large-v3")}
+                resp = await self._http.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    files=files,
+                    timeout=30.0
+                )
+                if resp.status_code == 200:
+                    return resp.json().get("text", "").strip()
+                logger.warning("Groq STT HTTP %s: %s", resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.warning("Groq STT failed: %s", e)
+
+        # Fallback to Hugging Face
+        if settings.hf_configured:
+            try:
+                resp = await self._post_with_retry(
+                    f"{settings.hf_models_endpoint}/{settings.stt_model}",
+                    headers={**self._hf_headers(), "Content-Type": content_type},
+                    content=audio_bytes,
+                )
+                if resp.status_code == 200:
+                    return resp.json().get("text", "").strip()
+            except Exception:
+                pass
+                
         return ""
 
 
