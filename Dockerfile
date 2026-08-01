@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ backend/
 COPY frontend/ frontend/
+COPY public/ public/
 
 RUN useradd --system --create-home --uid 10001 lingua \
     && mkdir -p /app/data \

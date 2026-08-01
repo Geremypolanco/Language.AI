@@ -33,6 +33,7 @@ from .security_headers import SecurityHeadersMiddleware
 logger = logging.getLogger("lingua.main")
 
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+_TEAM_AVATARS_DIR = Path(__file__).resolve().parent.parent / "public" / "team"
 
 
 @asynccontextmanager
@@ -99,6 +100,12 @@ def health() -> dict:
         "google_configured": settings.google_configured,
     }
 
+
+if _TEAM_AVATARS_DIR.exists():
+    # index.html/app.js reference these as "/team/<file>.png" — this mount
+    # is what makes that path resolve instead of 404ing in production,
+    # where only backend/ and frontend/ used to be copied into the image.
+    app.mount("/team", StaticFiles(directory=str(_TEAM_AVATARS_DIR)), name="team-avatars")
 
 if _FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
