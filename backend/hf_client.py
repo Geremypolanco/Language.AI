@@ -18,6 +18,30 @@ is a much bigger lift than TTS was — so those two gracefully degrade to
 "unavailable" with no token/credits, same as before. Nothing here uses
 mocked "success" responses; a failure is always a real failure, never
 faked.
+
+Orchestration: exactly one layer in this app makes pedagogical/content
+decisions — the chat-completions call (chat()/stream_chat(): Groq's
+Llama-3.1-70B primary, Pollinations second, Qwen2.5-7B-Instruct on
+Hugging Face as the last resort, chosen specifically for its multilingual/
+CJK strength — see config.py's hf_chat_model comment). Every other engine
+in this file is a specialist executor with no independent judgment: it
+renders whatever the chat model already decided. Concretely, the JSON an
+exercise-generation call returns carries an `image_prompt` (handed
+verbatim to generate_image/Flux) and `audio_text` (handed to
+text_to_speech/Piper); Talk Live's `reply_text` from stream_chat() is what
+gets synthesized by stream_speech(); grading/curriculum/course/assignment
+content all come from the same chat() call, never a second opinion from a
+different model. Adding a new AI-driven feature to this app should follow
+that same shape — one chat() call decides *what*, the modality-specific
+engine below just renders it — rather than letting a specialist engine
+also guess at content on its own.
+
+Hugging Face is also the one tier in this rotation with a real, credit-
+limited budget behind it (unlike Pollinations' free/keyless tier or a
+self-hosted engine like Piper) — see _HFGuard below for how every HF call
+site in this file is rate/budget-guarded so a traffic burst can't quietly
+exhaust that budget or pile up slow doomed requests against an already
+rate-limited account.
 """
 
 from __future__ import annotations
@@ -103,6 +127,71 @@ _ALLCAPS_ABBREV_PATTERN = re.compile(r"\b[A-Z][A-Z.]+\b")
 _NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?\b")
 
 
+# ── Hugging Face reliability/budget guard ────────────────────────────────
+# Hugging Face is deliberately the *last-resort* tier for chat (behind Groq
+# and Pollinations) and the *only* option this app has for speech-to-text
+# fallback, video, and part of the TTS chain (see module docstring) —
+# exactly the calls most likely to all land on HF at once during a burst,
+# right after Groq/Pollinations have already been exhausted. Left unguarded
+# that's two separate failure modes:
+#   1. A rate-limited or budget-exhausted HF account (HTTP 429/402) would
+#      otherwise get retried on every subsequent request, each paying for a
+#      full doomed round-trip (up to request_timeout_s=60s) instead of
+#      failing fast — a pile of slow in-flight requests waiting on a
+#      provider that's already down is exactly the kind of load that can
+#      make the whole server feel like it fell over, independent of whether
+#      any single process actually crashed.
+#   2. Nothing capped how much of a credit-limited HF plan one bad traffic
+#      spike could burn through in minutes.
+# _HFGuard fixes both with the same shape of circuit breaker already proven
+# for ElevenLabs below: any 429/402 opens a cooldown window, and a soft,
+# approximate per-day usage budget closes the tier early on its own even
+# without an explicit rate-limit response.
+_HF_CIRCUIT_COOLDOWN_S = 120.0
+# Flat per-call cost estimate for HF calls that aren't plain text-in/text-out
+# (STT reads audio, video's cost isn't proportional to the prompt string) —
+# picked so a handful of video generations (the heaviest call this app makes
+# against HF) meaningfully draws down the daily budget instead of registering
+# as nearly free the way a short text prompt's char-count would.
+_HF_AUDIO_CALL_COST = 500
+_HF_VIDEO_CALL_COST = 4000
+
+
+class _HFGuard:
+    """Tracks whether it's currently safe to spend more Hugging Face
+    quota — see the module comment above for why this exists. Not a real
+    token-accurate meter (there's no tokenizer here, just chars/4 and flat
+    per-modality estimates); it only needs to be a safety margin, not a
+    billing reconciliation."""
+
+    def __init__(self, daily_budget: int, cooldown_s: float = _HF_CIRCUIT_COOLDOWN_S) -> None:
+        self._daily_budget = daily_budget
+        self._cooldown_s = cooldown_s
+        self._circuit_open_until = 0.0
+        self._budget_day: str | None = None
+        self._used_today = 0
+
+    def _roll_window_if_new_day(self) -> None:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if today != self._budget_day:
+            self._budget_day = today
+            self._used_today = 0
+
+    def allowed(self) -> bool:
+        if time.monotonic() < self._circuit_open_until:
+            return False
+        self._roll_window_if_new_day()
+        return self._used_today < self._daily_budget
+
+    def record_usage(self, units: int) -> None:
+        self._roll_window_if_new_day()
+        self._used_today += max(0, units)
+
+    def record_rate_limited(self) -> None:
+        self._circuit_open_until = time.monotonic() + self._cooldown_s
+        logger.warning("Hugging Face rate-limited/budget exhausted — pausing that tier for %.0fs", self._cooldown_s)
+
+
 def _preprocess_for_parler(text: str, lang: str) -> str:
     """Mirrors the actual preprocessing the verified etrotta Parler-TTS
     Space performs on its input (read directly from that Space's app.py) —
@@ -172,6 +261,10 @@ class HFClient:
         # rate-limit window degrades to "skip this tier" in microseconds
         # rather than retrying the same 429 on every single turn.
         self._elevenlabs_circuit_open_until: float = 0.0
+        # Same idea, generalized to every Hugging Face call this client
+        # makes (chat fallback, STT fallback, TTS's MMS/Parler branches,
+        # video) — see the _HFGuard class above.
+        self._hf_guard = _HFGuard(settings.hf_daily_token_budget)
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -285,8 +378,10 @@ class HFClient:
         except Exception:
             pass
 
-        # Final fallback to Hugging Face
-        if settings.hf_configured:
+        # Final fallback to Hugging Face — gated by _HFGuard so a burst that
+        # already exhausted Groq/Pollinations doesn't also hammer a rate-
+        # limited or budget-exhausted HF account (see _HFGuard docstring).
+        if settings.hf_configured and self._hf_guard.allowed():
             try:
                 resp = await self._post_with_retry(
                     settings.hf_chat_endpoint,
@@ -294,10 +389,14 @@ class HFClient:
                     json={"model": settings.hf_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
                 )
                 if resp.status_code == 200:
-                    return resp.json()["choices"][0]["message"]["content"]
+                    content = resp.json()["choices"][0]["message"]["content"]
+                    self._hf_guard.record_usage((sum(len(m.get("content", "")) for m in messages) + len(content)) // 4)
+                    return content
+                if resp.status_code in (402, 429):
+                    self._hf_guard.record_rate_limited()
             except Exception:
                 pass
-                
+
         raise HFClientError("All AI chat providers failed")
 
     async def stream_chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7):
@@ -814,7 +913,10 @@ class HFClient:
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
                 return f.read()
-        if not settings.hf_configured:
+        # _HFGuard-gated like every other HF call — video is the single
+        # heaviest request this app makes against HF, so it's the one most
+        # worth stopping early once the daily budget or a rate limit trips.
+        if not settings.hf_configured or not self._hf_guard.allowed():
             return None
         try:
             resp = await self._post_with_retry(
@@ -824,9 +926,12 @@ class HFClient:
                 timeout=150.0,
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("video"):
+                self._hf_guard.record_usage(_HF_VIDEO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content
+            if resp.status_code in (402, 429):
+                self._hf_guard.record_rate_limited()
             logger.warning("HF video generation HTTP %s: %s", resp.status_code, resp.text[:200])
         except Exception:
             logger.exception("HF video generation failed")
@@ -877,7 +982,13 @@ class HFClient:
                 return audio, "audio/mpeg"
             logger.info("ElevenLabs tier unavailable/failed, falling back to the Parler-TTS/Piper chain")
 
-        if voice_description and lang_code2 in PARLER_LANGS and settings.hf_configured and not settings.testing:
+        if (
+            voice_description
+            and lang_code2 in PARLER_LANGS
+            and settings.hf_configured
+            and not settings.testing
+            and self._hf_guard.allowed()
+        ):
             parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
             if os.path.exists(parler_cache_path):
                 with open(parler_cache_path, "rb") as f:
@@ -894,9 +1005,12 @@ class HFClient:
                     json={"inputs": parler_text, "parameters": {"description": voice_description}},
                 )
                 if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(resp.content)
                     return resp.content, "audio/flac"
+                if resp.status_code in (402, 429):
+                    self._hf_guard.record_rate_limited()
                 logger.warning("HF Parler-TTS HTTP %s: %s", resp.status_code, resp.text[:200])
             except Exception:
                 logger.exception("HF Parler-TTS direct endpoint failed, trying the verified Space fallback")
@@ -904,6 +1018,7 @@ class HFClient:
             try:
                 audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
                 if audio_bytes:
+                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)
                     return audio_bytes, "audio/flac"
@@ -931,7 +1046,7 @@ class HFClient:
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
                 return f.read(), "audio/flac"
-        if not settings.hf_configured:
+        if not settings.hf_configured or not self._hf_guard.allowed():
             return None
         try:
             resp = await self._post_with_retry(
@@ -940,9 +1055,12 @@ class HFClient:
                 json={"inputs": text},
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
+                self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content, "audio/flac"
+            if resp.status_code in (402, 429):
+                self._hf_guard.record_rate_limited()
             logger.warning("HF TTS HTTP %s (%s): %s", resp.status_code, model, resp.text[:200])
         except Exception:
             logger.exception("HF TTS failed")
@@ -999,8 +1117,8 @@ class HFClient:
             except Exception as e:
                 logger.warning("Groq STT failed: %s", e)
 
-        # Fallback to Hugging Face
-        if settings.hf_configured:
+        # Fallback to Hugging Face — same _HFGuard gating as chat()'s HF tier.
+        if settings.hf_configured and self._hf_guard.allowed():
             try:
                 resp = await self._post_with_retry(
                     f"{settings.hf_models_endpoint}/{settings.stt_model}",
@@ -1008,10 +1126,13 @@ class HFClient:
                     content=audio_bytes,
                 )
                 if resp.status_code == 200:
+                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                     return resp.json().get("text", "").strip()
+                if resp.status_code in (402, 429):
+                    self._hf_guard.record_rate_limited()
             except Exception:
                 pass
-                
+
         return ""
 
 

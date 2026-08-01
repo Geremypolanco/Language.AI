@@ -45,10 +45,27 @@ class Settings:
     # with credits, Hugging Face retired the old api-inference.huggingface.co
     # host, so the endpoint below is the current unified router.
     hf_token: str = field(default_factory=lambda: os.environ.get("HF_TOKEN", "") or os.environ.get("HF_API_KEY", ""))
+    # Qwen2.5-7B-Instruct, not a same-size Llama/Mistral: Qwen's pretraining
+    # mix is unusually strong on CJK + Cyrillic text (both to read and to
+    # write), which is exactly the script family Groq's Llama-3.1 and
+    # Pollinations' proxy model are weakest on — confirmed the hard way by
+    # the A1 Korean/alphabet lesson bug this app shipped once (see
+    # curriculum.py's _uses_unfamiliar_script). Since this model only ever
+    # runs as chat()'s last-resort fallback, "best at the cases the earlier
+    # tiers are worst at" matters more here than raw benchmark size.
     hf_chat_model: str = field(
         default_factory=lambda: os.environ.get("LINGUA_HF_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct")
     )
+    # whisper-large-v3: the strongest open multilingual ASR model with
+    # serverless Inference Providers coverage — used as speech_to_text()'s
+    # fallback behind Groq's own (much faster) hosted Whisper.
     stt_model: str = field(default_factory=lambda: os.environ.get("LINGUA_STT_MODEL", "openai/whisper-large-v3"))
+    # MMS-TTS: the only free serverless model covering close to the full
+    # ~100-language picker this app offers (see hf_client._MMS_LANG_CODES) —
+    # kept strictly as the last-resort tail behind Piper's self-hosted,
+    # unlimited synthesis for the ~53 languages Piper actually has a voice
+    # for; quality is noticeably robotic, which is acceptable only because
+    # it's a rarely-hit fallback, not the everyday voice.
     tts_model_prefix: str = field(
         default_factory=lambda: os.environ.get("LINGUA_TTS_MODEL_PREFIX", "facebook/mms-tts")
     )
@@ -61,6 +78,18 @@ class Settings:
     )
     hf_chat_endpoint: str = "https://router.huggingface.co/v1/chat/completions"
     hf_models_endpoint: str = "https://router.huggingface.co/hf-inference/models"
+
+    # Soft daily safety cap on Hugging Face usage (see hf_client._HFGuard) —
+    # HF is a paid/credit-limited tier here (unlike Pollinations/Groq), and
+    # it's the *only* option for STT/video and part of the TTS chain, so a
+    # traffic burst that exhausts Groq/Pollinations first would otherwise
+    # dump everything onto HF at once. Counted in an approximate "chars/4"
+    # unit for chat/TTS text and a flat per-call estimate for STT/video
+    # (see _HFGuard.record_usage) — a safety margin, not a billing-accurate
+    # token meter, so the default is deliberately generous rather than tight.
+    hf_daily_token_budget: int = field(
+        default_factory=lambda: int(os.environ.get("LINGUA_HF_DAILY_TOKEN_BUDGET", "200000"))
+    )
 
     # ── Pollinations.ai — primary provider for chat and images ──────────
     # Free, keyless, no signup, no billing. Image generation (Flux) is
