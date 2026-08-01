@@ -1015,13 +1015,23 @@ async function loadLibraryPage(reset) {
   for (const book of books) {
     const card = document.createElement("button");
     card.className = "book-card";
+    
+    // Generate a dynamic cover image based on title and genre
+    const coverQuery = `${book.title} ${book.genre_label}`.replace(/ /g, "%20");
+    const coverUrl = `https://image.pollinations.ai/prompt/${coverQuery}%20book%20cover%20illustration?width=300&height=400&n=1`;
+
     card.innerHTML = `
-      <div class="book-card-chips">
-        <span class="book-chip">${book.genre_label}</span>
-        <span class="book-chip level">${book.level}</span>
+      <div class="book-card-cover">
+        <img src="${coverUrl}" alt="${book.title}" loading="lazy" />
+        <div class="book-card-chips">
+          <span class="book-chip">${book.genre_label}</span>
+          <span class="book-chip level">${book.level}</span>
+        </div>
       </div>
-      <p class="book-card-title">${book.title}</p>
-      <p class="book-card-blurb">${book.blurb}</p>
+      <div class="book-card-content">
+        <p class="book-card-title">${book.title}</p>
+        <p class="book-card-blurb">${book.blurb}</p>
+      </div>
     `;
     card.addEventListener("click", () => openBook(book.id));
     grid.appendChild(card);
@@ -1324,6 +1334,13 @@ async function openCourse(courseId, title) {
 
   const fieldName = _academyState.currentTutor ? $("#academy-current-field").textContent : "";
   $("#course-youtube-link").href = youtubeSearchUrl(`${title} ${fieldName}`.trim());
+
+  // Visual Aids for Academy
+  const visualAidContainer = document.createElement("div");
+  visualAidContainer.id = "course-visual-aids";
+  visualAidContainer.className = "visual-aid-container";
+  $("#course-modules").parentElement.insertBefore(visualAidContainer, $("#course-modules"));
+  loadVisualAids(`${title} ${fieldName}`.trim(), visualAidContainer);
 
   const modulesEl = $("#course-modules");
   modulesEl.innerHTML = `<p class="recommendations-empty">Generando tu curso…</p>`;
@@ -1651,6 +1668,26 @@ function renderCurrentExercise() {
   promptEl.textContent = ex.prompt || "Traduce / responde:";
   container.appendChild(promptEl);
 
+  // Add Visual Aid button for vocabulary
+  const vocabQuery = ex.target_text || ex.correct_answer || ex.vocab_key;
+  if (vocabQuery && ex.type !== "free_conversation_prompt") {
+    const aidBtn = document.createElement("button");
+    aidBtn.className = "visual-aid-btn";
+    aidBtn.innerHTML = `${iconSvg("sparkle")} Ayuda visual (YouTube/Google)`;
+    aidBtn.onclick = () => {
+      let aidBox = container.querySelector(".visual-aid-container");
+      if (aidBox) {
+        aidBox.remove();
+        return;
+      }
+      aidBox = document.createElement("div");
+      aidBox.className = "visual-aid-container";
+      container.appendChild(aidBox);
+      loadVisualAids(vocabQuery, aidBox);
+    };
+    container.appendChild(aidBtn);
+  }
+
   const targetLang = state.user.target_lang;
 
   const renderers = {
@@ -1664,6 +1701,60 @@ function renderCurrentExercise() {
     free_conversation_prompt: renderFreeConversation,
   };
   (renderers[ex.type] || renderTranslate)(ex, container, targetLang);
+}
+
+// ========== VISUAL AIDS LOGIC ==========
+
+async function loadVisualAids(query, container) {
+  container.innerHTML = `<p class="subtitle">Buscando imágenes y videos relevantes…</p>`;
+  try {
+    const [images, videos] = await Promise.all([
+      api("/api/content/image-gallery", { method: "POST", body: JSON.stringify({ query, limit: 4 }) }),
+      api("/api/content/youtube-search", { method: "POST", body: JSON.stringify({ query, limit: 1 }) })
+    ]);
+
+    container.innerHTML = "";
+
+    if (videos && videos.length > 0) {
+      const v = videos[0];
+      const videoWrapper = document.createElement("div");
+      videoWrapper.className = "youtube-embed-wrapper";
+      videoWrapper.innerHTML = `
+        <iframe src="${v.embed_url}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      `;
+      const label = document.createElement("p");
+      label.className = "visual-aid-label";
+      label.textContent = "Video de apoyo";
+      container.appendChild(label);
+      container.appendChild(videoWrapper);
+    }
+
+    if (images && images.length > 0) {
+      const label = document.createElement("p");
+      label.className = "visual-aid-label";
+      label.textContent = "Imágenes de referencia";
+      container.appendChild(label);
+      
+      const gallery = document.createElement("div");
+      gallery.className = "image-gallery";
+      for (const imgUrl of images) {
+        const img = document.createElement("img");
+        img.className = "gallery-img";
+        img.src = imgUrl;
+        img.alt = query;
+        img.onclick = () => window.open(imgUrl, "_blank");
+        gallery.appendChild(img);
+      }
+      container.appendChild(gallery);
+    }
+
+    if ((!videos || !videos.length) && (!images || !images.length)) {
+      container.innerHTML = `<p class="subtitle">No se encontraron apoyos visuales para "${query}".</p>`;
+    }
+  } catch (err) {
+    container.innerHTML = `<p class="subtitle">Error al cargar apoyos visuales.</p>`;
+    console.error(err);
+  }
 }
 
 function renderImageMatch(ex, container, targetLang) {

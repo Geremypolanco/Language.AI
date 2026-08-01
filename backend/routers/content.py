@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from .. import auth, image_search
+from .. import auth, image_search, youtube_search
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
@@ -63,6 +63,34 @@ async def generate_video(payload: VideoRequest) -> Response:
     if video is None:
         raise HTTPException(status_code=503, detail="Video no disponible en este momento — inténtalo de nuevo más tarde")
     return Response(content=video, media_type="video/mp4")
+
+
+class YoutubeSearchRequest(BaseModel):
+    query: str
+    limit: int = 1
+
+
+@router.post("/youtube-search")
+async def search_youtube(payload: YoutubeSearchRequest) -> list[dict[str, str]]:
+    """Searches real YouTube videos based on the context."""
+    return await youtube_search.search_youtube_videos(payload.query, payload.limit)
+
+
+class ImageGalleryRequest(BaseModel):
+    query: str
+    limit: int = 4
+
+
+@router.post("/image-gallery")
+async def get_image_gallery(payload: ImageGalleryRequest) -> list[str]:
+    """Returns a list of image URLs (placeholders or real search results) for the gallery."""
+    # This is a placeholder for a multi-image search implementation
+    # For now, we'll return a few variants of the search query to simulate a gallery
+    # In a real app, this would call a search API and return multiple result links.
+    return [
+        f"https://image.pollinations.ai/prompt/{payload.query.replace(' ', '%20')}?width=512&height=512&n={i}"
+        for i in range(payload.limit)
+    ]
 
 
 @router.post("/stt")
