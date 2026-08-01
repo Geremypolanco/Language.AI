@@ -521,7 +521,16 @@ function updateSoundscape(type) {
     detective: "https://www.soundjay.com/ambient/rain-01.mp3"
   };
   
+  audio.onerror = null;
   if (sounds[type]) {
+    // The play()-promise .catch() below only covers autoplay being blocked;
+    // a bad/unreachable src (network failure, 404, CSP block) instead fires
+    // the <audio> element's own "error" event and would otherwise leave the
+    // overlay showing a soundscape that's silently never going to play.
+    audio.onerror = () => {
+      console.log("Ambient soundscape failed to load, hiding overlay");
+      overlay.classList.add("hidden");
+    };
     audio.src = sounds[type];
     audio.play().catch(() => console.log("Audio autoplay blocked"));
     overlay.classList.remove("hidden");
@@ -866,18 +875,11 @@ function renderAchievements(data) {
 function renderKnowledgeHeatmap(data) {
   const container = $("#knowledge-heatmap");
   if (!container) return;
-  
-  const topics = [
-    "Saludos", "Familia", "Comida", "Viajes", "Negocios", "Salud", "Deportes",
-    "Ciencia", "Arte", "Historia", "Música", "Moda", "Tecnología", "Derecho",
-    "Cine", "Cocina", "Clima", "Animales", "Hogar", "Ropa", "Ciudad",
-    "Naturaleza", "Espacio", "Futuro", "Pasado", "Opiniones", "Emociones", "Debates"
-  ];
-  
-  container.innerHTML = topics.map(t => {
-    const lvl = Math.floor(Math.random() * 5); // Simulated level
-    return `<div class="heatmap-cell heatmap-lvl-${lvl}" data-topic="${t}"></div>`;
-  }).join("");
+
+  const cells = data.topic_mastery || [];
+  container.innerHTML = cells.map(c =>
+    `<div class="heatmap-cell heatmap-lvl-${c.level}" data-topic="${c.topic_es}"></div>`
+  ).join("");
 }
 
 function diaWord(n) {

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends
 
 from .. import auth, db, srs
-from ..curriculum import get_unit, units_for_level
+from ..curriculum import all_units, get_unit, topic_es, units_for_level
 from ..models import (
     ActivityDay,
     CEFRLevel,
@@ -18,6 +18,7 @@ from ..models import (
     LevelMastery,
     ProgressSnapshot,
     RecentLesson,
+    TopicMastery,
 )
 from .users import get_user_by_id_or_404
 
@@ -110,6 +111,18 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
     leaderboard_rows, your_weekly_xp, your_rank = srs.get_weekly_leaderboard(user_id)
     leaderboard = [LeaderboardEntry(**row) for row in leaderboard_rows]
 
+    with db.cursor() as cur:
+        cur.execute("SELECT unit_id, best_score FROM unit_mastery WHERE user_id=?", (user_id,))
+        best_score_by_unit = {row["unit_id"]: row["best_score"] for row in cur.fetchall()}
+
+    topic_mastery = []
+    for unit in all_units():
+        best = best_score_by_unit.get(unit.id)
+        # 0 = never attempted; otherwise 1-4 buckets scaled off the learner's
+        # own best_score for that unit (replaces the old Math.random() stub).
+        level = 0 if best is None else max(1, min(4, round(best * 4)))
+        topic_mastery.append(TopicMastery(topic=unit.topic, topic_es=topic_es(unit.topic), level=level))
+
     return DashboardData(
         user_id=user_id,
         xp=user.xp,
@@ -130,4 +143,5 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
         leaderboard=leaderboard,
         your_weekly_xp=your_weekly_xp,
         your_rank=your_rank,
+        topic_mastery=topic_mastery,
     )

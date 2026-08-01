@@ -142,6 +142,16 @@ class LeaderboardEntry(BaseModel):
     is_you: bool = False
 
 
+class TopicMastery(BaseModel):
+    """One cell of the Progress tab's knowledge heatmap — level is 0 (never
+    attempted) or 1-4, derived from the learner's own best_score on that
+    topic's unit (see routers/progress.py's get_dashboard)."""
+
+    topic: str
+    topic_es: str
+    level: int
+
+
 class BookStub(BaseModel):
     """Catalog entry: free, static metadata for a library title. The actual
     story text is generated (and cached) on first read — see backend/library.py
@@ -281,3 +291,4 @@ class DashboardData(BaseModel):
     leaderboard: list[LeaderboardEntry]
     your_weekly_xp: int
     your_rank: int | None
+    topic_mastery: list[TopicMastery]

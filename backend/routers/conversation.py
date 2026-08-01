@@ -17,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db, telemetry
+from .. import auth, db, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from .users import get_user_by_id_or_404
@@ -99,10 +99,14 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     if mission:
         system_prompt += f"\n\n### ACTIVE MISSION:\n{mission}\nYou must act as the persona required by this mission and evaluate if the learner achieves the goal."
     
-    # PREDICTIVE SRS: Injected words that need review
-    # In a real app, this would query the SRS table for words with low mastery
-    srs_words = ["conundrum", "paradigm", "nevertheless", "hitherto"]
-    system_prompt += f"\n\n### PREDICTIVE SRS: Try to naturally use or elicit the following words from the user: {', '.join(srs_words)}."
+    # PREDICTIVE SRS: surface real due-for-review vocab (or, failing that, past
+    # mistakes) from vocab_progress instead of a hardcoded placeholder list.
+    # vocab_key is stored as "{unit_id}.{word}" (or "item-{i}" with no dot),
+    # so rsplit on "." and fall back to the whole key when there's no prefix.
+    srs_keys = srs.due_review_keys(user_id, limit=5) or srs.recent_mistakes(user_id, limit=5)
+    if srs_keys:
+        srs_words = [key.rsplit(".", 1)[-1] for key in srs_keys]
+        system_prompt += f"\n\n### PREDICTIVE SRS: Try to naturally use or elicit the following words from the user: {', '.join(srs_words)}."
     history = _recent_history(user_id)
 
     await websocket.send_json(

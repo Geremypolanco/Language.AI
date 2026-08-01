@@ -161,6 +161,13 @@ def test_dashboard_reflects_completed_lesson():
         assert data["recent_lessons"][0]["unit_id"] == first_unit_id
         assert data["recent_lessons"][0]["score"] == 1.0
 
+        # Knowledge heatmap: real per-topic mastery, not the old Math.random() stub.
+        assert len(data["topic_mastery"]) == len(path)
+        completed_cell = next(c for c in data["topic_mastery"] if c["topic"] == next(u["topic"] for u in path if u["id"] == first_unit_id))
+        assert completed_cell["level"] == 4  # score 1.0 -> top bucket
+        untouched_cell = next(c for c in data["topic_mastery"] if c["topic"] != completed_cell["topic"])
+        assert untouched_cell["level"] == 0
+
 
 def test_dashboard_requires_ownership():
     with TestClient(app) as client:
