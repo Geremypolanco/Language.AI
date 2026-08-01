@@ -418,7 +418,11 @@
               <div class="tutor-info-overlay">
                 <div class="tutor-name-badge">
                   <span class="tutor-status-dot" id="tutor-status-dot"></span>
-                  <span class="tutor-name-text">Sofia — Tutora de Lingua</span>
+                  <select id="tutor-persona-select" class="persona-select" style="background:none; border:none; color:white; font-weight:800; outline:none; cursor:pointer;">
+                    <option value="friendly">Sofia (Amistosa)</option>
+                    <option value="strict">Sargento Max (Estricto)</option>
+                    <option value="zen">Maestro Hiro (Zen)</option>
+                  </select>
                 </div>
               </div>
               <div id="call-status" class="call-status" data-i18n="talk_connecting">Conectando…</div>
@@ -453,6 +457,15 @@
           </div>
         </div>
 
+        <div id="tab-news" class="tab-panel hidden">
+          <div class="news-container">
+            <div class="news-header card">
+              <h2>World News Radio 🎙️</h2>
+              <p class="subtitle">Noticias reales adaptadas a tu nivel por IA.</p>
+            </div>
+            <div id="news-feed" class="news-feed"></div>
+          </div>
+        </div>
         <div id="tab-progress" class="tab-panel hidden">
           <div class="dashboard">
 
@@ -563,6 +576,10 @@
         <button class="bottom-nav-btn" data-tab="academy" aria-label="Universidad">
           <svg class="icon"><use href="#icon-university"/></svg>
           <span data-i18n="nav_academy">Universidad</span>
+        </button>
+        <button class="bottom-nav-btn" data-tab="news" aria-label="Noticias">
+          <svg class="icon"><use href="#icon-chat"/></svg>
+          <span data-i18n="nav_news">Noticias</span>
         </button>
         <button class="bottom-nav-btn bottom-nav-talk" data-tab="talk" aria-label="Hablar en vivo">
           <span class="bottom-nav-talk-inner">

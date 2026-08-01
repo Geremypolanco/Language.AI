@@ -150,6 +150,29 @@ class ExplainRequest(BaseModel):
     native_lang: str = "es"
 
 
+@router.get("/news")
+async def get_daily_news(request: Request) -> dict:
+    """Generates personalized news based on user interests using RAG."""
+    session = auth.get_session(request)
+    user = get_user_by_id_or_404(session["user_id"])
+    
+    interests = ",".join(user.interests) if user.interests else "general news"
+    prompt = f"""Generate 3 short, elite news summaries for today in {user.target_lang} (with translations in {user.native_lang}).
+Topics: {interests}.
+Level: {user.level.value}.
+Format: Return ONLY a JSON array of objects: [{{"title": "...", "content": "...", "translation": "..."}}]"""
+    
+    news_raw = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=800)
+    try:
+        import json
+        import re
+        cleaned = re.sub(r"^```(json)?|```$", "", news_raw.strip(), flags=re.MULTILINE).strip()
+        news = json.loads(cleaned)
+        return {"news": news}
+    except:
+        return {"news": [{"title": "News Unavailable", "content": "The AI news anchor is sleeping. Try again later.", "translation": ""}]}
+
+
 @router.post("/explain")
 async def explain_text(payload: ExplainRequest) -> dict:
     """The 'Magic Lens' feature: provides an elite AI explanation for any word or phrase."""

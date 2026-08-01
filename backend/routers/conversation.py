@@ -80,8 +80,17 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
         return
 
     mission = websocket.query_params.get("mission")
+    persona = websocket.query_params.get("persona", "friendly")
     memory = _get_user_memory(user_id)
     system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
+    
+    # Elite Personas
+    personas = {
+        "friendly": "You are Sofia, a warm and encouraging best friend.",
+        "strict": "You are Sergeant Max, a strict but effective drill instructor. No mercy for grammar mistakes.",
+        "zen": "You are Master Hiro, a calm philosopher who speaks in metaphors and values wisdom."
+    }
+    system_prompt = f"{personas.get(persona, personas['friendly'])}\n\n{system_prompt}"
     
     if mission:
         system_prompt += f"\n\n### ACTIVE MISSION:\n{mission}\nYou must act as the persona required by this mission and evaluate if the learner achieves the goal."

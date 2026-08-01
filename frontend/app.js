@@ -529,9 +529,35 @@ function setupTabs() {
       else if (tab === "academy") setupAcademy();
       else if (tab === "talk") ensureConversationSocket();
       else if (tab === "progress") loadDashboard();
+      else if (tab === "news") loadNews();
     });
   });
 }
+
+async function loadNews() {
+  const feed = $("#news-feed");
+  feed.innerHTML = '<div class="loading-spinner"></div>';
+  try {
+    const res = await api("/api/content/news");
+    feed.innerHTML = res.news.map(n => `
+      <div class="news-card card animate-slide">
+        <h3>${escapeHtml(n.title)}</h3>
+        <p>${escapeHtml(n.content)}</p>
+        <p class="subtitle">${escapeHtml(n.translation)}</p>
+        <button class="btn btn-secondary" onclick="playAudio('${escapeHtml(n.content)}', '${state.user.target_lang}')">Escuchar 🔊</button>
+      </div>
+    `).join("");
+  } catch (err) {
+    feed.innerHTML = `<p>Error cargando noticias: ${err.message}</p>`;
+  }
+}
+
+$("#tutor-persona-select")?.addEventListener("change", (e) => {
+  state.tutorPersona = e.target.value;
+  if (state.ws) state.ws.close();
+  ensureConversationSocket();
+  showToast(`Persona cambiada a: ${state.tutorPersona}`, "sparkle");
+});
 
 // ========== DASHBOARD & PROGRESS ==========
 
@@ -2039,8 +2065,9 @@ $("#complete-continue").addEventListener("click", async () => {
 function ensureConversationSocket() {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const missionParam = state.activeMission ? `?mission=${encodeURIComponent(state.activeMission)}` : "";
-  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}${missionParam}`);
+  const missionParam = state.activeMission ? `&mission=${encodeURIComponent(state.activeMission)}` : "";
+  const personaParam = state.tutorPersona ? `&persona=${state.tutorPersona}` : "";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}?v=1${missionParam}${personaParam}`);
   state.ws = ws;
 
     ws.addEventListener("message", (event) => {
