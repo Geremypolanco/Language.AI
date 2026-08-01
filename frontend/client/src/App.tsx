@@ -8,6 +8,7 @@ import Practice from "@/pages/Practice";
 import Talk from "@/pages/Talk";
 import Progress from "@/pages/Progress";
 import Library from "@/pages/Library";
+import Settings from "@/pages/Settings";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -24,6 +25,7 @@ function Router() {
       <Route path={"/university"} component={University} />
       <Route path={"/talk"} component={Talk} />
       <Route path={"/progress"} component={Progress} />
+      <Route path={"/settings"} component={Settings} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

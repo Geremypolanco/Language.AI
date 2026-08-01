@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { LANGUAGES } from "@/lib/languages";
 
 /**
  * Login Page - Google OAuth + Onboarding
@@ -18,19 +19,6 @@ import { useAuth } from "@/contexts/AuthContext";
  * 7. POST /api/users con perfil
  * 8. Redirige a /path
  */
-
-const LANGUAGES = [
-  ["en", "English"],
-  ["es", "Español"],
-  ["fr", "Français"],
-  ["de", "Deutsch"],
-  ["it", "Italiano"],
-  ["pt", "Português"],
-  ["ja", "日本語"],
-  ["ko", "한국어"],
-  ["zh", "中文"],
-  ["ru", "Русский"],
-];
 
 export default function Login() {
   const [, setLocation] = useLocation();

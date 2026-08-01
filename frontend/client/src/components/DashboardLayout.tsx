@@ -2,7 +2,6 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface NavItem {
@@ -86,13 +85,13 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
 
         {/* Footer */}
         <div className="p-4 border-t border-sidebar-border space-y-2">
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={() => toast.info("La configuración de la cuenta llega pronto")}
-          >
-            ⚙️ Settings
-          </Button>
+          <Link href="/settings">
+            <a onClick={() => setSidebarOpen(false)}>
+              <Button variant="outline" className="w-full justify-start">
+                ⚙️ Settings
+              </Button>
+            </a>
+          </Link>
           <Button
             variant="outline"
             className="w-full justify-start"

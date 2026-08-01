@@ -270,6 +270,11 @@ class AcademyEnrollment(BaseModel):
     level: AcademicLevel
     level_label: str
     enrolled_at: str
+    # The language course content (curriculum, readings, scenarios,
+    # assignments) is generated in — independent of the learner's own
+    # native_lang, so e.g. a Spanish speaker can study Computer Science in
+    # English for extra immersion. Defaults to native_lang at enroll time.
+    content_lang: str
 
 
 class AcademyProgress(BaseModel):

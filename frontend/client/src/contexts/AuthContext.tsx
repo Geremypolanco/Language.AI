@@ -9,6 +9,7 @@ interface AuthContextType {
   login: () => void;
   devLogin: (email: string, name: string) => void;
   createProfile: (data: any) => Promise<void>;
+  updateUser: (data: Parameters<typeof api.updateProfile>[1]) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -64,6 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleUpdateUser = async (data: Parameters<typeof api.updateProfile>[1]) => {
+    if (!user?.id) throw new Error("No hay sesión activa");
+    const updated = await api.updateProfile(user.id, data);
+    setUser(updated);
+  };
+
   const handleLogout = async () => {
     try {
       await api.logout();
@@ -85,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login: handleLogin,
         devLogin: handleDevLogin,
         createProfile: handleCreateProfile,
+        updateUser: handleUpdateUser,
         logout: handleLogout,
       }}
     >

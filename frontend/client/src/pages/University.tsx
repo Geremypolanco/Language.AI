@@ -5,6 +5,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import CourseViewer from "@/components/CourseViewer";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, AcademicField, AcademyProgress, Curriculum, CourseStub } from "@/lib/api";
+import { LANGUAGES } from "@/lib/languages";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -49,6 +50,10 @@ function FieldIcon({ name, className }: { name: string; className?: string }) {
   return <Icon className={className} />;
 }
 
+function languageName(code: string): string {
+  return LANGUAGES.find(([c]) => c === code)?.[1] || code;
+}
+
 // Course counts per depth — mirrors AcademicLevel.course_count in backend/models.py
 // (not returned by GET /api/academy/fields, which lists fields only).
 const LEVEL_TABS: { value: "ASSOCIATE" | "BACHELOR" | "MASTER"; label: string; courseCount: number }[] = [
@@ -70,6 +75,14 @@ export default function University() {
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
   const [loadingCurriculum, setLoadingCurriculum] = useState(false);
   const [activeCourse, setActiveCourse] = useState<CourseStub | null>(null);
+
+  // Language to study the career's content in — independent of the
+  // learner's own native_lang, so e.g. a Spanish speaker can study a
+  // career in English for extra immersion. Defaults to native_lang.
+  const [contentLang, setContentLang] = useState("");
+  useEffect(() => {
+    if (user?.native_lang) setContentLang(user.native_lang);
+  }, [user?.native_lang]);
 
   const refreshProgress = async () => {
     if (!user?.id) return;
@@ -101,7 +114,7 @@ export default function University() {
     if (!user?.id) return;
     setEnrollingFieldId(fieldId);
     try {
-      const enrollment = await api.enrollAcademyCareer(user.id, fieldId, level);
+      const enrollment = await api.enrollAcademyCareer(user.id, fieldId, level, contentLang || undefined);
       toast.success(`Inscrito en ${enrollment.field_name} (${enrollment.level_label})`);
       await refreshProgress();
     } catch (err) {
@@ -162,6 +175,7 @@ export default function University() {
               <h1 className="text-3xl font-bold text-foreground mb-1">{curriculum.field_name}</h1>
               <p className="text-muted-foreground">
                 {curriculum.level_label} · {completedIds.size} de {curriculum.courses.length} cursos completados
+                {progress?.enrollment && <> · Contenido en {languageName(progress.enrollment.content_lang)}</>}
               </p>
             </div>
           )}
@@ -224,13 +238,32 @@ export default function University() {
           <Card className="p-4 mb-8 border-primary/30 bg-primary/5 flex items-center justify-between flex-wrap gap-3">
             <p className="text-sm text-foreground">
               Inscrito actualmente en: <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
-              {progress.completed_course_ids.length} de {progress.total_courses} cursos completados
+              {progress.completed_course_ids.length} de {progress.total_courses} cursos completados · Contenido en{" "}
+              <strong>{languageName(progress.enrollment.content_lang)}</strong>
             </p>
             <Button size="sm" onClick={openCurriculum}>
               Ver plan de estudios
             </Button>
           </Card>
         )}
+
+        <Card className="p-4 mb-8 flex items-center gap-3 flex-wrap">
+          <label className="text-sm font-medium text-foreground">Idioma del contenido al inscribirme:</label>
+          <select
+            value={contentLang}
+            onChange={(e) => setContentLang(e.target.value)}
+            className="px-3 py-1.5 border border-border rounded-md bg-background text-foreground text-sm"
+          >
+            {LANGUAGES.map(([code, name]) => (
+              <option key={code} value={code}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            Puedes estudiar una carrera en cualquier idioma, no solo en tu idioma natal.
+          </span>
+        </Card>
 
         <Tabs defaultValue="BACHELOR" className="mb-8">
           <TabsList className="grid w-full grid-cols-3">

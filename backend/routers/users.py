@@ -108,6 +108,9 @@ def get_user(user_id: str, session: dict = Depends(auth.require_owner)) -> UserP
 
 
 class UpdateUserRequest(BaseModel):
+    display_name: str | None = None
+    native_lang: str | None = None
+    target_lang: str | None = None
     interests: list[str] | None = None
     level: CEFRLevel | None = None
     daily_goal_minutes: int | None = None
@@ -125,6 +128,15 @@ def update_user(
             raise HTTPException(status_code=400, detail="Maestro no encontrado")
 
     with db.cursor() as cur:
+        if payload.display_name is not None:
+            name = payload.display_name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+            cur.execute("UPDATE users SET display_name=? WHERE id=?", (name, user_id))
+        if payload.native_lang is not None:
+            cur.execute("UPDATE users SET native_lang=? WHERE id=?", (payload.native_lang, user_id))
+        if payload.target_lang is not None:
+            cur.execute("UPDATE users SET target_lang=? WHERE id=?", (payload.target_lang, user_id))
         if payload.interests is not None:
             cur.execute("UPDATE users SET interests=? WHERE id=?", (json.dumps(payload.interests), user_id))
         if payload.level is not None:

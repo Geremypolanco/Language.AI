@@ -42,8 +42,8 @@ def _course_id(field_id: str, level: AcademicLevel, order: int) -> str:
     return f"{field_id}:{level.value}:{order}"
 
 
-async def _load_curriculum(user_id: str, field: AcademicField, level: AcademicLevel, native_lang: str) -> Curriculum:
-    raw_courses = await hf_client.generate_curriculum(field, level, native_lang)
+async def _load_curriculum(field: AcademicField, level: AcademicLevel, content_lang: str) -> Curriculum:
+    raw_courses = await hf_client.generate_curriculum(field, level, content_lang)
     courses = [
         CourseStub(id=_course_id(field.id, level, i), order=i, title=c["title"], description=c["description"])
         for i, c in enumerate(raw_courses)
@@ -51,40 +51,52 @@ async def _load_curriculum(user_id: str, field: AcademicField, level: AcademicLe
     return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
 
 
-def _build_enrollment(field: AcademicField, level: AcademicLevel, enrolled_at: str) -> AcademyEnrollment:
+def _build_enrollment(
+    field: AcademicField, level: AcademicLevel, enrolled_at: str, content_lang: str
+) -> AcademyEnrollment:
     return AcademyEnrollment(
         field_id=field.id, field_name=field.name, tutor_name=field.tutor_name, icon=field.icon,
         category=field.category, level=level, level_label=level.label_es, enrolled_at=enrolled_at,
+        content_lang=content_lang,
     )
 
 
 def _get_enrollment_row(user_id: str) -> Any:
     with db.cursor() as cur:
-        cur.execute("SELECT field_id, level, enrolled_at FROM academy_enrollment WHERE user_id=?", (user_id,))
+        cur.execute(
+            "SELECT field_id, level, enrolled_at, content_lang FROM academy_enrollment WHERE user_id=?", (user_id,)
+        )
         return cur.fetchone()
 
 
 class EnrollRequest(BaseModel):
     field_id: str
     level: AcademicLevel
+    # Optional — the language to study this career's content in. Defaults to
+    # the learner's native_lang (the previous, only behavior) when omitted,
+    # but a learner can pick a different one, e.g. to study in their target
+    # language for extra immersion.
+    content_lang: str | None = None
 
 
 @router.post("/{user_id}/enroll", response_model=AcademyEnrollment)
 def enroll(user_id: str, payload: EnrollRequest, session: dict = Depends(auth.require_owner)) -> AcademyEnrollment:
-    get_user_by_id_or_404(user_id)
+    user = get_user_by_id_or_404(user_id)
     field = academy.get_field(payload.field_id)
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
 
+    content_lang = payload.content_lang or user.native_lang
     enrolled_at = datetime.now(UTC).isoformat()
     with db.cursor() as cur:
         cur.execute(
-            "INSERT INTO academy_enrollment (user_id, field_id, level, enrolled_at) VALUES (?, ?, ?, ?) "
+            "INSERT INTO academy_enrollment (user_id, field_id, level, enrolled_at, content_lang) "
+            "VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT (user_id) DO UPDATE SET field_id=excluded.field_id, level=excluded.level, "
-            "enrolled_at=excluded.enrolled_at",
-            (user_id, field.id, payload.level.value, enrolled_at),
+            "enrolled_at=excluded.enrolled_at, content_lang=excluded.content_lang",
+            (user_id, field.id, payload.level.value, enrolled_at, content_lang),
         )
-    return _build_enrollment(field, payload.level, enrolled_at)
+    return _build_enrollment(field, payload.level, enrolled_at, content_lang)
 
 
 @router.get("/{user_id}/progress", response_model=AcademyProgress)
@@ -99,9 +111,12 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
     if not field:
         return AcademyProgress(enrollment=None)
 
-    enrollment = _build_enrollment(field, level, row["enrolled_at"])
+    # content_lang is '' for enrollments made before this column existed —
+    # fall back to native_lang, the only behavior back then.
+    content_lang = row["content_lang"] or user.native_lang
+    enrollment = _build_enrollment(field, level, row["enrolled_at"], content_lang)
     try:
-        curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
+        curriculum = await _load_curriculum(field, level, content_lang)
         total_courses = len(curriculum.courses)
     except Exception:
         # generate_curriculum does live arXiv/Wikipedia/AI calls on first
@@ -128,7 +143,7 @@ async def get_curriculum(user_id: str, session: dict = Depends(auth.require_owne
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
-    return await _load_curriculum(user_id, field, level, user.native_lang)
+    return await _load_curriculum(field, level, row["content_lang"] or user.native_lang)
 
 
 async def _resolve_course(user_id: str, course_id: str):
@@ -140,18 +155,19 @@ async def _resolve_course(user_id: str, course_id: str):
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
+    content_lang = row["content_lang"] or user.native_lang
 
-    curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
+    curriculum = await _load_curriculum(field, level, content_lang)
     stub = next((c for c in curriculum.courses if c.id == course_id), None)
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
-    return user, field, level, stub
+    return user, field, level, stub, content_lang
 
 
 @router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
 async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
-    user, field, level, stub = await _resolve_course(user_id, course_id)
-    modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
+    modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, content_lang)
     return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
 
 
@@ -160,8 +176,8 @@ async def get_practice_scenario(user_id: str, course_id: str, session: dict = De
     """A realistic, hands-on case/scenario for this course — the practical
     complement to the theory in get_course, for fields (nursing, engineering,
     business, ...) where reading alone isn't enough."""
-    user, field, level, stub = await _resolve_course(user_id, course_id)
-    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
+    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, content_lang)
     return {"scenario": scenario}
 
 
@@ -175,7 +191,9 @@ async def get_scenario_feedback(
     user_id: str, course_id: str, payload: ScenarioResponseRequest, session: dict = Depends(auth.require_owner)
 ) -> dict:
     user = get_user_by_id_or_404(user_id)
-    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, user.native_lang)
+    row = _get_enrollment_row(user_id)
+    content_lang = (row["content_lang"] if row else "") or user.native_lang
+    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, content_lang)
     return {"feedback": feedback}
 
 
@@ -194,8 +212,8 @@ async def get_assignments(user_id: str, course_id: str, session: dict = Depends(
     """Real, gradeable schoolwork for this course — a tarea, an informe, and
     a proyecto — on top of the theory in get_course and the ungraded
     practice scenario. Submission status/feedback/grade persist per user."""
-    user, field, level, stub = await _resolve_course(user_id, course_id)
-    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
+    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     submissions = _get_submission_rows(user_id, course_id)
     assignments = []
     for item in raw:
@@ -227,14 +245,14 @@ async def submit_assignment(
     payload: AssignmentSubmitRequest,
     session: dict = Depends(auth.require_owner),
 ) -> dict:
-    user, field, level, stub = await _resolve_course(user_id, course_id)
-    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, user.native_lang)
+    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
+    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     assignment = next((a for a in raw if a["id"] == assignment_id), None)
     if not assignment:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
     result = await hf_client.grade_assignment_submission(
-        assignment["title"], assignment["instructions"], payload.response, user.native_lang
+        assignment["title"], assignment["instructions"], payload.response, content_lang
     )
     submitted_at = datetime.now(UTC).isoformat()
     with db.cursor() as cur:

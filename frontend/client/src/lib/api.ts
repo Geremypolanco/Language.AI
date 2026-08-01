@@ -173,6 +173,7 @@ export interface AcademyEnrollment {
   level: "ASSOCIATE" | "BACHELOR" | "MASTER";
   level_label: string;
   enrolled_at: string;
+  content_lang: string;
 }
 
 export interface AcademyProgress {
@@ -412,10 +413,15 @@ class ApiClient {
     return this.request("/api/academy/fields");
   }
 
-  async enrollAcademyCareer(userId: string, fieldId: string, level: string): Promise<AcademyEnrollment> {
+  async enrollAcademyCareer(
+    userId: string,
+    fieldId: string,
+    level: string,
+    contentLang?: string
+  ): Promise<AcademyEnrollment> {
     return this.request(`/api/academy/${userId}/enroll`, {
       method: "POST",
-      body: JSON.stringify({ field_id: fieldId, level }),
+      body: JSON.stringify({ field_id: fieldId, level, content_lang: contentLang }),
     });
   }
 
@@ -492,6 +498,23 @@ class ApiClient {
     return this.request(`/api/users/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ tutor_persona_id: personaId }),
+    });
+  }
+
+  // ===== SETTINGS =====
+  async updateProfile(
+    userId: string,
+    data: Partial<{
+      display_name: string;
+      native_lang: string;
+      target_lang: string;
+      daily_goal_minutes: number;
+      interests: string[];
+    }>
+  ): Promise<User> {
+    return this.request(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
     });
   }
 
