@@ -2,8 +2,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/components/DashboardLayout";
+import CourseViewer from "@/components/CourseViewer";
 import { useAuth } from "@/contexts/AuthContext";
-import { api, AcademicField, AcademyProgress } from "@/lib/api";
+import { api, AcademicField, AcademyProgress, Curriculum, CourseStub } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -20,6 +21,8 @@ import {
   Volume2,
   Waves,
   GraduationCap,
+  CheckCircle2,
+  Circle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,10 +52,12 @@ function FieldIcon({ name, className }: { name: string; className?: string }) {
 // Course counts per depth — mirrors AcademicLevel.course_count in backend/models.py
 // (not returned by GET /api/academy/fields, which lists fields only).
 const LEVEL_TABS: { value: "ASSOCIATE" | "BACHELOR" | "MASTER"; label: string; courseCount: number }[] = [
-  { value: "ASSOCIATE", label: "Associate", courseCount: 12 },
-  { value: "BACHELOR", label: "Bachelor", courseCount: 24 },
-  { value: "MASTER", label: "Master", courseCount: 10 },
+  { value: "ASSOCIATE", label: "Técnico", courseCount: 12 },
+  { value: "BACHELOR", label: "Profesional", courseCount: 24 },
+  { value: "MASTER", label: "Avanzado", courseCount: 10 },
 ];
+
+type View = "fields" | "curriculum" | "course";
 
 export default function University() {
   const { user } = useAuth();
@@ -60,6 +65,11 @@ export default function University() {
   const [progress, setProgress] = useState<AcademyProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [enrollingFieldId, setEnrollingFieldId] = useState<string | null>(null);
+
+  const [view, setView] = useState<View>("fields");
+  const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
+  const [loadingCurriculum, setLoadingCurriculum] = useState(false);
+  const [activeCourse, setActiveCourse] = useState<CourseStub | null>(null);
 
   const refreshProgress = async () => {
     if (!user?.id) return;
@@ -77,7 +87,7 @@ export default function University() {
         const data = await api.getAcademyFields();
         setFields(data);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error loading academy fields");
+        toast.error(err instanceof Error ? err.message : "No se pudieron cargar las áreas de estudio");
       } finally {
         setLoading(false);
       }
@@ -101,30 +111,124 @@ export default function University() {
     }
   };
 
+  const openCurriculum = async () => {
+    if (!user?.id) return;
+    setView("curriculum");
+    setLoadingCurriculum(true);
+    try {
+      const data = await api.getAcademyCurriculum(user.id);
+      setCurriculum(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cargar el plan de estudios");
+      setView("fields");
+    } finally {
+      setLoadingCurriculum(false);
+    }
+  };
+
   const enrolledFieldId = progress?.enrollment?.field_id;
+  const completedIds = new Set(progress?.completed_course_ids ?? []);
+
+  if (view === "course" && activeCourse && user?.id) {
+    return (
+      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <CourseViewer
+            userId={user.id}
+            course={activeCourse}
+            alreadyCompleted={completedIds.has(activeCourse.id)}
+            onExit={() => setView("curriculum")}
+            onCompleted={async () => {
+              await refreshProgress();
+              setView("curriculum");
+            }}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (view === "curriculum") {
+    return (
+      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+        <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={() => setView("fields")}>
+              ← Volver a las carreras
+            </Button>
+          </div>
+          {curriculum && (
+            <div>
+              <h1 className="text-3xl font-bold text-foreground mb-1">{curriculum.field_name}</h1>
+              <p className="text-muted-foreground">
+                {curriculum.level_label} · {completedIds.size} de {curriculum.courses.length} cursos completados
+              </p>
+            </div>
+          )}
+          {loadingCurriculum ? (
+            <Card className="p-6 text-center">
+              <p className="text-muted-foreground">Cargando plan de estudios...</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {curriculum?.courses.map((course) => {
+                const done = completedIds.has(course.id);
+                return (
+                  <Card
+                    key={course.id}
+                    className="p-4 flex items-center gap-4 hover:shadow-md transition-smooth cursor-pointer"
+                    onClick={() => {
+                      setActiveCourse(course);
+                      setView("course");
+                    }}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
+                    ) : (
+                      <Circle className="w-6 h-6 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <h3 className="font-bold text-foreground">
+                        {course.order + 1}. {course.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">{course.description}</p>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">University</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">Universidad</h1>
           <p className="text-lg text-muted-foreground">
-            Structured, rigorous career tracks designed for professional mastery
+            Carreras autodirigidas y rigurosas diseñadas para el dominio profesional
           </p>
         </div>
 
         <Card className="p-4 mb-8 border-yellow-200 bg-yellow-50">
           <p className="text-sm text-yellow-900">
-            <strong>Note:</strong> These are self-paced learning tracks designed to build professional proficiency. They are not accredited programs and do not grant official credentials or degrees.
+            <strong>Nota:</strong> Estas son rutas de aprendizaje a tu propio ritmo diseñadas para desarrollar
+            competencia profesional. No son programas acreditados y no otorgan títulos ni credenciales oficiales.
           </p>
         </Card>
 
         {progress?.enrollment && (
-          <Card className="p-4 mb-8 border-primary/30 bg-primary/5">
+          <Card className="p-4 mb-8 border-primary/30 bg-primary/5 flex items-center justify-between flex-wrap gap-3">
             <p className="text-sm text-foreground">
-              Currently enrolled: <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
-              {progress.completed_course_ids.length} of {progress.total_courses} courses completed
+              Inscrito actualmente en: <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
+              {progress.completed_course_ids.length} de {progress.total_courses} cursos completados
             </p>
+            <Button size="sm" onClick={openCurriculum}>
+              Ver plan de estudios
+            </Button>
           </Card>
         )}
 
@@ -141,7 +245,7 @@ export default function University() {
             <TabsContent key={tab.value} value={tab.value} className="space-y-6">
               {loading ? (
                 <Card className="p-6 text-center">
-                  <p className="text-muted-foreground">Loading career tracks...</p>
+                  <p className="text-muted-foreground">Cargando carreras...</p>
                 </Card>
               ) : (
                 <div className="grid gap-6">
@@ -162,12 +266,12 @@ export default function University() {
                             disabled={enrollingFieldId === field.id}
                             onClick={() => handleEnroll(field.id, tab.value)}
                           >
-                            {isEnrolled ? "Enrolled ✓" : enrollingFieldId === field.id ? "Enrolling..." : "Enroll"}
+                            {isEnrolled ? "Inscrito ✓" : enrollingFieldId === field.id ? "Inscribiendo..." : "Inscribirme"}
                           </Button>
                         </div>
                         <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                           <p className="text-sm text-muted-foreground">
-                            <strong>{tab.courseCount} courses</strong> in this track · Tutor: {field.tutor_name}
+                            <strong>{tab.courseCount} cursos</strong> en esta ruta · Tutor: {field.tutor_name}
                           </p>
                         </div>
                       </Card>

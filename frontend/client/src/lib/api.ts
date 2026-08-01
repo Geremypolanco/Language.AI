@@ -181,6 +181,43 @@ export interface AcademyProgress {
   total_courses: number;
 }
 
+export interface CourseStub {
+  id: string;
+  order: number;
+  title: string;
+  description: string;
+}
+
+export interface Curriculum {
+  field_id: string;
+  field_name: string;
+  level: "ASSOCIATE" | "BACHELOR" | "MASTER";
+  level_label: string;
+  courses: CourseStub[];
+}
+
+export interface CourseModule {
+  title: string;
+  content: string;
+}
+
+export interface CourseContent {
+  id: string;
+  title: string;
+  modules: CourseModule[];
+}
+
+export interface Assignment {
+  id: string;
+  type: string;
+  title: string;
+  instructions: string;
+  submitted: boolean;
+  response: string;
+  feedback: string;
+  grade: string;
+}
+
 export interface BookStub {
   id: string;
   title: string;
@@ -386,12 +423,48 @@ class ApiClient {
     return this.request(`/api/academy/${userId}/progress`);
   }
 
-  async getAcademyCurriculum(userId: string) {
+  async getAcademyCurriculum(userId: string): Promise<Curriculum> {
     return this.request(`/api/academy/${userId}/curriculum`);
   }
 
-  async getAcademyCourse(userId: string, courseId: string) {
+  async getAcademyCourse(userId: string, courseId: string): Promise<CourseContent> {
     return this.request(`/api/academy/${userId}/courses/${courseId}`);
+  }
+
+  async getAcademyScenario(userId: string, courseId: string): Promise<{ scenario: string }> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/scenario`);
+  }
+
+  async getAcademyScenarioFeedback(
+    userId: string,
+    courseId: string,
+    scenario: string,
+    response: string
+  ): Promise<{ feedback: string }> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/scenario/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ scenario, response }),
+    });
+  }
+
+  async getAcademyAssignments(userId: string, courseId: string): Promise<Assignment[]> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/assignments`);
+  }
+
+  async submitAcademyAssignment(
+    userId: string,
+    courseId: string,
+    assignmentId: string,
+    response: string
+  ): Promise<{ grade: string; feedback: string }> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/assignments/${assignmentId}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ response }),
+    });
+  }
+
+  async completeAcademyCourse(userId: string, courseId: string): Promise<AcademyProgress> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/complete`, { method: "POST" });
   }
 
   // ===== PROGRESS =====
