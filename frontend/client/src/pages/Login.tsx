@@ -3,67 +3,247 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
- * Login Page - Senior Design Standard
+ * Login Page - Google OAuth + Onboarding
  * 
- * Design Philosophy:
- * - Asymmetric layout: gradient hero on right, form on left
- * - Warm, encouraging tone from AI tutor
- * - Progressive disclosure: email → password → onboarding
- * - Accessibility-first: proper contrast, keyboard navigation
+ * Flow:
+ * 1. Usuario hace click en "Continuar con Google"
+ * 2. Redirige a /auth/google/login
+ * 3. Google redirige a /auth/google/callback
+ * 4. Backend deja cookie "pending"
+ * 5. SPA llama /api/session → {pending: true, email, name, picture}
+ * 6. Muestra formulario de onboarding
+ * 7. POST /api/users con perfil
+ * 8. Redirige a /path
  */
+
+const LANGUAGES = [
+  ["en", "English"],
+  ["es", "Español"],
+  ["fr", "Français"],
+  ["de", "Deutsch"],
+  ["it", "Italiano"],
+  ["pt", "Português"],
+  ["ja", "日本語"],
+  ["ko", "한국어"],
+  ["zh", "中文"],
+  ["ru", "Русский"],
+];
+
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const { session, loading, login, devLogin, createProfile } = useAuth();
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [formData, setFormData] = useState({
+    display_name: session?.name || "",
+    native_lang: "en",
+    target_lang: "es",
+    level: 1,
+    interests: "",
+    daily_goal_minutes: 15,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"email" | "password">("email");
+  const [devEmail, setDevEmail] = useState("");
+  const [devName, setDevName] = useState("");
 
-  const handleEmailSubmit = async (e: React.FormEvent) => {
+  // Si ya está autenticado y no pending, redirige a /path
+  if (!loading && session?.authenticated && !session?.pending) {
+    setLocation("/path");
+    return null;
+  }
+
+  // Si está pending, muestra onboarding
+  if (!loading && session?.pending && !isOnboarding) {
+    setIsOnboarding(true);
+    setFormData((prev) => ({
+      ...prev,
+      display_name: session.name || "",
+    }));
+  }
+
+  const handleSubmitOnboarding = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     setError("");
-    setIsLoading(true);
 
     try {
-      // TODO: Connect to backend API
-      // const response = await fetch("/api/auth/check-email", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email }),
-      // });
-      
-      // For now, proceed to password
-      setMode("password");
+      await createProfile({
+        display_name: formData.display_name,
+        native_lang: formData.native_lang,
+        target_lang: formData.target_lang,
+        level: formData.level,
+        interests: formData.interests
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        daily_goal_minutes: formData.daily_goal_minutes,
+      });
+      setLocation("/path");
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : "Error creating profile");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+  if (isOnboarding) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-background">
+        <Card className="w-full max-w-md p-8">
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg gradient-primary flex items-center justify-center">
+                <span className="text-white font-bold">L</span>
+              </div>
+              <h1 className="text-2xl font-bold">Language.AI</h1>
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Complete Your Profile</h2>
+            <p className="text-muted-foreground">
+              Welcome, {session?.name}! Let's set up your learning preferences.
+            </p>
+          </div>
 
-    try {
-      // TODO: Connect to backend API
-      // const response = await fetch("/api/auth/login", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ email, password }),
-      // });
-      
-      // Redirect to onboarding or dashboard
-      setLocation("/onboarding");
-    } catch (err) {
-      setError("Invalid email or password. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+          <form onSubmit={handleSubmitOnboarding} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Display Name
+              </label>
+              <Input
+                value={formData.display_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, display_name: e.target.value })
+                }
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  Native Language
+                </label>
+                <select
+                  value={formData.native_lang}
+                  onChange={(e) =>
+                    setFormData({ ...formData, native_lang: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                >
+                  {LANGUAGES.map(([code, name]) => (
+                    <option key={code} value={code}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  Target Language
+                </label>
+                <select
+                  value={formData.target_lang}
+                  onChange={(e) =>
+                    setFormData({ ...formData, target_lang: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                >
+                  {LANGUAGES.map(([code, name]) => (
+                    <option key={code} value={code}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Starting Level
+              </label>
+              <select
+                value={formData.level}
+                onChange={(e) =>
+                  setFormData({ ...formData, level: parseInt(e.target.value) })
+                }
+                className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              >
+                <option value={1}>Beginner</option>
+                <option value={2}>Elementary</option>
+                <option value={3}>Intermediate</option>
+                <option value={4}>Upper-Intermediate</option>
+                <option value={5}>Advanced</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Interests (comma-separated)
+              </label>
+              <Input
+                placeholder="e.g., travel, cooking, movies"
+                value={formData.interests}
+                onChange={(e) =>
+                  setFormData({ ...formData, interests: e.target.value })
+                }
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Daily Goal (minutes)
+              </label>
+              <select
+                value={formData.daily_goal_minutes}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    daily_goal_minutes: parseInt(e.target.value),
+                  })
+                }
+                className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              >
+                <option value={5}>5 minutes</option>
+                <option value={10}>10 minutes</option>
+                <option value={15}>15 minutes</option>
+                <option value={20}>20 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={60}>60 minutes</option>
+              </select>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full bg-primary hover:bg-primary/90"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Setting up..." : "Start Learning"}
+            </Button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-stretch">
@@ -80,113 +260,17 @@ export default function Login() {
 
           {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-foreground mb-2">
-              {mode === "email" ? "Welcome back" : "Enter your password"}
-            </h2>
+            <h2 className="text-3xl font-bold text-foreground mb-2">Welcome</h2>
             <p className="text-muted-foreground text-base">
-              {mode === "email"
-                ? "Continue learning where you left off"
-                : "Keep your account secure"}
+              Master any language with AI tutoring
             </p>
-          </div>
-
-          {/* Form */}
-          <form
-            onSubmit={mode === "email" ? handleEmailSubmit : handlePasswordSubmit}
-            className="space-y-4"
-          >
-            {mode === "email" ? (
-              <>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-                    Email address
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="h-11"
-                    disabled={isLoading}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-smooth"
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Checking..." : "Continue"}
-                </Button>
-              </>
-            ) : (
-              <>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {email}
-                  </p>
-                  <label htmlFor="password" className="block text-sm font-medium text-foreground mb-2">
-                    Password
-                  </label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-11"
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1 h-11"
-                    onClick={() => setMode("email")}
-                    disabled={isLoading}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-smooth"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? "Signing in..." : "Sign in"}
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive">{error}</p>
-              </div>
-            )}
-          </form>
-
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-background text-muted-foreground">or</span>
-            </div>
           </div>
 
           {/* Social Login */}
           <Button
             type="button"
-            variant="outline"
-            className="w-full h-11 border-border hover:bg-muted transition-smooth"
-            onClick={() => {
-              // TODO: Implement Google OAuth
-              console.log("Google OAuth");
-            }}
+            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-smooth mb-4"
+            onClick={login}
           >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
               <path
@@ -209,17 +293,46 @@ export default function Login() {
             Continue with Google
           </Button>
 
-          {/* Footer */}
-          <p className="text-xs text-muted-foreground text-center mt-6">
-            Don't have an account?{" "}
-            <button
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-background text-muted-foreground">or</span>
+            </div>
+          </div>
+
+          {/* Dev Login */}
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground text-center">
+              Development: Quick login without Google
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Email"
+                type="email"
+                value={devEmail}
+                onChange={(e) => setDevEmail(e.target.value)}
+                className="h-10"
+              />
+              <Input
+                placeholder="Name"
+                value={devName}
+                onChange={(e) => setDevName(e.target.value)}
+                className="h-10"
+              />
+            </div>
+            <Button
               type="button"
-              className="font-medium text-primary hover:underline"
-              onClick={() => setLocation("/signup")}
+              variant="outline"
+              className="w-full h-10"
+              onClick={() => devLogin(devEmail, devName)}
+              disabled={!devEmail || !devName}
             >
-              Sign up
-            </button>
-          </p>
+              Dev Login
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -233,9 +346,7 @@ export default function Login() {
 
         {/* Content */}
         <div className="relative z-10 text-center max-w-md">
-          <h2 className="text-4xl font-bold text-white mb-4">
-            Speak like a native
-          </h2>
+          <h2 className="text-4xl font-bold text-white mb-4">Speak like a native</h2>
           <p className="text-lg text-white/90 mb-8">
             Master any language with AI tutoring that adapts to your pace. Conversational fluency meets academic rigor.
           </p>
