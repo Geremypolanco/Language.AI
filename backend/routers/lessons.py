@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import auth, db, srs
-from ..curriculum import LessonRequest, all_units, get_unit, units_for_level
+from ..curriculum import LessonRequest, all_units, get_unit, topic_es, units_for_level
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Exercise, ExerciseType
 from .users import get_user_by_id_or_404
@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 class UnitNode(BaseModel):
     id: str
     topic: str
+    # Spanish label for `topic` — the skill-tree topic keys are internal,
+    # language-agnostic English strings (see curriculum.py's _TOPICS_BY_LEVEL);
+    # the UI should never show those raw keys to a Spanish-speaking learner.
+    topic_es: str
     level: CEFRLevel
     order: int
     state: str  # "available" | "mastered" — nothing is ever locked; the
@@ -38,7 +42,15 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
         best = m["best_score"] if m else 0.0
         state = "mastered" if m and m["mastered"] else "available"
         nodes.append(
-            UnitNode(id=unit.id, topic=unit.topic, level=unit.level, order=unit.order, state=state, best_score=best)
+            UnitNode(
+                id=unit.id,
+                topic=unit.topic,
+                topic_es=topic_es(unit.topic),
+                level=unit.level,
+                order=unit.order,
+                state=state,
+                best_score=best,
+            )
         )
     return nodes
 

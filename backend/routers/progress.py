@@ -99,10 +99,12 @@ def get_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> 
     recent_lessons = []
     for row in recent_rows:
         unit = get_unit(row["unit_id"])
+        topic = unit.topic if unit else row["unit_id"]
         recent_lessons.append(
             RecentLesson(
                 unit_id=row["unit_id"],
-                topic=unit.topic if unit else row["unit_id"],
+                topic=topic,
+                topic_es=topic_es(topic) if unit else topic,
                 score=row["score"],
                 completed_at=row["completed_at"],
             )

@@ -93,10 +93,10 @@ export default function Progress() {
               </div>
               {data.recent_lessons.length > 0 && (
                 <div className="mt-8 space-y-2">
-                  <h4 className="font-semibold text-foreground">Recent Lessons</h4>
+                  <h4 className="font-semibold text-foreground">Lecciones recientes</h4>
                   {data.recent_lessons.map((lesson, i) => (
                     <div key={i} className="flex items-center justify-between text-sm py-2 border-b border-border">
-                      <span className="text-foreground">{lesson.topic}</span>
+                      <span className="text-foreground">{lesson.topic_es}</span>
                       <span className="text-muted-foreground">{Math.round(lesson.score * 100)}%</span>
                     </div>
                   ))}

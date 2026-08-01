@@ -60,6 +60,7 @@ export interface PersonaInfo {
 export interface Lesson {
   id: string;
   topic: string;
+  topic_es: string;
   level: CEFRLevel;
   order: number;
   state: "available" | "mastered";
@@ -93,6 +94,7 @@ export interface ActivityDay {
 export interface RecentLesson {
   unit_id: string;
   topic: string;
+  topic_es: string;
   score: number;
   completed_at: string;
 }

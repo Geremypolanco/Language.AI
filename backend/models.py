@@ -145,6 +145,7 @@ class ActivityDay(BaseModel):
 class RecentLesson(BaseModel):
     unit_id: str
     topic: str
+    topic_es: str
     score: float
     completed_at: str
 
