@@ -757,3 +757,69 @@ h1, h2, h3, .brand-name, .btn, .stat-value {
   font-size: 0.9rem;
   color: var(--text-light);
 }
+
+/* ========== MAGIC LENS POPUP ========== */
+.magic-lens {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 400px;
+  background: var(--card-bg);
+  border: 2px solid var(--blue);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elite);
+  z-index: 2000;
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.magic-lens-header {
+  padding: 0.75rem 1rem;
+  background: var(--blue-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--blue);
+}
+
+.magic-lens-title {
+  font-weight: 800;
+  color: var(--blue-dark);
+  font-size: 0.9rem;
+}
+
+.magic-lens-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--blue-dark);
+  cursor: pointer;
+}
+
+.magic-lens-content {
+  padding: 1.25rem;
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.magic-lens-content p {
+  margin: 0 0 0.75rem 0;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 2rem auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

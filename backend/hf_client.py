@@ -305,14 +305,16 @@ class HFClient:
 
         from . import rag
 
-        context = await rag.fetch_arxiv_context(field.id, field.name)
-        if not context:
-            # Wikipedia covers every field, including the humanities/arts/
-            # business/clinical ones arXiv has no real content for.
-            context = await rag.fetch_wikipedia_context(field.name)
+        # ELITE RAG: Parallel fetch from ArXiv and Wikipedia for deep grounding
+        arxiv_task = rag.fetch_arxiv_context(field.id, field.name)
+        wiki_task = rag.fetch_wikipedia_context(field.name)
+        arxiv_context, wiki_context = await asyncio.gather(arxiv_task, wiki_task)
+        
+        context = f"{arxiv_context}\n\n{wiki_context}".strip()
+        
         prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
         if context:
-            prompt = f"{context}\n\n{prompt}"
+            prompt = f"### REFERENCE DATA FROM REAL SOURCES (Wikipedia & ArXiv):\n{context}\n\n### INSTRUCTIONS:\n{prompt}"
         try:
             raw = await self.chat(
                 [

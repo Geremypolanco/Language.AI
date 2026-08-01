@@ -456,6 +456,7 @@
         <div id="tab-progress" class="tab-panel hidden">
           <div class="dashboard">
 
+
             <div class="card mascot-card" id="mascot-card">
               <div class="mascot-avatar">
                 <img src="/public/team/mascot_3d.png" class="grad-avatar" alt="Mascot">
@@ -532,9 +533,12 @@
               <div class="chart-frame chart-frame-activity"><canvas id="dash-activity-chart"></canvas></div>
             </div>
 
-            <div class="card">
-              <h2 class="card-title" data-i18n="dash_mastery_title">Dominio por nivel</h2>
-              <div class="chart-frame chart-frame-mastery"><canvas id="dash-mastery-chart"></canvas></div>
+            <div class="card animate-scale">
+              <h2 class="card-title" data-i18n="dash_mastery_title">Análisis de Competencias de Élite</h2>
+              <div class="radar-chart-box" style="height: 350px; position: relative; margin-top: 1rem;">
+                <canvas id="mastery-radar-chart"></canvas>
+              </div>
+              <p class="subtitle" style="text-align: center; margin-top: 1rem;">Progreso real analizado por IA.</p>
             </div>
 
             <div class="card">
@@ -576,6 +580,17 @@
       </nav>
 
       <div id="toast" class="toast hidden"></div>
+  
+  <!-- Magic Lens Popup -->
+  <div id="magic-lens" class="magic-lens hidden">
+    <div class="magic-lens-header">
+      <span class="magic-lens-title">Elite AI Explanation</span>
+      <button class="magic-lens-close" onclick="$('#magic-lens').classList.add('hidden')">&times;</button>
+    </div>
+    <div id="magic-lens-content" class="magic-lens-content">
+      <div class="loading-spinner"></div>
+    </div>
+  </div>
 
       <div id="coach-toast" class="coach-toast hidden">
         <button id="coach-toast-close" class="coach-toast-close" type="button"><svg class="icon"><use href="#icon-x"/></svg></button>

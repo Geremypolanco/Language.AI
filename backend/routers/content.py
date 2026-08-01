@@ -138,8 +138,28 @@ class RecommendationsRequest(BaseModel):
 @router.post("/recommendations", response_model=list[Recommendation])
 async def get_recommendations(payload: RecommendationsRequest) -> list[Recommendation]:
     """Suggests real books, songs, podcasts, and shows to reinforce learning
-    outside the app's own lessons — the user's own request: "la plataforma
-    debe de sugerir libros, canciones, y otras cosas que ayude a mejorar aún
-    más el aprendizaje"."""
+    outside the app's own lessons."""
     items = await hf_client.generate_recommendations(payload.target_lang, payload.level.value, payload.interests)
     return [Recommendation(**item) for item in items]
+
+
+class ExplainRequest(BaseModel):
+    text: str
+    context: str = ""
+    target_lang: str = "en"
+    native_lang: str = "es"
+
+
+@router.post("/explain")
+async def explain_text(payload: ExplainRequest) -> dict:
+    """The 'Magic Lens' feature: provides an elite AI explanation for any word or phrase."""
+    prompt = f"""Explain the word or phrase "{payload.text}" in the context of: "{payload.context}".
+The learner is studying {payload.target_lang} and their native language is {payload.native_lang}.
+Provide:
+1. A clear, elite explanation of the meaning and usage.
+2. 2-3 natural example sentences.
+3. A brief grammatical note if applicable.
+Respond in {payload.native_lang} with a professional, encouraging tone."""
+    
+    explanation = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=500)
+    return {"explanation": explanation}

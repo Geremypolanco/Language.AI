@@ -137,7 +137,15 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             await websocket.send_json({"type": "reply_start"})
             
             with telemetry.timed(chat_timing):
-                messages = [{"role": "system", "content": system_prompt}, *history]
+                # Elite: Emotional Intelligence - Detect frustration or difficulty
+                sentiment_prompt = f"Analyze the following user input and determine if the user is frustrated, confused, or struggling (True/False). Input: '{transcript}'"
+                is_struggling = "true" in (await hf_client.chat([{"role": "user", "content": sentiment_prompt}], max_tokens=10)).lower()
+                
+                adjusted_system_prompt = system_prompt
+                if is_struggling:
+                    adjusted_system_prompt += "\n\n### ADAPTIVE MODE: The user seems to be struggling. Be extra patient, use simpler words, and offer more encouragement."
+                
+                messages = [{"role": "system", "content": adjusted_system_prompt}, *history]
                 async for chunk in hf_client.stream_chat(messages):
                     reply_text += chunk
                     await websocket.send_json({"type": "reply_chunk", "text": chunk})
