@@ -1,12 +1,10 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-
-/**
- * Talk Page - Live conversation with AI tutor
- */
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 
 interface Message {
   id: string;
@@ -16,6 +14,7 @@ interface Message {
 }
 
 export default function Talk() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -26,9 +25,43 @@ export default function Talk() {
   ]);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const websocket = api.connectConversation(user.id);
+    
+    websocket.onopen = () => {
+      console.log("WebSocket connected");
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "reply_done" && data.text) {
+        const tutorMessage: Message = {
+          id: Date.now().toString(),
+          role: "tutor",
+          text: data.text,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, tutorMessage]);
+      }
+    };
+
+    websocket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    setWs(websocket);
+
+    return () => {
+      websocket.close();
+    };
+  }, [user?.id]);
 
   const handleSendMessage = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !ws) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -37,25 +70,14 @@ export default function Talk() {
       timestamp: new Date(),
     };
 
-    setMessages([...messages, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
+    ws.send(JSON.stringify({ type: "text", data: input }));
     setInput("");
-
-    // Simulate tutor response
-    setTimeout(() => {
-      const tutorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "tutor",
-        text: "That's great! Let me help you with that. Could you tell me more?",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, tutorMessage]);
-    }, 1000);
   };
 
   return (
-    <DashboardLayout user={{ name: "Alex", level: 12 }}>
+    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
       <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground mb-2">Talk Live</h1>
           <p className="text-muted-foreground">
@@ -63,7 +85,6 @@ export default function Talk() {
           </p>
         </div>
 
-        {/* Chat Container */}
         <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4">
           {messages.map((msg) => (
             <div
@@ -90,9 +111,7 @@ export default function Talk() {
           ))}
         </div>
 
-        {/* Input Area */}
         <div className="space-y-4">
-          {/* Voice Recording */}
           <div className="flex gap-2">
             <Button
               size="lg"
@@ -116,7 +135,6 @@ export default function Talk() {
             </Button>
           </div>
 
-          {/* Text Input */}
           <div className="flex gap-2">
             <Input
               placeholder="Or type your message..."
@@ -136,7 +154,6 @@ export default function Talk() {
           </div>
         </div>
 
-        {/* Tips */}
         <Card className="mt-6 p-4 bg-blue-50 border-blue-200">
           <p className="text-sm text-blue-900">
             <strong>Tip:</strong> The more you talk, the better you get. Don't worry about mistakes — that's how you learn!

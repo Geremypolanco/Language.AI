@@ -1,12 +1,52 @@
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
+import { useEffect, useState } from "react";
 
-/**
- * Progress Page - Detailed progress tracking and analytics\n */
+interface ProgressData {
+  level: number;
+  total_xp: number;
+  days_learned: number;
+  streak: number;
+  weekly_activity?: { day: string; minutes: number }[];
+  skills?: { skill: string; progress: number }[];
+}
 
 export default function Progress() {
-  const weekData = [
+  const { user } = useAuth();
+  const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const fetchProgress = async () => {
+      try {
+        const data = await api.getProgressSnapshot(user.id);
+        setProgress(data);
+      } catch (err) {
+        console.error("Error loading progress:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProgress();
+  }, [user?.id]);
+
+  if (loading) {
+    return (
+      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-muted-foreground">Loading progress...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const weekData = progress?.weekly_activity || [
     { day: "Mon", minutes: 25 },
     { day: "Tue", minutes: 30 },
     { day: "Wed", minutes: 20 },
@@ -19,9 +59,8 @@ export default function Progress() {
   const maxMinutes = Math.max(...weekData.map((d) => d.minutes));
 
   return (
-    <DashboardLayout user={{ name: "Alex", level: 12 }}>
+    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">Your Progress</h1>
           <p className="text-lg text-muted-foreground">
@@ -29,13 +68,12 @@ export default function Progress() {
           </p>
         </div>
 
-        {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: "Current Level", value: "12", icon: "🎯" },
-            { label: "Total XP", value: "4,850", icon: "⭐" },
-            { label: "Days Learned", value: "47", icon: "📅" },
-            { label: "Streak", value: "7 days", icon: "🔥" },
+            { label: "Current Level", value: progress?.level || 0, icon: "🎯" },
+            { label: "Total XP", value: progress?.total_xp || 0, icon: "⭐" },
+            { label: "Days Learned", value: progress?.days_learned || 0, icon: "📅" },
+            { label: "Streak", value: `${progress?.streak || 0} days`, icon: "🔥" },
           ].map((metric, i) => (
             <Card key={i} className="p-4 text-center">
               <p className="text-2xl mb-2">{metric.icon}</p>
@@ -45,7 +83,6 @@ export default function Progress() {
           ))}
         </div>
 
-        {/* Tabs */}
         <Tabs defaultValue="weekly" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
@@ -53,7 +90,6 @@ export default function Progress() {
             <TabsTrigger value="achievements">Achievements</TabsTrigger>
           </TabsList>
 
-          {/* Weekly Activity */}
           <TabsContent value="weekly">
             <Card className="p-8">
               <h3 className="text-xl font-bold text-foreground mb-6">This Week's Activity</h3>
@@ -71,25 +107,19 @@ export default function Progress() {
                   </div>
                 ))}
               </div>
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Total this week:</strong> 225 minutes • <strong>Average:</strong> 32 min/day
-                </p>
-              </div>
             </Card>
           </TabsContent>
 
-          {/* Skills Progress */}
           <TabsContent value="skills">
             <div className="space-y-4">
-              {[
+              {(progress?.skills || [
                 { skill: "Listening", progress: 78 },
                 { skill: "Speaking", progress: 65 },
                 { skill: "Reading", progress: 82 },
                 { skill: "Writing", progress: 58 },
                 { skill: "Grammar", progress: 71 },
                 { skill: "Vocabulary", progress: 89 },
-              ].map((item, i) => (
+              ]).map((item, i) => (
                 <Card key={i} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-foreground">{item.skill}</span>
@@ -106,7 +136,6 @@ export default function Progress() {
             </div>
           </TabsContent>
 
-          {/* Achievements */}
           <TabsContent value="achievements">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
@@ -126,17 +155,6 @@ export default function Progress() {
             </div>
           </TabsContent>
         </Tabs>
-
-        {/* Insights */}
-        <Card className="mt-8 p-8 bg-gradient-to-r from-secondary/5 to-primary/5 border-secondary/20">
-          <h3 className="text-xl font-bold text-foreground mb-4">📊 Your Insights</h3>
-          <div className="space-y-2 text-muted-foreground">
-            <p>✓ You're most productive in the mornings (8-10 AM)</p>
-            <p>✓ Speaking is your strongest skill at 65% mastery</p>
-            <p>✓ You learn 12% faster than average learners</p>
-            <p>✓ Keep your 7-day streak going! You're on track for 30 days</p>
-          </div>
-        </Card>
       </div>
     </DashboardLayout>
   );
