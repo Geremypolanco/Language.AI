@@ -37,18 +37,32 @@ async def text_to_speech(payload: TTSRequest) -> Response:
 
 class ImageRequest(BaseModel):
     prompt: str
+    # Exercise illustrations (see ExercisePlayer.tsx's image_match rendering)
+    # send crafted, specific AI-image-generation descriptions (e.g. "two
+    # people shaking hands, simple flat illustration"), not natural search
+    # queries. Wikimedia Commons' search is a blind top-1 keyword match over
+    # its own file titles/descriptions with no relevance/semantic check —
+    # confirmed live: an exercise about someone waving hello returned an
+    # unrelated ocean-waves photo, because "wave" the gesture and "wave" the
+    # water feature collide in a plain keyword index, and Commons' media
+    # library is dominated by the latter. AI generation directly renders
+    # what was actually asked for instead of hoping a keyword search
+    # happens to agree, so exercise callers skip straight to it.
+    skip_photo_search: bool = False
 
 
 @router.post("/image")
 async def generate_image(payload: ImageRequest) -> Response:
-    # Real free photos first (cheaper and often clearer for a vocabulary
-    # flashcard than an AI illustration): Google Image Search if configured
-    # (best relevance), then Wikimedia Commons (needs no setup at all, so
-    # every install gets real photos even without configuring Google CSE),
-    # finally AI generation as the last resort.
-    image = await image_search.search_image(payload.prompt)
-    if image is None:
-        image = await image_search.search_wikimedia_commons(payload.prompt)
+    image = None
+    if not payload.skip_photo_search:
+        # Real free photos first (cheaper and often clearer for a
+        # general vocabulary flashcard than an AI illustration): Google
+        # Image Search if configured (best relevance), then Wikimedia
+        # Commons (needs no setup at all, so every install gets real
+        # photos even without configuring Google CSE).
+        image = await image_search.search_image(payload.prompt)
+        if image is None:
+            image = await image_search.search_wikimedia_commons(payload.prompt)
     if image is None:
         image = await hf_client.generate_image(payload.prompt)
     if image is None:

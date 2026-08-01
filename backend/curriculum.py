@@ -206,8 +206,37 @@ def get_unit(unit_id: str) -> Unit | None:
     return None
 
 
+ALPHABET_TOPIC = "Alphabet & first sounds"
+
+# image_match doesn't make sense for a single letter/character — there's no
+# real "picture of a sound" to match against, and asking the model to
+# invent one anyway produces incoherent exercises (or, worse, the model
+# just ignores the letter-teaching instructions and generates ordinary
+# vocabulary instead). Recognizing/sounding out a letter is a
+# listening/multiple-choice/pronunciation task, not a visual one.
+_ALPHABET_MIX: list[ExerciseType] = [
+    ExerciseType.MULTIPLE_CHOICE,
+    ExerciseType.LISTEN_TYPE,
+    ExerciseType.MULTIPLE_CHOICE,
+    ExerciseType.SPEAK_REPEAT,
+    ExerciseType.LISTEN_TYPE,
+]
+
+
 def exercise_mix_for(level: CEFRLevel) -> list[ExerciseType]:
     return _EXERCISE_MIX.get(level, [ExerciseType.FREE_CONVERSATION_PROMPT])
+
+
+def resolve_exercise_mix(unit: Unit, mix_override: list[ExerciseType] | None = None) -> list[ExerciseType]:
+    """The single source of truth for "which exercise types for this unit" —
+    every caller (real generation, the offline fallback generator, the
+    prompt builder) must go through this so a topic-specific override like
+    the alphabet unit's can't silently drift out of sync between them."""
+    if mix_override is not None:
+        return mix_override
+    if unit.topic == ALPHABET_TOPIC:
+        return _ALPHABET_MIX
+    return exercise_mix_for(unit.level)
 
 
 @dataclass
@@ -228,8 +257,6 @@ class LessonRequest:
 # earth.
 _NON_LATIN_SCRIPT_LANGS = {"ja", "ko", "zh", "ru"}
 
-ALPHABET_TOPIC = "Alphabet & first sounds"
-
 
 def _uses_unfamiliar_script(target_lang: str) -> bool:
     return target_lang.lower()[:2] in _NON_LATIN_SCRIPT_LANGS
@@ -241,7 +268,7 @@ def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[Exer
     a caller force a single exercise type repeated (used by the free-practice
     mode, where the learner picks the skill — reading/listening/speaking/images/
     conversation — instead of following the level's default mix)."""
-    mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
+    mix = resolve_exercise_mix(req.unit, mix_override)
     types_list = ", ".join(t.value for t in mix)
     interests = ", ".join(req.interests) if req.interests else "everyday life"
     mistakes = (

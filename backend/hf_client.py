@@ -348,11 +348,17 @@ class HFClient:
         (personal to each user, and would kill the cache-hit rate); spaced-
         repetition review of missed words already runs independently through
         srs.py, so this doesn't lose the main mistake-remediation path."""
-        from .curriculum import exercise_mix_for
+        from .curriculum import resolve_exercise_mix
 
-        mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
+        mix = resolve_exercise_mix(req.unit, mix_override)
+        # req.unit.topic (not just the id) is part of the key on purpose: the
+        # skill-tree's topic list has been reordered before (inserting a new
+        # topic shifts every later unit's numeric id — e.g. "A1-0" stopped
+        # meaning "Greetings" and started meaning "Alphabet & first sounds")
+        # and an id-only key would silently keep serving the *old* topic's
+        # cached exercises under the new topic's identity forever.
         cache_key = (
-            f"{req.unit.id}:{req.unit.level.value}:{req.target_lang}:{req.native_lang}:"
+            f"{req.unit.id}:{req.unit.topic}:{req.unit.level.value}:{req.target_lang}:{req.native_lang}:"
             f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}"
         )
         cache_path = self._cache_path("exercises", cache_key, "json")
@@ -1038,9 +1044,9 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
     the real LLM-generated, personalized content, and says so directly in
     the exercise's own prompt text so a user never mistakes this for a
     broken real exercise."""
-    from .curriculum import exercise_mix_for
+    from .curriculum import resolve_exercise_mix
 
-    mix = mix_override if mix_override is not None else exercise_mix_for(req.unit.level)
+    mix = resolve_exercise_mix(req.unit, mix_override)
     topic = topic_es(req.unit.topic)
     exercises = []
     for i, ex_type in enumerate(mix):

@@ -362,7 +362,13 @@ class ApiClient {
   }
 
   async getExerciseImage(prompt: string): Promise<string> {
-    return this.fetchMediaUrl("/api/content/image", { prompt });
+    // skip_photo_search: exercise image_prompts are crafted illustration
+    // descriptions for an image generator, not natural search queries — a
+    // blind keyword photo search (e.g. Wikimedia Commons) can return
+    // something totally unrelated (confirmed live: "person waving hello"
+    // matched ocean-wave photos). AI generation renders what was actually
+    // asked for.
+    return this.fetchMediaUrl("/api/content/image", { prompt, skip_photo_search: true });
   }
 
   async getExerciseAudio(text: string, targetLang: string): Promise<string> {
