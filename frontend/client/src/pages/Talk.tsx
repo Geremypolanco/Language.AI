@@ -1,10 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
 
 interface Message {
   id: string;
@@ -25,43 +24,59 @@ export default function Talk() {
   ]);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
-  useEffect(() => {
-    if (!user?.id) return;
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
 
-    const websocket = api.connectConversation(user.id);
-    
-    websocket.onopen = () => {
-      console.log("WebSocket connected");
-    };
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
 
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "reply_done" && data.text) {
-        const tutorMessage: Message = {
-          id: Date.now().toString(),
-          role: "tutor",
-          text: data.text,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, tutorMessage]);
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        await transcribeAudio(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const transcribeAudio = async (audioBlob: Blob) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", audioBlob);
+      const response = await fetch("/api/ai/transcribe", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.text) {
+        setInput(data.text);
       }
-    };
+    } catch (err) {
+      console.error("Transcription error:", err);
+    }
+  };
 
-    websocket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    setWs(websocket);
-
-    return () => {
-      websocket.close();
-    };
-  }, [user?.id]);
-
-  const handleSendMessage = () => {
-    if (!input.trim() || !ws) return;
+  const handleSendMessage = async () => {
+    if (!input.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -71,8 +86,26 @@ export default function Talk() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    ws.send(JSON.stringify({ type: "text", data: input }));
     setInput("");
+
+    try {
+      const response = await fetch("/api/ai/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ concept: input }),
+      });
+      const data = await response.json();
+      const tutorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "tutor",
+        text: data.explanation || "I understood that. Tell me more!",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, tutorMessage]);
+    } catch (err) {
+      console.error("Error:", err);
+    }
   };
 
   return (
@@ -80,85 +113,45 @@ export default function Talk() {
       <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground mb-2">Talk Live</h1>
-          <p className="text-muted-foreground">
-            Have a real conversation with your AI tutor. Speak or type.
-          </p>
+          <p className="text-muted-foreground">Speak or type with your AI tutor</p>
         </div>
 
         <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4">
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
+            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-3 rounded-lg ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground"
+                className={`max-w-xs px-4 py-3 rounded-lg ${
+                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                 }`}
               >
                 <p className="text-sm">{msg.text}</p>
-                <p
-                  className={`text-xs mt-1 ${
-                    msg.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
-                  }`}
-                >
-                  {msg.timestamp.toLocaleTimeString()}
-                </p>
               </div>
             </div>
           ))}
         </div>
 
         <div className="space-y-4">
-          <div className="flex gap-2">
-            <Button
-              size="lg"
-              className={`flex-1 h-12 ${
-                isRecording
-                  ? "bg-destructive hover:bg-destructive/90"
-                  : "bg-primary hover:bg-primary/90"
-              }`}
-              onClick={() => setIsRecording(!isRecording)}
-            >
-              {isRecording ? (
-                <>
-                  <span className="animate-pulse mr-2">●</span>
-                  Stop Recording
-                </>
-              ) : (
-                <>
-                  🎤 Hold to Record
-                </>
-              )}
-            </Button>
-          </div>
+          <Button
+            size="lg"
+            className={`w-full h-12 ${isRecording ? "bg-destructive" : "bg-primary"}`}
+            onClick={isRecording ? stopRecording : startRecording}
+          >
+            {isRecording ? "🛑 Stop Recording" : "🎤 Record"}
+          </Button>
 
           <div className="flex gap-2">
             <Input
-              placeholder="Or type your message..."
+              placeholder="Or type..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
               className="h-12"
             />
-            <Button
-              size="lg"
-              className="bg-primary hover:bg-primary/90"
-              onClick={handleSendMessage}
-              disabled={!input.trim()}
-            >
+            <Button onClick={handleSendMessage} disabled={!input.trim()}>
               Send
             </Button>
           </div>
         </div>
-
-        <Card className="mt-6 p-4 bg-blue-50 border-blue-200">
-          <p className="text-sm text-blue-900">
-            <strong>Tip:</strong> The more you talk, the better you get. Don't worry about mistakes — that's how you learn!
-          </p>
-        </Card>
       </div>
     </DashboardLayout>
   );
