@@ -8,7 +8,7 @@ it's available (off by default the moment real credentials are configured).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from .. import auth, db
@@ -96,8 +96,17 @@ def get_session_status(request: Request) -> dict:
 
 
 @router.post("/auth/logout")
-def logout() -> RedirectResponse:
-    resp = RedirectResponse("/", status_code=303)
+def logout() -> Response:
+    # A redirect here used to mean the frontend's fetch("/auth/logout")
+    # auto-followed it (fetch's default redirect mode is "follow"), landing
+    # on GET / — whose HTML response then failed response.json() in
+    # api.ts's request() with a SyntaxError. That exception propagated out
+    # of AuthContext's handleLogout() before it ever reached the lines that
+    # clear local session/user state and navigate away, so cookies were
+    # actually cleared server-side but the UI never noticed and stayed on
+    # the logged-in screen. The SPA already does its own navigation after
+    # a successful call — this only needs to clear cookies and return.
+    resp = Response(status_code=204)
     resp.delete_cookie(auth.SESSION_COOKIE)
     resp.delete_cookie(auth.PENDING_COOKIE)
     resp.delete_cookie(auth.STATE_COOKIE)

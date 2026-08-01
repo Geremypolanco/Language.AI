@@ -9,6 +9,7 @@ import Talk from "@/pages/Talk";
 import Progress from "@/pages/Progress";
 import Library from "@/pages/Library";
 import Settings from "@/pages/Settings";
+import RequireAuth from "@/components/RequireAuth";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -19,13 +20,41 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Login} />
       <Route path={"/login"} component={Login} />
-      <Route path={"/path"} component={Path} />
-      <Route path={"/practice"} component={Practice} />
-      <Route path={"/library"} component={Library} />
-      <Route path={"/university"} component={University} />
-      <Route path={"/talk"} component={Talk} />
-      <Route path={"/progress"} component={Progress} />
-      <Route path={"/settings"} component={Settings} />
+      <Route path={"/path"}>
+        <RequireAuth>
+          <Path />
+        </RequireAuth>
+      </Route>
+      <Route path={"/practice"}>
+        <RequireAuth>
+          <Practice />
+        </RequireAuth>
+      </Route>
+      <Route path={"/library"}>
+        <RequireAuth>
+          <Library />
+        </RequireAuth>
+      </Route>
+      <Route path={"/university"}>
+        <RequireAuth>
+          <University />
+        </RequireAuth>
+      </Route>
+      <Route path={"/talk"}>
+        <RequireAuth>
+          <Talk />
+        </RequireAuth>
+      </Route>
+      <Route path={"/progress"}>
+        <RequireAuth>
+          <Progress />
+        </RequireAuth>
+      </Route>
+      <Route path={"/settings"}>
+        <RequireAuth>
+          <Settings />
+        </RequireAuth>
+      </Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
