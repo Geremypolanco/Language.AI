@@ -1,22 +1,73 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
+import ExercisePlayer from "@/components/ExercisePlayer";
 import { useAuth } from "@/contexts/AuthContext";
+import { api, CEFRLevel, Exercise } from "@/lib/api";
+import { useState } from "react";
+import { toast } from "sonner";
+
+const CEFR_ORDER: CEFRLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2", "NATIVE"];
+
+function shiftLevel(level: CEFRLevel, delta: number): CEFRLevel {
+  const idx = CEFR_ORDER.indexOf(level);
+  const clamped = Math.max(0, Math.min(CEFR_ORDER.length - 1, idx + delta));
+  return CEFR_ORDER[clamped];
+}
+
+// Maps each UI-facing skill to the closest real ExerciseType the backend supports.
+const PRACTICE_MODES = [
+  { id: "listening", title: "Listening", icon: "👂", description: "Train your ear with native speakers", exerciseType: "listen_type" },
+  { id: "speaking", title: "Speaking", icon: "🗣️", description: "Practice pronunciation and fluency", exerciseType: "speak_repeat" },
+  { id: "reading", title: "Reading", icon: "📖", description: "Improve comprehension with texts", exerciseType: "translate_to_native" },
+  { id: "writing", title: "Writing", icon: "✍️", description: "Enhance written expression", exerciseType: "fill_blank" },
+  { id: "grammar", title: "Grammar", icon: "📝", description: "Master grammar rules and structures", exerciseType: "multiple_choice" },
+  { id: "vocabulary", title: "Vocabulary", icon: "📚", description: "Expand your word bank", exerciseType: "translate_to_target" },
+];
+
+const DIFFICULTIES: { label: string; delta: number }[] = [
+  { label: "Easy", delta: -1 },
+  { label: "Medium", delta: 0 },
+  { label: "Hard", delta: 1 },
+];
 
 export default function Practice() {
   const { user } = useAuth();
+  const [loadingMode, setLoadingMode] = useState<string | null>(null);
+  const [active, setActive] = useState<{ unitId: string; exercises: Exercise[] } | null>(null);
 
-  const PRACTICE_MODES = [
-    { id: "listening", title: "Listening", icon: "👂", description: "Train your ear with native speakers", color: "from-blue-500 to-blue-600" },
-    { id: "speaking", title: "Speaking", icon: "🗣️", description: "Practice pronunciation and fluency", color: "from-red-500 to-red-600" },
-    { id: "reading", title: "Reading", icon: "📖", description: "Improve comprehension with texts", color: "from-green-500 to-green-600" },
-    { id: "writing", title: "Writing", icon: "✍️", description: "Enhance written expression", color: "from-purple-500 to-purple-600" },
-    { id: "grammar", title: "Grammar", icon: "📝", description: "Master grammar rules and structures", color: "from-yellow-500 to-yellow-600" },
-    { id: "vocabulary", title: "Vocabulary", icon: "📚", description: "Expand your word bank", color: "from-pink-500 to-pink-600" },
-  ];
+  const startPractice = async (exerciseType: string, delta: number) => {
+    if (!user?.id) return;
+    const key = `${exerciseType}-${delta}`;
+    setLoadingMode(key);
+    try {
+      const level = shiftLevel(user.level, delta);
+      const { unit_id, exercises } = await api.practiceLessonSkill(user.id, exerciseType, level);
+      setActive({ unitId: unit_id, exercises });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cargar la práctica");
+    } finally {
+      setLoadingMode(null);
+    }
+  };
+
+  if (active) {
+    return (
+      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+        <div className="px-4 py-8">
+          <ExercisePlayer
+            userId={user!.id}
+            unitId={active.unitId}
+            exercises={active.exercises}
+            onExit={() => setActive(null)}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
+    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">Practice</h1>
@@ -39,52 +90,38 @@ export default function Practice() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {PRACTICE_MODES.map((mode) => (
-            <Card key={mode.id} className="p-6 hover:shadow-lg transition-smooth cursor-pointer group overflow-hidden">
-              <div className={`absolute inset-0 bg-gradient-to-br ${mode.color} opacity-0 group-hover:opacity-5 transition-smooth`} />
-              
+            <Card key={mode.id} className="p-6 hover:shadow-lg transition-smooth overflow-hidden">
               <div className="relative z-10">
                 <div className="flex items-start justify-between mb-4">
                   <span className="text-4xl">{mode.icon}</span>
-                  <span className="text-2xl opacity-0 group-hover:opacity-100 transition-smooth">→</span>
                 </div>
-                
+
                 <h3 className="text-xl font-bold text-foreground mb-2">{mode.title}</h3>
                 <p className="text-muted-foreground text-sm mb-6">{mode.description}</p>
-                
+
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase">Choose difficulty:</p>
                   <div className="flex gap-2">
-                    {["Easy", "Medium", "Hard"].map((difficulty) => (
-                      <Button
-                        key={difficulty}
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-xs"
-                        onClick={() => console.log(`Starting ${mode.title} - ${difficulty}`)}
-                      >
-                        {difficulty}
-                      </Button>
-                    ))}
+                    {DIFFICULTIES.map((d) => {
+                      const key = `${mode.exerciseType}-${d.delta}`;
+                      return (
+                        <Button
+                          key={d.label}
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-xs"
+                          disabled={loadingMode === key}
+                          onClick={() => startPractice(mode.exerciseType, d.delta)}
+                        >
+                          {loadingMode === key ? "..." : d.label}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </Card>
           ))}
-        </div>
-
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="p-6 text-center">
-            <p className="text-4xl font-bold text-primary mb-2">247</p>
-            <p className="text-muted-foreground">Minutes practiced this week</p>
-          </Card>
-          <Card className="p-6 text-center">
-            <p className="text-4xl font-bold text-secondary mb-2">1,240</p>
-            <p className="text-muted-foreground">Total words mastered</p>
-          </Card>
-          <Card className="p-6 text-center">
-            <p className="text-4xl font-bold text-orange-500 mb-2">92%</p>
-            <p className="text-muted-foreground">Accuracy on last session</p>
-          </Card>
         </div>
       </div>
     </DashboardLayout>

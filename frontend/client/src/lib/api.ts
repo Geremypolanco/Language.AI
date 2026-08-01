@@ -3,10 +3,21 @@
  * Todos los endpoints requieren credentials: "include" para enviar cookies de sesión
  */
 
+// FastAPI's 422 validation errors put a list of {loc, msg, type} under
+// `detail` instead of a string; a plain HTTPException(detail="...") is a
+// string. Both shapes have to render as readable text, not "[object Object]".
+export interface ApiValidationError {
+  loc: (string | number)[];
+  msg: string;
+  type: string;
+}
+
 export interface ApiError {
-  detail?: string;
+  detail?: string | ApiValidationError[];
   message?: string;
 }
+
+export type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2" | "NATIVE";
 
 export interface SessionData {
   authenticated: boolean;
@@ -18,7 +29,7 @@ export interface SessionData {
   display_name?: string;
   native_lang?: string;
   target_lang?: string;
-  level?: number;
+  level?: CEFRLevel;
 }
 
 export interface User {
@@ -26,28 +37,163 @@ export interface User {
   display_name: string;
   native_lang: string;
   target_lang: string;
-  level: number;
+  level: CEFRLevel;
   interests: string[];
   daily_goal_minutes: number;
+  xp: number;
+  streak_days: number;
+  gems: number;
 }
 
+// UnitNode — what /api/lessons/{id}/path actually returns (see backend/routers/lessons.py)
 export interface Lesson {
   id: string;
-  title: string;
-  description: string;
-  level: "beginner" | "intermediate" | "advanced";
-  duration: number;
-  completed: boolean;
-  xp: number;
+  topic: string;
+  level: CEFRLevel;
+  order: number;
+  state: "available" | "mastered";
+  best_score: number;
 }
 
 export interface ProgressData {
+  user_id: string;
+  xp: number;
+  streak_days: number;
+  gems: number;
+  streak_freezes: number;
+  level: CEFRLevel;
+  due_reviews: number;
+  units_mastered: number;
+  daily_goal_minutes: number;
+  today_minutes: number;
+}
+
+export interface LevelMastery {
+  level: CEFRLevel;
+  mastered: number;
+  total: number;
+}
+
+export interface ActivityDay {
+  date: string;
+  lessons_completed: number;
+}
+
+export interface RecentLesson {
+  unit_id: string;
+  topic: string;
+  score: number;
+  completed_at: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  display_name: string;
+  weekly_xp: number;
+  is_you: boolean;
+}
+
+export interface TopicMastery {
+  topic: string;
+  topic_es: string;
   level: number;
-  total_xp: number;
-  days_learned: number;
-  streak: number;
-  weekly_activity: { day: string; minutes: number }[];
-  skills: { skill: string; progress: number }[];
+}
+
+export interface DashboardData {
+  user_id: string;
+  xp: number;
+  streak_days: number;
+  gems: number;
+  streak_freezes: number;
+  level: CEFRLevel;
+  next_level: CEFRLevel | null;
+  due_reviews: number;
+  units_mastered_current_level: number;
+  units_total_current_level: number;
+  units_required_for_next_level: number;
+  daily_goal_minutes: number;
+  today_minutes: number;
+  mastery_by_level: LevelMastery[];
+  activity: ActivityDay[];
+  recent_lessons: RecentLesson[];
+  leaderboard: LeaderboardEntry[];
+  your_weekly_xp: number;
+  your_rank: number | null;
+  topic_mastery: TopicMastery[];
+}
+
+// Exercise — what /api/lessons/{id}/unit/{unitId} and .../practice return
+export interface Exercise {
+  id: string;
+  type:
+    | "image_match"
+    | "listen_type"
+    | "translate_to_target"
+    | "translate_to_native"
+    | "multiple_choice"
+    | "speak_repeat"
+    | "fill_blank"
+    | "free_conversation_prompt";
+  prompt: string;
+  target_text: string;
+  native_text: string;
+  options: string[];
+  correct_answer: string;
+  image_prompt: string;
+  audio_text: string;
+  vocab_key: string;
+}
+
+export interface AcademicField {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  tutor_name: string;
+}
+
+export interface AcademyEnrollment {
+  field_id: string;
+  field_name: string;
+  tutor_name: string;
+  icon: string;
+  category: string;
+  level: "ASSOCIATE" | "BACHELOR" | "MASTER";
+  level_label: string;
+  enrolled_at: string;
+}
+
+export interface AcademyProgress {
+  enrollment: AcademyEnrollment | null;
+  completed_course_ids: string[];
+  total_courses: number;
+}
+
+export interface BookStub {
+  id: string;
+  title: string;
+  genre: string;
+  genre_label: string;
+  level: CEFRLevel;
+  blurb: string;
+}
+
+export interface BookContent {
+  id: string;
+  title: string;
+  genre_label: string;
+  level: CEFRLevel;
+  content: string;
+}
+
+function extractErrorMessage(error: ApiError): string {
+  const { detail } = error;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((e) => `${e.loc?.slice(-1)[0] ?? "field"}: ${e.msg}`).join("; ");
+  }
+  return error.message || "";
 }
 
 class ApiClient {
@@ -74,7 +220,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error: ApiError = await response.json().catch(() => ({}));
-      throw new Error(error.detail || error.message || `HTTP ${response.status}`);
+      throw new Error(extractErrorMessage(error) || `HTTP ${response.status}`);
     }
 
     if (response.status === 204) return null as T;
@@ -98,7 +244,7 @@ class ApiClient {
     display_name: string;
     native_lang: string;
     target_lang: string;
-    level: number;
+    level: CEFRLevel;
     interests: string[];
     daily_goal_minutes: number;
   }): Promise<User> {
@@ -126,44 +272,51 @@ class ApiClient {
     return this.request<Lesson[]>(`/api/lessons/${userId}/path`);
   }
 
-  async getLesson(userId: string, unitId: string) {
-    return this.request(`/api/lessons/${userId}/unit/${unitId}`);
+  async getLesson(userId: string, unitId: string): Promise<Exercise[]> {
+    return this.request<Exercise[]>(`/api/lessons/${userId}/unit/${unitId}`);
   }
 
-  async submitLessonAnswer(userId: string, data: any) {
+  async submitLessonAnswer(
+    userId: string,
+    data: { vocab_key: string; correct: boolean; attempts_before_correct?: number }
+  ): Promise<{ srs: Record<string, unknown> }> {
     return this.request(`/api/lessons/${userId}/answer`, {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async completeLesson(userId: string, lessonId: string) {
+  async completeLesson(userId: string, unitId: string, score: number, elapsedSeconds = 0) {
     return this.request(`/api/lessons/${userId}/complete`, {
       method: "POST",
-      body: JSON.stringify({ lesson_id: lessonId }),
+      body: JSON.stringify({ unit_id: unitId, score, elapsed_seconds: elapsedSeconds }),
     });
   }
 
-  async practiceLessonSkill(userId: string, data: any) {
+  async practiceLessonSkill(
+    userId: string,
+    exerciseType: string,
+    level?: CEFRLevel
+  ): Promise<{ unit_id: string; exercises: Exercise[] }> {
     return this.request(`/api/lessons/${userId}/practice`, {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ exercise_type: exerciseType, level }),
     });
   }
 
   // ===== ACADEMY (University) =====
-  async getAcademyFields() {
+  async getAcademyFields(): Promise<AcademicField[]> {
     return this.request("/api/academy/fields");
   }
 
-  async enrollAcademyCareer(userId: string, fieldId: string, level: string) {
+  async enrollAcademyCareer(userId: string, fieldId: string, level: string): Promise<AcademyEnrollment> {
     return this.request(`/api/academy/${userId}/enroll`, {
       method: "POST",
       body: JSON.stringify({ field_id: fieldId, level }),
     });
   }
 
-  async getAcademyProgress(userId: string) {
+  async getAcademyProgress(userId: string): Promise<AcademyProgress> {
     return this.request(`/api/academy/${userId}/progress`);
   }
 
@@ -180,8 +333,8 @@ class ApiClient {
     return this.request<ProgressData>(`/api/progress/${userId}`);
   }
 
-  async getProgressDashboard(userId: string) {
-    return this.request(`/api/progress/${userId}/dashboard`);
+  async getProgressDashboard(userId: string): Promise<DashboardData> {
+    return this.request<DashboardData>(`/api/progress/${userId}/dashboard`);
   }
 
   // ===== TALK (WebSocket) =====
@@ -191,15 +344,15 @@ class ApiClient {
   }
 
   // ===== LIBRARY =====
-  async getLibraryGenres() {
+  async getLibraryGenres(): Promise<string[]> {
     return this.request("/api/library/genres");
   }
 
-  async getLibraryCatalog(userId: string) {
+  async getLibraryCatalog(userId: string): Promise<BookStub[]> {
     return this.request(`/api/library/${userId}/catalog`);
   }
 
-  async getLibraryBook(userId: string, bookId: string) {
+  async getLibraryBook(userId: string, bookId: string): Promise<BookContent> {
     return this.request(`/api/library/${userId}/books/${bookId}`);
   }
 }

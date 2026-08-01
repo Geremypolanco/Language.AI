@@ -3,39 +3,69 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { api } from "@/lib/api";
+import { api, AcademicField, AcademyProgress } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-interface AcademyField {
-  id: string;
-  title: string;
-  icon: string;
-  description: string;
-  courses: number;
-}
+// Course counts per depth — mirrors AcademicLevel.course_count in backend/models.py
+// (not returned by GET /api/academy/fields, which lists fields only).
+const LEVEL_TABS: { value: "ASSOCIATE" | "BACHELOR" | "MASTER"; label: string; courseCount: number }[] = [
+  { value: "ASSOCIATE", label: "Associate", courseCount: 12 },
+  { value: "BACHELOR", label: "Bachelor", courseCount: 24 },
+  { value: "MASTER", label: "Master", courseCount: 10 },
+];
 
 export default function University() {
   const { user } = useAuth();
-  const [fields, setFields] = useState<AcademyField[]>([]);
+  const [fields, setFields] = useState<AcademicField[]>([]);
+  const [progress, setProgress] = useState<AcademyProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [enrollingFieldId, setEnrollingFieldId] = useState<string | null>(null);
+
+  const refreshProgress = async () => {
+    if (!user?.id) return;
+    try {
+      const data = await api.getAcademyProgress(user.id);
+      setProgress(data);
+    } catch (err) {
+      console.error("Error loading academy progress:", err);
+    }
+  };
 
   useEffect(() => {
-    const fetchFields = async () => {
+    const load = async () => {
       try {
         const data = await api.getAcademyFields();
         setFields(data);
       } catch (err) {
-        console.error("Error loading academy fields:", err);
+        toast.error(err instanceof Error ? err.message : "Error loading academy fields");
       } finally {
         setLoading(false);
       }
     };
+    load();
+    refreshProgress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-    fetchFields();
-  }, []);
+  const handleEnroll = async (fieldId: string, level: "ASSOCIATE" | "BACHELOR" | "MASTER") => {
+    if (!user?.id) return;
+    setEnrollingFieldId(fieldId);
+    try {
+      const enrollment = await api.enrollAcademyCareer(user.id, fieldId, level);
+      toast.success(`Inscrito en ${enrollment.field_name} (${enrollment.level_label})`);
+      await refreshProgress();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo completar la inscripción");
+    } finally {
+      setEnrollingFieldId(null);
+    }
+  };
+
+  const enrolledFieldId = progress?.enrollment?.field_id;
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
+    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">University</h1>
@@ -50,66 +80,65 @@ export default function University() {
           </p>
         </Card>
 
-        <Tabs defaultValue="Bachelor" className="mb-8">
+        {progress?.enrollment && (
+          <Card className="p-4 mb-8 border-primary/30 bg-primary/5">
+            <p className="text-sm text-foreground">
+              Currently enrolled: <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
+              {progress.completed_course_ids.length} of {progress.total_courses} courses completed
+            </p>
+          </Card>
+        )}
+
+        <Tabs defaultValue="BACHELOR" className="mb-8">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="Associate">Associate</TabsTrigger>
-            <TabsTrigger value="Bachelor">Bachelor</TabsTrigger>
-            <TabsTrigger value="Master">Master</TabsTrigger>
+            {LEVEL_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>
+                {t.label}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          {["Associate", "Bachelor", "Master"].map((depth) => (
-            <TabsContent key={depth} value={depth} className="space-y-6">
+          {LEVEL_TABS.map((tab) => (
+            <TabsContent key={tab.value} value={tab.value} className="space-y-6">
               {loading ? (
                 <Card className="p-6 text-center">
                   <p className="text-muted-foreground">Loading career tracks...</p>
                 </Card>
               ) : (
                 <div className="grid gap-6">
-                  {fields.map((field) => (
-                    <Card key={field.id} className="p-6 hover:shadow-md transition-smooth">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-start gap-4">
-                          <span className="text-4xl">{field.icon}</span>
-                          <div>
-                            <h3 className="text-2xl font-bold text-foreground">{field.title}</h3>
-                            <p className="text-muted-foreground mt-1">{field.description}</p>
+                  {fields.map((field) => {
+                    const isEnrolled = enrolledFieldId === field.id;
+                    return (
+                      <Card key={field.id} className="p-6 hover:shadow-md transition-smooth">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-start gap-4">
+                            <span className="text-4xl">{field.icon}</span>
+                            <div>
+                              <h3 className="text-2xl font-bold text-foreground">{field.name}</h3>
+                              <p className="text-muted-foreground mt-1">{field.description}</p>
+                            </div>
                           </div>
+                          <Button
+                            className="bg-primary hover:bg-primary/90"
+                            disabled={enrollingFieldId === field.id}
+                            onClick={() => handleEnroll(field.id, tab.value)}
+                          >
+                            {isEnrolled ? "Enrolled ✓" : enrollingFieldId === field.id ? "Enrolling..." : "Enroll"}
+                          </Button>
                         </div>
-                        <Button className="bg-primary hover:bg-primary/90">
-                          Enroll
-                        </Button>
-                      </div>
-                      <div className="mt-4 p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>{field.courses} courses</strong> in this track
-                        </p>
-                      </div>
-                    </Card>
-                  ))}
+                        <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                          <p className="text-sm text-muted-foreground">
+                            <strong>{tab.courseCount} courses</strong> in this track · Tutor: {field.tutor_name}
+                          </p>
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>
           ))}
         </Tabs>
-
-        <Card className="p-8 bg-gradient-to-r from-secondary/5 to-primary/5 border-secondary/20">
-          <h3 className="text-2xl font-bold text-foreground mb-4">What You'll Achieve</h3>
-          <div className="grid md:grid-cols-2 gap-6">
-            {[
-              "Speak with confidence in professional settings",
-              "Master industry-specific vocabulary and concepts",
-              "Present ideas persuasively to diverse audiences",
-              "Navigate complex negotiations and discussions",
-              "Write clearly and academically",
-              "Understand cultural nuances in business",
-            ].map((outcome, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <span className="text-xl">✓</span>
-                <p className="text-foreground">{outcome}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
     </DashboardLayout>
   );

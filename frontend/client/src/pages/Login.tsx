@@ -40,7 +40,7 @@ export default function Login() {
     display_name: session?.name || "",
     native_lang: "en",
     target_lang: "es",
-    level: 1,
+    level: "A1",
     interests: "",
     daily_goal_minutes: 15,
   });
@@ -167,15 +167,16 @@ export default function Login() {
               <select
                 value={formData.level}
                 onChange={(e) =>
-                  setFormData({ ...formData, level: parseInt(e.target.value) })
+                  setFormData({ ...formData, level: e.target.value })
                 }
                 className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
               >
-                <option value={1}>Beginner</option>
-                <option value={2}>Elementary</option>
-                <option value={3}>Intermediate</option>
-                <option value={4}>Upper-Intermediate</option>
-                <option value={5}>Advanced</option>
+                <option value="A1">Beginner (A1)</option>
+                <option value="A2">Elementary (A2)</option>
+                <option value="B1">Intermediate (B1)</option>
+                <option value="B2">Upper-Intermediate (B2)</option>
+                <option value="C1">Advanced (C1)</option>
+                <option value="C2">Fluent (C2)</option>
               </select>
             </div>
 

@@ -2,6 +2,8 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface NavItem {
   label: string;
@@ -21,12 +23,13 @@ const NAV_ITEMS: NavItem[] = [
 
 interface DashboardLayoutProps {
   children: ReactNode;
-  user?: { name: string; level: number };
+  user?: { name: string; level: string };
 }
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { logout } = useAuth();
 
   return (
     <div className="flex h-screen bg-background">
@@ -86,20 +89,14 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={() => {
-              // TODO: Settings
-              console.log("Settings");
-            }}
+            onClick={() => toast.info("La configuración de la cuenta llega pronto")}
           >
             ⚙️ Settings
           </Button>
           <Button
             variant="outline"
             className="w-full justify-start"
-            onClick={() => {
-              // TODO: Logout
-              console.log("Logout");
-            }}
+            onClick={() => logout()}
           >
             🚪 Sign out
           </Button>

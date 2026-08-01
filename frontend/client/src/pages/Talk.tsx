@@ -4,28 +4,110 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 interface Message {
   id: string;
   role: "user" | "tutor";
   text: string;
-  timestamp: Date;
+}
+
+// Mirrors backend/routers/conversation.py's websocket message contract.
+type ServerEvent =
+  | { type: "ready" | "error"; message: string }
+  | { type: "transcript"; text: string }
+  | { type: "reply_start" }
+  | { type: "reply_chunk"; text: string }
+  | { type: "reply_done"; text: string }
+  | { type: "reply_audio_chunk"; text: string; audio_base64: string; audio_mime: string };
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(",")[1] ?? "");
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 export default function Talk() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "tutor",
-      text: "Hello! I'm your AI tutor. Ready for a conversation? You can speak or type.",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioQueueRef = useRef<HTMLAudioElement[]>([]);
+  const playingRef = useRef(false);
+  const currentTutorMsgId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const ws = api.connectConversation(user.id);
+    wsRef.current = ws;
+
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+    ws.onerror = () => toast.error("Conexión con el tutor interrumpida");
+
+    ws.onmessage = (event) => {
+      const msg: ServerEvent = JSON.parse(event.data);
+      switch (msg.type) {
+        case "ready":
+          setMessages([{ id: "greeting", role: "tutor", text: msg.message }]);
+          break;
+        case "error":
+          toast.error(msg.message);
+          break;
+        case "transcript":
+          setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", text: msg.text }]);
+          break;
+        case "reply_start": {
+          const id = `t-${Date.now()}`;
+          currentTutorMsgId.current = id;
+          setMessages((prev) => [...prev, { id, role: "tutor", text: "" }]);
+          break;
+        }
+        case "reply_chunk":
+          setMessages((prev) =>
+            prev.map((m) => (m.id === currentTutorMsgId.current ? { ...m, text: m.text + msg.text } : m))
+          );
+          break;
+        case "reply_done":
+          setMessages((prev) =>
+            prev.map((m) => (m.id === currentTutorMsgId.current ? { ...m, text: msg.text } : m))
+          );
+          currentTutorMsgId.current = null;
+          break;
+        case "reply_audio_chunk": {
+          const audio = new Audio(`data:${msg.audio_mime};base64,${msg.audio_base64}`);
+          audioQueueRef.current.push(audio);
+          playNextAudio();
+          break;
+        }
+      }
+    };
+
+    return () => ws.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const playNextAudio = () => {
+    if (playingRef.current) return;
+    const next = audioQueueRef.current.shift();
+    if (!next) return;
+    playingRef.current = true;
+    next.onended = () => {
+      playingRef.current = false;
+      playNextAudio();
+    };
+    next.play().catch(() => {
+      playingRef.current = false;
+    });
+  };
 
   const startRecording = async () => {
     try {
@@ -34,89 +116,43 @@ export default function Talk() {
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
-
+      mediaRecorder.ondataavailable = (event) => audioChunksRef.current.push(event.data);
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
-        await transcribeAudio(audioBlob);
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const base64 = await blobToBase64(audioBlob);
+        wsRef.current?.send(JSON.stringify({ type: "audio", data: base64, content_type: "audio/webm" }));
+        stream.getTracks().forEach((t) => t.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      console.error("Microphone access denied:", err);
+      toast.error("No se pudo acceder al micrófono");
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
   };
 
-  const transcribeAudio = async (audioBlob: Blob) => {
-    try {
-      const formData = new FormData();
-      formData.append("file", audioBlob);
-      const response = await fetch("/api/ai/transcribe", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-      const data = await response.json();
-      if (data.text) {
-        setInput(data.text);
-      }
-    } catch (err) {
-      console.error("Transcription error:", err);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      text: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+  const handleSendMessage = () => {
+    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: "text", data: input }));
     setInput("");
-
-    try {
-      const response = await fetch("/api/ai/explain", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ concept: input }),
-      });
-      const data = await response.json();
-      const tutorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "tutor",
-        text: data.explanation || "I understood that. Tell me more!",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, tutorMessage]);
-    } catch (err) {
-      console.error("Error:", err);
-    }
   };
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || 1 }}>
+    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
       <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground mb-2">Talk Live</h1>
-          <p className="text-muted-foreground">Speak or type with your AI tutor</p>
+          <p className="text-muted-foreground">
+            Speak or type with your AI tutor {!connected && "(connecting...)"}
+          </p>
         </div>
 
-        <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4">
+        <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4 min-h-[300px]">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
@@ -135,6 +171,7 @@ export default function Talk() {
             size="lg"
             className={`w-full h-12 ${isRecording ? "bg-destructive" : "bg-primary"}`}
             onClick={isRecording ? stopRecording : startRecording}
+            disabled={!connected}
           >
             {isRecording ? "🛑 Stop Recording" : "🎤 Record"}
           </Button>
@@ -144,10 +181,11 @@ export default function Talk() {
               placeholder="Or type..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
               className="h-12"
+              disabled={!connected}
             />
-            <Button onClick={handleSendMessage} disabled={!input.trim()}>
+            <Button onClick={handleSendMessage} disabled={!input.trim() || !connected}>
               Send
             </Button>
           </div>
