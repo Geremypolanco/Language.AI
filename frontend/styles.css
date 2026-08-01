@@ -272,6 +272,53 @@ h1, h2, h3, .brand, .card-title, .level-meter-row, .stat-value,
 
 .stat-chip .icon { width: 14px; height: 14px; }
 
+/* Progress tab's #dash-stat-row (renderStatRow in app.js) — dropped entirely
+   in the mobile-first CSS rewrite, leaving icon/value/label as unstyled
+   inline siblings that ran together (e.g. "0Racha"). */
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 12px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  text-align: center;
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-bottom: 2px;
+}
+
+.stat-icon .icon { width: 18px; height: 18px; }
+
+.stat-icon-fire { background: rgba(255,150,0,0.12); color: var(--orange); }
+.stat-icon-gem { background: rgba(45,212,191,0.12); color: var(--blue); }
+.stat-icon-xp { background: rgba(255,200,0,0.14); color: var(--gold-dark); }
+.stat-icon-level { background: rgba(206,130,255,0.14); color: var(--purple-dark); }
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  font-weight: 600;
+}
+
 .topbar-logout {
   background: none;
   border: none;
@@ -353,14 +400,17 @@ main {
   text-overflow: ellipsis;
 }
 
-/* Special styling for Talk button (center, larger) */
+/* Special styling for Talk button (center, larger). Given its own flex slot
+   (flex: 0 0 auto) rather than position:absolute — with 5 other nav buttons
+   now in the row, an absolutely-centered circle sits exactly on top of
+   whichever button lands in the middle flex slot, hiding its label. Raising
+   it with a negative margin keeps the "floating FAB" look without covering
+   a sibling. */
 .bottom-nav-talk {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 0 0 60px;
   width: 60px;
   height: 60px;
+  margin-top: -26px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--green), var(--blue));
   color: #fff;
@@ -594,13 +644,19 @@ main {
 }
 
 .call-status {
+  /* Raised above .tutor-info-overlay's name badge (bottom:0 + ~52px tall) —
+     both were anchored near bottom:0-12px and rendered on top of each
+     other, e.g. "Sofia — Tutora de Lingua" overlapping "Conectando…". */
   position: absolute;
-  bottom: 12px;
+  bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.85rem;
   opacity: 0.8;
   z-index: 3;
+  background: rgba(0,0,0,0.35);
+  padding: 4px 12px;
+  border-radius: 12px;
 }
 
 .self-view-pip {

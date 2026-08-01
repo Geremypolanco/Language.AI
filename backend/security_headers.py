@@ -7,7 +7,15 @@ The CSP is scoped to what this app actually loads: same-origin scripts only
 attributes for per-item accent colors — a CSS-injection risk, not a script
 one, and low severity now that every AI-generated string rendered via
 innerHTML is HTML-escaped, see escapeHtml() in frontend/app.js), and
-data:/blob: for images and audio (TTS playback uses blob: object URLs)."""
+data:/blob: for images and audio (TTS playback uses blob: object URLs).
+
+img-src also allow-lists image.pollinations.ai and frame-src allow-lists
+YouTube: the "Visual Aids" library-cover/course-video feature embeds those
+URLs directly in <img>/<iframe> (frontend/app.js loadVisualAids/loadLibraryPage)
+rather than proxying bytes through /api/content/image like the rest of the
+app's AI-generated images — every one of those requests was silently
+CSP-blocked (confirmed via a real browser console, not just code reading)
+until this was added."""
 
 from __future__ import annotations
 
@@ -22,8 +30,9 @@ _CSP = (
     "script-src 'self'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
-    "img-src 'self' data: blob:; "
+    "img-src 'self' data: blob: https://image.pollinations.ai; "
     "media-src 'self' blob:; "
+    "frame-src https://www.youtube.com; "
     "connect-src 'self'; "
     "frame-ancestors 'none'; "
     "base-uri 'self'; "

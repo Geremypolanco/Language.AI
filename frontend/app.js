@@ -159,7 +159,7 @@ const I18N = {
     library_title: "Library of 500+ books",
     library_subtitle: "AI-written stories in the language you're learning — each one is generated the first time you open it.",
     filter_all_levels: "All levels",
-    academy_disclaimer: 'AI-built, self-paced accelerated study track — <strong>not an accredited program</strong> and does not grant credits, certificates, or official degrees. It's for learning only; for a real degree you need to enroll in an accredited university.',
+    academy_disclaimer: "AI-built, self-paced accelerated study track — <strong>not an accredited program</strong> and does not grant credits, certificates, or official degrees. It's for learning only; for a real degree you need to enroll in an accredited university.",
     academy_picker_title: "What do you want to study?",
     academy_picker_subtitle: "Pick a career track and a depth level — you set the pace.",
     academy_level_associate: "Technical (Associate-equivalent) — fastest",
