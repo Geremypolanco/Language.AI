@@ -1,75 +1,24 @@
-// Lingua frontend — vanilla JS, no build step (mirrors the rest of this repo's
-// static-HTML deployment style, but as a fully independent app).
+// Language.AI - Integrated app logic (mobile-first, fully connected)
+// All functions work together as one cohesive system
 
-// Every innerHTML template literal that interpolates AI-generated or
-// server-sourced free text (course content, recommendations, practice
-// scenarios, ...) must escape it first — a model glitch or a successful
-// prompt-injection attempt outputting raw HTML must never execute in the
-// page. textContent assignments elsewhere are already safe by construction;
-// this is only needed where a string is interpolated into an HTML string.
+// ========== SECURITY & UTILITIES ==========
+
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (ch) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
   ));
 }
 
-// ---------- AI content feedback (thumbs up/down + report) ----------
-// Attachable to any piece of AI-generated content the learner is reading —
-// the direct, user-facing half of guarding against hallucinations: the
-// model output can't be perfectly self-validated, so give the reader a
-// one-click way to flag it when something reads wrong.
-
-function renderFeedbackWidget(contentType, contentId) {
-  const el = document.createElement("div");
-  el.className = "ai-feedback-widget";
-  el.innerHTML = `
-    <span class="ai-feedback-label">¿Te sirvió este contenido?</span>
-    <button type="button" class="ai-feedback-btn" data-rating="up" title="Útil">${iconSvg("thumb-up")}</button>
-    <button type="button" class="ai-feedback-btn" data-rating="down" title="No es útil">${iconSvg("thumb-down")}</button>
-    <button type="button" class="ai-feedback-btn ai-feedback-report" data-rating="report" title="Reportar un error">${iconSvg("flag")} Reportar</button>
-    <span class="ai-feedback-thanks hidden">¡Gracias por tu opinión!</span>
-  `;
-  el.querySelectorAll(".ai-feedback-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const rating = btn.dataset.rating;
-      let note = "";
-      if (rating === "report") {
-        note = prompt("¿Qué salió mal? (opcional)") || "";
-      }
-      el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = true));
-      try {
-        await api("/api/feedback", {
-          method: "POST",
-          body: JSON.stringify({ content_type: contentType, content_id: contentId, rating, note }),
-        });
-        el.querySelector(".ai-feedback-thanks").classList.remove("hidden");
-      } catch (err) {
-        el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = false));
-        showToast(err.message);
-      }
-    });
-  });
-  return el;
-}
-
-// Custom SVG icons (defined in index.html's sprite) instead of emoji — emoji
-// render inconsistently across OS/browser and read as an unfinished shortcut
-// rather than a designed product.
 function iconSvg(name, extraClass = "") {
   const cls = `icon ${extraClass}`.trim();
   return `<svg class="${cls}"><use href="#icon-${name}"/></svg>`;
 }
 
-// Any language the tutor chat model knows works for exercises/conversation —
-// this list is what's offered in the picker, not a hard backend restriction.
-// Keep in sync with backend/hf_client.py's _MMS_LANG_CODES for TTS voice
-// coverage (a language missing from that map still teaches fully via text/
-// chat, it just falls back to an English voice for audio).
-//
-// Labels are "language's own name for itself / Spanish name" — a picker
-// showing every language only in Spanish is unreadable to anyone who
-// doesn't already know Spanish, including someone choosing Spanish itself
-// isn't a problem, but choosing e.g. "Alemán" when you only read German is.
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+// ========== LANGUAGE SUPPORT ==========
+
 const LANGS = [
   ["en", "English / Inglés"], ["es", "Español / Spanish"], ["fr", "Français / Francés"], ["de", "Deutsch / Alemán"],
   ["it", "Italiano"], ["pt", "Português / Portugués"], ["ja", "日本語 / Japonés"], ["ko", "한국어 / Coreano"],
@@ -92,9 +41,6 @@ const LANGS = [
   ["ka", "ქართული / Georgiano"], ["hy", "Հայերեն / Armenio"], ["sq", "Shqip / Albanés"], ["mk", "Македонски / Macedonio"],
 ];
 
-// Curriculum topic names (backend/curriculum.py _TOPICS_BY_LEVEL) are stable
-// English keys used internally and as LLM context — this maps them to the
-// Spanish label actually shown in the UI (skill path, recent lessons).
 const TOPIC_ES = {
   "Greetings & introductions": "Saludos y presentaciones",
   "Numbers & counting": "Números y conteo",
@@ -134,12 +80,12 @@ const TOPIC_ES = {
   "Free conversation: any topic, native pace": "Conversación libre: cualquier tema, ritmo nativo",
   "Open conversation practice": "Práctica de conversación abierta",
 };
+
 function topicEs(topic) {
   return TOPIC_ES[topic] || topic;
 }
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+// ========== GLOBAL STATE ==========
 
 const state = {
   userId: null,
@@ -147,9 +93,12 @@ const state = {
   ws: null,
   mediaRecorder: null,
   audioChunks: [],
-  lesson: null, // { exercises, index, correctCount, unitId, startedAt }
+  lesson: null,
   lessonTimerHandle: null,
+  uiLang: "es",
 };
+
+// ========== API COMMUNICATION ==========
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -163,27 +112,19 @@ async function api(path, opts = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// ========== SCREEN NAVIGATION ==========
+
 function showScreen(id) {
   $$(".screen").forEach((el) => el.classList.add("hidden"));
   $(id).classList.remove("hidden");
 }
 
-// ---------- i18n: app shell adapts to the learner's native language ----------
-// A dashboard shown in a language the learner doesn't understand yet is
-// unusable, so the UI chrome (nav, onboarding, placement test, tab intros,
-// dashboard card titles) follows the account's native_lang once known, and
-// a manual toggle on the very first onboarding screen covers the moment
-// before an account exists at all.
-//
-// v1 scope: Spanish (the language every screen is already authored in — no
-// entry needed here, it's just left as the DOM's original text) and English.
-// Any other native_lang falls back to Spanish until it gets its own
-// translation — a deliberate, communicated first pass, not full coverage of
-// every screen (deeper lesson/reader micro-copy is still Spanish-only).
+// ========== INTERNATIONALIZATION (i18n) ==========
+
 const I18N = {
   es: {
-    coach_welcome: "¡Bienvenido a Lingua! Ve a Camino y elige tu primera lección, o toca Practicar si quieres entrenar una destreza específica primero. Si también quieres estudiar una carrera universitaria (en tu propio idioma, mientras aprendes el nuevo) toca Universidad arriba y elige qué te interesa.",
-    coach_due_reviews: (n) => `Tienes ${n} palabra${n === 1 ? "" : "s"} para repasar. Sigue en Camino para reforzarlas antes de avanzar.`,
+    coach_welcome: "¡Bienvenido a Lingua! Ve a Camino y elige tu primera lección, o toca Practicar si quieres entrenar una destreza específica primero.",
+    coach_due_reviews: (n) => `Tienes ${n} palabra${n === 1 ? "" : "s"} para repasar.`,
     coach_streak: (n, dia) => `¡Racha de ${n} ${dia}! ¿Lista o listo para tu próxima lección?`,
     coach_welcome_back: "¡Bienvenido de nuevo! ¿Seguimos aprendiendo?",
     placement_question_progress: (n, total) => `Pregunta ${n} de ${total}`,
@@ -218,7 +159,7 @@ const I18N = {
     library_title: "Library of 500+ books",
     library_subtitle: "AI-written stories in the language you're learning — each one is generated the first time you open it.",
     filter_all_levels: "All levels",
-    academy_disclaimer: 'AI-built, self-paced accelerated study track — <strong>not an accredited program</strong> and does not grant credits, certificates, or official degrees. It’s for learning only; for a real degree you need to enroll in an accredited university.',
+    academy_disclaimer: 'AI-built, self-paced accelerated study track — <strong>not an accredited program</strong> and does not grant credits, certificates, or official degrees. It's for learning only; for a real degree you need to enroll in an accredited university.',
     academy_picker_title: "What do you want to study?",
     academy_picker_subtitle: "Pick a career track and a depth level — you set the pace.",
     academy_level_associate: "Technical (Associate-equivalent) — fastest",
@@ -243,8 +184,8 @@ const I18N = {
     dash_activity_title: "Last 14 days",
     dash_mastery_title: "Mastery by level",
     dash_recent_title: "Recent lessons",
-    coach_welcome: "Welcome to Lingua! Go to Path and pick your first lesson, or tap Practice if you'd rather train a specific skill first. If you also want to study a university-style career track (in your own language, while you learn the new one) tap University above and pick what interests you.",
-    coach_due_reviews: (n) => `You have ${n} word${n === 1 ? "" : "s"} to review. Keep going in Path to reinforce them before moving on.`,
+    coach_welcome: "Welcome to Lingua! Go to Path and pick your first lesson, or tap Practice if you'd rather train a specific skill first.",
+    coach_due_reviews: (n) => `You have ${n} word${n === 1 ? "" : "s"} to review.`,
     coach_streak: (n) => `${n}-day streak! Ready for your next lesson?`,
     coach_welcome_back: "Welcome back! Shall we keep learning?",
     placement_question_progress: (n, total) => `Question ${n} of ${total}`,
@@ -257,9 +198,6 @@ function currentUiLang() {
   return state.uiLang || "es";
 }
 
-// Returns undefined (not a placeholder string) when nothing is translated
-// for this key/lang — callers must leave the DOM's original Spanish text
-// alone in that case rather than overwrite it with a raw key name.
 function t(key, ...args) {
   const lang = currentUiLang();
   let entry = I18N[lang] && I18N[lang][key];
@@ -268,13 +206,6 @@ function t(key, ...args) {
   return entry;
 }
 
-// Captures each element's originally-authored Spanish content exactly once,
-// before any translation is ever applied to it. Without this, "no ${lang}
-// translation for this key, so don't touch the element" only actually means
-// "stays Spanish" the first time — once English (or any other language) has
-// been applied, switching back to Spanish would otherwise leave elements
-// with no explicit `es` dictionary entry stuck showing English forever,
-// since there'd be nothing left in the DOM to fall back to.
 function _captureI18nDefaults() {
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     if (el.dataset.i18nDefault === undefined) el.dataset.i18nDefault = el.textContent;
@@ -311,8 +242,6 @@ function setUiLang(lang) {
   applyI18n();
 }
 
-// Once we know the signed-in user's native_lang (a 2-letter code — see
-// populateLangSelects), that's authoritative over any earlier guess.
 function setUiLangFromNativeCode(code) {
   setUiLang(code === "en" ? "en" : "es");
 }
@@ -332,7 +261,7 @@ function initUiLang() {
   $$(".ui-lang-btn").forEach((btn) => btn.addEventListener("click", () => setUiLang(btn.dataset.uiLang)));
 }
 
-// ---------- Onboarding ----------
+// ========== ONBOARDING ==========
 
 function populateLangSelects() {
   const native = $("#ob-native");
@@ -343,9 +272,6 @@ function populateLangSelects() {
   }
   native.value = "es";
   target.value = "en";
-  // The moment someone tells us their native language, the rest of
-  // onboarding (placement test, result) should already follow it — no need
-  // to wait until the account is created and reloaded.
   native.addEventListener("change", () => setUiLangFromNativeCode(native.value));
 }
 
@@ -390,7 +316,7 @@ async function handleOnboardingSubmit(e) {
   }
 }
 
-// ---------- Adaptive placement test ----------
+// ========== PLACEMENT TEST ==========
 
 const PLACEMENT_TOTAL = 6;
 const placement = { history: [], current: null };
@@ -424,11 +350,6 @@ async function fetchNextPlacementQuestion() {
 }
 
 function renderPlacementQuestion(ex, level, container) {
-  // Placement always requests multiple_choice questions (see placement.py),
-  // so this only needs the instruction/prompt, an optional native-language
-  // hint, and the answer options — it must NOT also show ex.target_text on
-  // its own, since for most exercise shapes that field IS the correct
-  // answer and would just give it away before the learner picks.
   container.innerHTML = "";
 
   const prompt = document.createElement("div");
@@ -476,7 +397,7 @@ $("#ob-skip-fluent").addEventListener("click", () => {
   createProfileAndEnter("NATIVE").catch((err) => alert("No se pudo crear el perfil: " + err.message));
 });
 
-// ---------- Sign-in (Google) ----------
+// ========== AUTHENTICATION ==========
 
 async function checkSession() {
   const session = await api("/api/session");
@@ -519,7 +440,7 @@ async function signOut() {
   location.href = "/";
 }
 
-// ---------- Main app shell ----------
+// ========== MAIN APP ENTRY ==========
 
 async function enterApp() {
   state.user = await api(`/api/users/${state.userId}`);
@@ -534,10 +455,10 @@ function coachGreetingFor(progress) {
     return t("coach_welcome");
   }
   if (progress.due_reviews > 0) {
-    return t("coach_due_reviews", progress.due_reviews, diaWord(progress.due_reviews));
+    return t("coach_due_reviews", progress.due_reviews);
   }
   if (progress.streak_days > 0) {
-    return t("coach_streak", progress.streak_days, diaWord(progress.streak_days));
+    return t("coach_streak", progress.streak_days);
   }
   return t("coach_welcome_back");
 }
@@ -566,7 +487,38 @@ async function loadProgress() {
   return progress;
 }
 
-// ---------- Dashboard (Progress tab) ----------
+// ========== BOTTOM NAVIGATION (MOBILE-FIRST) ==========
+
+function setupTabs() {
+  // Bottom navigation buttons - core navigation system
+  $$(".bottom-nav-btn[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      // Update active button state
+      $$(".bottom-nav-btn[data-tab]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      
+      // Hide all tab panels and show the selected one
+      $$(".tab-panel").forEach((p) => p.classList.add("hidden"));
+      const tabId = `tab-${btn.dataset.tab}`;
+      const tabPanel = $(`#${tabId}`);
+      if (tabPanel) {
+        tabPanel.classList.remove("hidden");
+        // Smooth scroll to top
+        setTimeout(() => window.scrollTo(0, 0), 0);
+      }
+      
+      // Lazy-load tab-specific content on demand
+      const tab = btn.dataset.tab;
+      if (tab === "practice") setupPractice();
+      else if (tab === "library") setupLibrary();
+      else if (tab === "academy") setupAcademy();
+      else if (tab === "talk") ensureConversationSocket();
+      else if (tab === "progress") loadDashboard();
+    });
+  });
+}
+
+// ========== DASHBOARD & PROGRESS ==========
 
 function animateCountUp(el, target) {
   const duration = 500;
@@ -826,9 +778,6 @@ function renderRecentLessons(data) {
 
 async function loadDashboard() {
   const data = await api(`/api/progress/${state.userId}/dashboard`);
-  // Each section renders independently — a failure in one (e.g. the charts'
-  // CDN script blocked by a network/ad-blocker) must not blank out the rest
-  // of the dashboard.
   const sections = [
     refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
     renderLevelMeter, renderDailyGoal, setupDailyGoalEditor, renderDueCard,
@@ -981,7 +930,7 @@ async function loadPath() {
   }
 }
 
-// ---------- Practice mode (modality-focused, no fixed order) ----------
+// ========== PRACTICE MODE ==========
 
 const PRACTICE_MODALITIES = [
   { type: "translate_to_target", label: "Traducción", icon: "translate", desc: "Traduce frases a tu idioma meta" },
@@ -997,7 +946,6 @@ const PRACTICE_MODALITIES = [
 function setupPractice() {
   const levelSelect = $("#practice-level-select");
   if (state.user) levelSelect.value = state.user.level;
-
   const grid = $("#practice-grid");
   if (grid.dataset.built) return;
   grid.dataset.built = "1";
@@ -1029,7 +977,7 @@ async function startPractice(exerciseType) {
   }
 }
 
-// ---------- Library (500+ AI-generated books, on demand) ----------
+// ========== LIBRARY ==========
 
 const _libraryState = { offset: 0, genresLoaded: false };
 
@@ -1109,7 +1057,42 @@ async function openBook(bookId) {
 
 $("#reader-exit").addEventListener("click", () => showScreen("#screen-main"));
 
-// ---------- Recommendations (books, songs, and other media) ----------
+// ========== FEEDBACK WIDGET ==========
+
+function renderFeedbackWidget(contentType, contentId) {
+  const el = document.createElement("div");
+  el.className = "ai-feedback-widget";
+  el.innerHTML = `
+    <span class="ai-feedback-label">¿Te sirvió este contenido?</span>
+    <button type="button" class="ai-feedback-btn" data-rating="up" title="Útil">${iconSvg("thumb-up")}</button>
+    <button type="button" class="ai-feedback-btn" data-rating="down" title="No es útil">${iconSvg("thumb-down")}</button>
+    <button type="button" class="ai-feedback-btn ai-feedback-report" data-rating="report" title="Reportar un error">${iconSvg("flag")} Reportar</button>
+    <span class="ai-feedback-thanks hidden">¡Gracias por tu opinión!</span>
+  `;
+  el.querySelectorAll(".ai-feedback-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rating = btn.dataset.rating;
+      let note = "";
+      if (rating === "report") {
+        note = prompt("¿Qué salió mal? (opcional)") || "";
+      }
+      el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = true));
+      try {
+        await api("/api/feedback", {
+          method: "POST",
+          body: JSON.stringify({ content_type: contentType, content_id: contentId, rating, note }),
+        });
+        el.querySelector(".ai-feedback-thanks").classList.remove("hidden");
+      } catch (err) {
+        el.querySelectorAll(".ai-feedback-btn").forEach((b) => (b.disabled = false));
+        showToast(err.message);
+      }
+    });
+  });
+  return el;
+}
+
+// ========== RECOMMENDATIONS ==========
 
 async function fetchRecommendations() {
   const list = $("#recommendations-list");
@@ -1158,7 +1141,7 @@ function setupRecommendations() {
   }
 }
 
-// ---------- University-prep academy (self-paced, explicitly non-accredited) ----------
+// ========== ACADEMY ==========
 
 const ACADEMY_LEVEL_LABELS = {
   ASSOCIATE: "Técnico (equivalente a Asociado)",
@@ -1166,9 +1149,6 @@ const ACADEMY_LEVEL_LABELS = {
   MASTER: "Avanzado (equivalente a Maestría)",
 };
 
-// Each of the 31 fields has a named tutor; visual identity comes from a
-// per-category color pair + the field's own icon, rather than 31 bespoke
-// illustrations — a sustainable way to give every subject a distinct face.
 const ACADEMY_CATEGORY_COLORS = {
   "Tecnología": ["#2dd4bf", "#0f766e"],
   "Negocios": ["#ffc800", "#b45309"],
@@ -1179,11 +1159,6 @@ const ACADEMY_CATEGORY_COLORS = {
   "Artes": ["#f472b6", "#a21caf"],
 };
 
-// Real illustrated bust avatars per tutor — not just an icon in a colored
-// circle. Skin tone, hair style, and hair color are derived deterministically
-// from the tutor's name (same tutor always looks the same); the shirt and
-// graduation-cap ribbon use the field's category color, tying every tutor
-// back to the same visual family as the main coach mascot.
 const _TUTOR_SKIN_TONES = ["#ffdbac", "#f1c27d", "#e0ac69", "#c68642", "#8d5524", "#6b4226"];
 const _TUTOR_HAIR_COLORS = ["#1c1410", "#3b2a1a", "#5c3a21", "#8a4b28", "#2b2b2b", "#8a6d3b", "#6b4226"];
 
@@ -1191,28 +1166,6 @@ function _hashString(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h);
-}
-
-function _tutorHairPath(style, hairColor) {
-  if (style === 0) {
-    // short, neat
-    return `<path d="M18 40 Q26 12 50 12 Q74 12 82 40 L82 26 Q72 18 50 18 Q28 18 18 26 Z" fill="${hairColor}"/>`;
-  }
-  if (style === 1) {
-    // long, past the shoulders
-    return `<path d="M14 62 Q10 16 50 12 Q90 16 86 62 L86 40 Q80 20 50 16 Q20 20 14 40 Z" fill="${hairColor}"/>`;
-  }
-  if (style === 2) {
-    // curly
-    return `
-      <circle cx="24" cy="28" r="10" fill="${hairColor}"/>
-      <circle cx="38" cy="15" r="11" fill="${hairColor}"/>
-      <circle cx="52" cy="11" r="11" fill="${hairColor}"/>
-      <circle cx="66" cy="15" r="11" fill="${hairColor}"/>
-      <circle cx="78" cy="28" r="10" fill="${hairColor}"/>
-    `;
-  }
-  return ""; // style 3: no hair drawn, cap sits directly on the head
 }
 
 const TUTOR_AVATAR_MAPPING = {
@@ -1557,25 +1510,7 @@ async function generateCourseVideo() {
   }
 }
 
-// ---------- Tabs ----------
-
-function setupTabs() {
-  $$(".tab-btn[data-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$(".tab-btn[data-tab]").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      $$(".tab-panel").forEach((p) => p.classList.add("hidden"));
-      $(`#tab-${btn.dataset.tab}`).classList.remove("hidden");
-      if (btn.dataset.tab === "practice") setupPractice();
-      if (btn.dataset.tab === "library") setupLibrary();
-      if (btn.dataset.tab === "academy") setupAcademy();
-      if (btn.dataset.tab === "talk") ensureConversationSocket();
-      if (btn.dataset.tab === "progress") loadDashboard();
-    });
-  });
-}
-
-// ---------- Lesson flow ----------
+// ========== LESSON FLOW ==========
 
 function startLessonTimer() {
   stopLessonTimer();
@@ -1973,7 +1908,7 @@ $("#complete-continue").addEventListener("click", async () => {
   await Promise.all([loadPath(), loadProgress()]);
 });
 
-// ---------- Conversation ("Talk Live") ----------
+// ========== TALK LIVE (VOICE CONVERSATION) ==========
 
 function ensureConversationSocket() {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
@@ -1985,25 +1920,30 @@ function ensureConversationSocket() {
     const msg = JSON.parse(event.data);
     if (msg.type === "ready") {
       $("#call-status").textContent = msg.message;
+      updateTutorStatus(true);
     } else if (msg.type === "transcript") {
       addTranscriptBubble("user", msg.text);
     } else if (msg.type === "reply") {
-      // Text arrives on its own, ahead of any audio — the reply's audio is
-      // streamed separately, one sentence at a time, as "reply_audio_chunk"
-      // messages (see backend/routers/conversation.py). Reset the queue so
-      // a fast new turn doesn't play behind whatever the previous turn
-      // hadn't finished yet.
       resetConversationAudioQueue();
       addTranscriptBubble("assistant", msg.text);
     } else if (msg.type === "reply_audio_chunk") {
       enqueueConversationAudio(msg.audio_base64, msg.audio_mime || "audio/flac");
     } else if (msg.type === "error") {
       $("#call-status").textContent = msg.message;
+      updateTutorStatus(false);
     }
   });
   ws.addEventListener("close", () => {
     $("#call-status").textContent = "Desconectado — cambia de pestaña para reconectar.";
+    updateTutorStatus(false);
   });
+}
+
+function updateTutorStatus(isActive) {
+  const dot = $("#tutor-status-dot");
+  if (dot) {
+    dot.style.background = isActive ? "#10b981" : "#999";
+  }
 }
 
 function addTranscriptBubble(role, text) {
@@ -2014,9 +1954,6 @@ function addTranscriptBubble(role, text) {
   $("#transcript").scrollTop = $("#transcript").scrollHeight;
 }
 
-// Sentence-by-sentence audio chunks arrive as soon as each one finishes
-// synthesizing server-side, faster than they play back — this queue plays
-// them back-to-back in order instead of overlapping/racing each other.
 const _conversationAudioQueue = [];
 let _conversationAudioPlaying = false;
 
@@ -2031,11 +1968,13 @@ function enqueueConversationAudio(base64, mimeType) {
 }
 
 function _playNextConversationAudio() {
-  const avatar = $("#avatar");
+  const tutorFace = $("#tutor-face-img");
+  const speakingRing = $("#tutor-speaking-ring");
   const next = _conversationAudioQueue.shift();
   if (!next) {
     _conversationAudioPlaying = false;
-    avatar.classList.remove("speaking");
+    if (tutorFace) tutorFace.classList.remove("speaking");
+    if (speakingRing) speakingRing.classList.remove("active");
     return;
   }
   _conversationAudioPlaying = true;
@@ -2044,7 +1983,8 @@ function _playNextConversationAudio() {
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
   const blob = new Blob([arr], { type: next.mimeType });
   const audio = new Audio(URL.createObjectURL(blob));
-  avatar.classList.add("speaking");
+  if (tutorFace) tutorFace.classList.add("speaking");
+  if (speakingRing) speakingRing.classList.add("active");
   audio.addEventListener("ended", _playNextConversationAudio);
   audio.play().catch(_playNextConversationAudio);
 }
@@ -2059,7 +1999,7 @@ function blobToBase64(blob) {
 
 function setupMic() {
   const micBtn = $("#mic-btn");
-  const avatar = $("#avatar");
+  const tutorFace = $("#tutor-face-img");
   let stream = null;
 
   const start = async (e) => {
@@ -2071,16 +2011,16 @@ function setupMic() {
     state.mediaRecorder.ondataavailable = (ev) => state.audioChunks.push(ev.data);
     state.mediaRecorder.start();
     micBtn.classList.add("recording");
-    micBtn.textContent = "Escuchando…";
-    avatar.classList.add("listening");
+    micBtn.innerHTML = `<span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span><span class="mic-btn-label">Escuchando…</span>`;
+    if (tutorFace) tutorFace.classList.add("listening");
   };
 
   const stop = async () => {
     if (!state.mediaRecorder || state.mediaRecorder.state === "inactive") return;
     state.mediaRecorder.stop();
     micBtn.classList.remove("recording");
-    micBtn.innerHTML = `${iconSvg("mic")} Mantén presionado para hablar`;
-    avatar.classList.remove("listening");
+    micBtn.innerHTML = `<span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span><span class="mic-btn-label" data-i18n="talk_mic_btn">Mantén presionado para hablar</span>`;
+    if (tutorFace) tutorFace.classList.remove("listening");
     await new Promise((resolve) => (state.mediaRecorder.onstop = resolve));
     stream.getTracks().forEach((t) => t.stop());
     const blob = new Blob(state.audioChunks, { type: state.mediaRecorder.mimeType || "audio/webm" });
@@ -2111,20 +2051,7 @@ function setupMic() {
 
 $("#switch-user-btn").addEventListener("click", signOut);
 
-// ---------- Cookie consent (GDPR/CCPA) ----------
-// Zero-cookie-load by default: nothing but the essential session cookie
-// (already HttpOnly/Secure/SameSite=Lax, set server-side in routers/auth.py)
-// is ever set until the learner explicitly chooses. This app doesn't load
-// any analytics or marketing scripts today, so there's nothing for
-// loadScriptIfConsented() to actually gate yet — it exists so the day a
-// script is added, it plugs into this consent state instead of loading
-// unconditionally. The preference itself is recorded in a plain (non-
-// HttpOnly) cookie: HttpOnly cookies can only ever be set via a Set-Cookie
-// response header and can never be read by client JS by design (that's the
-// whole point of HttpOnly, protecting the session cookie from XSS) — a
-// banner that needs to read the learner's own choice to decide whether to
-// load a script structurally cannot use one. Secure + SameSite=Strict are
-// both compatible with a non-HttpOnly cookie and are used here.
+// ========== COOKIE CONSENT ==========
 
 const CONSENT_COOKIE = "lingua_consent";
 
@@ -2144,11 +2071,6 @@ function setConsent(prefs) {
   document.cookie = `${CONSENT_COOKIE}=${value}; path=/; max-age=31536000; SameSite=Strict${secureFlag}`;
 }
 
-// Ready for the first real analytics/marketing script: only runs `onload`
-// (which should append the <script> tag) if the learner opted into
-// `category` ("analytics" | "marketing"). Currently unused — nothing in
-// this app needs it yet, but new scripts must be wired through this, not
-// loaded unconditionally in index.html.
 function loadScriptIfConsented(category, onload) {
   const consent = getConsent();
   if (consent && consent[category]) onload();
@@ -2156,7 +2078,7 @@ function loadScriptIfConsented(category, onload) {
 
 function setupCookieConsent() {
   const banner = $("#cookie-consent-banner");
-  if (getConsent()) return; // already decided, zero re-prompt
+  if (getConsent()) return;
 
   banner.classList.remove("hidden");
 
@@ -2178,7 +2100,7 @@ function setupCookieConsent() {
   });
 }
 
-// ---------- Boot ----------
+// ========== BOOT ==========
 
 async function boot() {
   initUiLang();

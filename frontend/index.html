@@ -2,7 +2,11 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#10b981" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Lingua" />
 <title>Lingua — Aprende un idioma, habla como un nativo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -111,6 +115,27 @@
         <path d="M5 3v18" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
         <path d="M5 4h13l-3 4 3 4H5Z" fill="currentColor"/>
       </symbol>
+      <!-- Bottom nav icons -->
+      <symbol id="icon-home" viewBox="0 0 24 24">
+        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5Z" fill="currentColor" opacity="0.9"/>
+        <path d="M9 21V12h6v9" stroke="rgba(255,255,255,0.7)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-practice" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15"/>
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+        <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="icon-university" viewBox="0 0 24 24">
+        <path d="M12 3L2 8l10 5 10-5-10-5Z" fill="currentColor"/>
+        <path d="M6 10.5v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M20 8v5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-phone" viewBox="0 0 24 24">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6.06 6.06l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z" fill="currentColor"/>
+      </symbol>
+      <symbol id="icon-chart" viewBox="0 0 24 24">
+        <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
     </defs>
   </svg>
 
@@ -142,15 +167,26 @@
   <div id="app">
 
     <!-- Sign in -->
-    <section id="screen-login" class="screen">
-      <div class="card onboarding-card">
-        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
+    <section id="screen-login" class="screen screen-login-full">
+      <div class="login-hero">
+        <img src="/onboarding_globe.png" class="login-hero-img" alt="Lingua globe" />
+        <div class="login-hero-overlay"></div>
+        <div class="login-hero-content">
+          <div class="login-logo-row">
+            <img src="/lingua_logo.png" class="login-logo-icon" alt="Lingua logo" />
+            <span class="login-logo-text">Lingua</span>
+          </div>
+          <h1 class="login-tagline">Habla como<br/>un nativo</h1>
+          <p class="login-sub">Aprende cualquier idioma con tu tutor de IA personal — con voz, conversación real y lecciones adaptadas a ti.</p>
+        </div>
+      </div>
+      <div class="login-card">
         <div class="coach-intro">
-          <img src="/team/mascot_3d.png" class="grad-avatar coach-avatar-sm" alt="Mascot">
-          <p class="coach-message">¡Hola! Soy tu tutor. Inicia sesión con Google (o con el acceso de prueba abajo) para armar tu primera lección.</p>
+          <img src="/team/mascot_3d.png" class="coach-avatar-sm" alt="Mascot">
+          <p class="coach-message">¡Hola! Soy tu tutor. Inicia sesión para armar tu primera lección personalizada.</p>
         </div>
         <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
-          <span class="g-icon">G</span> Iniciar sesión con Google
+          <span class="g-icon">G</span> Continuar con Google
         </a>
         <p id="auth-error" class="auth-error hidden"></p>
         <div id="dev-login-block" class="dev-login hidden">
@@ -166,13 +202,16 @@
     <!-- Onboarding -->
     <section id="screen-onboarding" class="screen hidden">
       <div class="card onboarding-card" id="onboarding-step-profile">
-        <h1><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</h1>
+        <div class="onboarding-logo-row">
+          <img src="/lingua_logo.png" class="onboarding-logo-icon" alt="Lingua" />
+          <span class="onboarding-logo-text">Lingua</span>
+        </div>
         <div class="ui-lang-toggle" id="ui-lang-toggle" role="group" aria-label="App language / Idioma de la app">
           <button type="button" class="ui-lang-btn" data-ui-lang="es">Español</button>
           <button type="button" class="ui-lang-btn" data-ui-lang="en">English</button>
         </div>
         <div class="coach-intro">
-          <img src="/team/mascot_3d.png" class="grad-avatar coach-avatar-sm" alt="Mascot">
+          <img src="/team/mascot_3d.png" class="coach-avatar-sm" alt="Mascot">
           <p class="coach-message" data-i18n="ob_coach_intro">Paso 1 de 2: cuéntame de ti para preparar tus primeras lecciones. Al final te haré unas preguntas rápidas para ubicar tu nivel — o puedes saltarla si ya eres avanzado.</p>
         </div>
         <form id="onboarding-form">
@@ -185,10 +224,10 @@
           <label><span data-i18n="ob_label_target">Quiero aprender</span>
             <select id="ob-target"></select>
           </label>
-          <label><span data-i18n="ob_label_interests">Intereses (separados por comas, personaliza tus lecciones)</span>
+          <label><span data-i18n="ob_label_interests">Intereses (separados por comas)</span>
             <input type="text" id="ob-interests" placeholder="fútbol, cocina, películas" />
           </label>
-          <label><span data-i18n="ob_label_goal">¿Cuánto tiempo quieres dedicarle al día?</span> <span class="subtitle" data-i18n="ob_label_goal_hint">(solo una guía personal, nunca un límite)</span>
+          <label><span data-i18n="ob_label_goal">¿Cuánto tiempo al día?</span>
             <select id="ob-daily-goal">
               <option value="5">5 minutos</option>
               <option value="10">10 minutos</option>
@@ -200,7 +239,7 @@
           </label>
           <button type="submit" class="btn btn-primary" data-i18n="ob_submit">Encontrar mi nivel</button>
         </form>
-        <button type="button" id="ob-skip-fluent" class="btn-link" data-i18n="ob_skip">Ya tengo un nivel avanzado — omitir la prueba de nivel</button>
+        <button type="button" id="ob-skip-fluent" class="btn-link" data-i18n="ob_skip">Ya tengo un nivel avanzado — omitir la prueba</button>
       </div>
 
       <div class="card onboarding-card hidden" id="onboarding-step-placement">
@@ -209,67 +248,47 @@
           <span class="placement-progress" id="placement-progress">Pregunta 1 de 6</span>
         </div>
         <div class="lesson-progress placement-bar"><div id="placement-progress-bar"></div></div>
-        <p class="subtitle" data-i18n="placement_subtitle">Responde lo mejor que puedas — las preguntas se ajustan a ti a medida que avanzas, como una prueba de nivel real.</p>
+        <p class="subtitle" data-i18n="placement_subtitle">Responde lo mejor que puedas — las preguntas se ajustan a ti.</p>
         <div id="placement-exercise" class="placement-exercise"></div>
       </div>
 
       <div class="card onboarding-card hidden" id="onboarding-step-result">
         <div class="complete-mascot" id="placement-result-mascot">
-          <svg class="grad-avatar" viewBox="0 0 120 120" aria-hidden="true">
-            <defs>
-              <radialGradient id="gradAvatarGrad1" cx="35%" cy="28%" r="80%">
-                <stop offset="0%" stop-color="#34e8c6"/>
-                <stop offset="100%" stop-color="#0a875f"/>
-              </radialGradient>
-            </defs>
-            <ellipse cx="60" cy="74" rx="38" ry="34" fill="url(#gradAvatarGrad1)"/>
-            <ellipse cx="60" cy="81" rx="21" ry="23" fill="#eafff8"/>
-            <ellipse cx="32" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-            <ellipse cx="88" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-            <ellipse cx="20" cy="82" rx="8" ry="11" fill="#0a875f"/>
-            <ellipse cx="100" cy="82" rx="8" ry="11" fill="#0a875f"/>
-            <circle cx="44" cy="60" r="16.5" fill="#fff"/>
-            <circle cx="76" cy="60" r="16.5" fill="#fff"/>
-            <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-            <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-            <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c"/>
-            <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c"/>
-            <circle cx="48.7" cy="58.2" r="2.2" fill="#fff"/>
-            <circle cx="80.7" cy="58.2" r="2.2" fill="#fff"/>
-            <path d="M50 78 Q60 84 70 78" stroke="#0a875f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-            <path d="M30 32 L60 19 L90 32 L60 45 Z" fill="#20303a"/>
-            <ellipse cx="60" cy="36" rx="15" ry="5" fill="#16232b"/>
-            <circle cx="60" cy="32" r="3" fill="#ffc800"/>
-            <path d="M60 32 Q79 37 83 49" stroke="#ffc800" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-            <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
-          </svg>
+          <img src="/team/mascot_3d.png" class="grad-avatar" alt="Mascot">
         </div>
         <h2><span data-i18n="placement_result_level_prefix">¡Estás en el nivel</span> <span id="placement-result-level">A2</span>!</h2>
         <p class="subtitle" id="placement-result-note" data-i18n="placement_result_note">Empezarás tu camino ahí — se sigue ajustando mientras avanzas.</p>
-        <p class="subtitle" data-i18n-html="placement_result_academy_tip">Dato: también puedes estudiar una carrera universitaria — en tu propio idioma — desde la pestaña <strong>Universidad</strong>, cuando quieras.</p>
+        <p class="subtitle" data-i18n-html="placement_result_academy_tip">Dato: también puedes estudiar una carrera universitaria desde la pestaña <strong>Universidad</strong>.</p>
         <button type="button" id="placement-continue" class="btn btn-primary" data-i18n="placement_continue_btn">Empezar a aprender</button>
       </div>
     </section>
 
     <!-- Main app -->
     <section id="screen-main" class="screen hidden">
+      <!-- Top bar (compact, mobile-first) -->
       <header class="topbar">
-        <div class="brand"><svg class="icon icon-brand"><use href="#icon-brand"/></svg> Lingua</div>
-        <div class="stats">
-          <span title="Racha"><svg class="icon" style="color: var(--orange)"><use href="#icon-flame"/></svg> <b id="stat-streak">0</b></span>
-          <span title="Gemas"><svg class="icon" style="color: var(--blue)"><use href="#icon-gem"/></svg> <b id="stat-gems">0</b></span>
-          <span title="XP"><svg class="icon" style="color: var(--gold-dark)"><use href="#icon-star"/></svg> <b id="stat-xp">0</b></span>
-          <span title="Nivel" id="stat-level">A1</span>
+        <div class="brand">
+          <img src="/lingua_logo.png" class="brand-logo-img" alt="Lingua" />
+          <span class="brand-name">Lingua</span>
         </div>
-        <nav class="tabs">
-          <button class="tab-btn active" data-tab="path" data-i18n="nav_path">Camino</button>
-          <button class="tab-btn" data-tab="practice" data-i18n="nav_practice">Practicar</button>
-          <button class="tab-btn" data-tab="library" data-i18n="nav_library">Biblioteca</button>
-          <button class="tab-btn" data-tab="academy" data-i18n="nav_academy">Universidad</button>
-          <button class="tab-btn" data-tab="talk" data-i18n="nav_talk">Hablar en vivo</button>
-          <button class="tab-btn" data-tab="progress" data-i18n="nav_progress">Progreso</button>
-          <button class="tab-btn" id="switch-user-btn" title="Cerrar sesión"><svg class="icon"><use href="#icon-power"/></svg></button>
-        </nav>
+        <div class="stats">
+          <span class="stat-chip stat-chip-flame" title="Racha">
+            <svg class="icon"><use href="#icon-flame"/></svg>
+            <b id="stat-streak">0</b>
+          </span>
+          <span class="stat-chip stat-chip-gem" title="Gemas">
+            <svg class="icon"><use href="#icon-gem"/></svg>
+            <b id="stat-gems">0</b>
+          </span>
+          <span class="stat-chip stat-chip-xp" title="XP">
+            <svg class="icon"><use href="#icon-star"/></svg>
+            <b id="stat-xp">0</b>
+          </span>
+          <span class="stat-chip stat-chip-level" id="stat-level">A1</span>
+        </div>
+        <button id="switch-user-btn" class="topbar-logout" title="Cerrar sesión">
+          <svg class="icon"><use href="#icon-power"/></svg>
+        </button>
       </header>
 
       <main>
@@ -280,9 +299,9 @@
         <div id="tab-practice" class="tab-panel hidden">
           <div class="practice-intro">
             <h2 data-i18n="practice_title">¿Qué quieres dominar hoy?</h2>
-            <p class="subtitle" data-i18n="practice_subtitle">Elige una destreza y practica todo el tiempo que quieras — sin límites ni orden fijo.</p>
+            <p class="subtitle" data-i18n="practice_subtitle">Elige una destreza y practica sin límites.</p>
             <label class="practice-level-label">
-              <span data-i18n="practice_level_label">Nivel de práctica</span>
+              <span data-i18n="practice_level_label">Nivel</span>
               <select id="practice-level-select">
                 <option value="A1">A1</option>
                 <option value="A2">A2</option>
@@ -300,7 +319,7 @@
         <div id="tab-library" class="tab-panel hidden">
           <div class="library-intro">
             <h2><svg class="icon"><use href="#icon-book"/></svg> <span data-i18n="library_title">Biblioteca de más de 500 libros</span></h2>
-            <p class="subtitle" data-i18n="library_subtitle">Historias creadas por IA en el idioma que estás aprendiendo — cada una se genera la primera vez que la abres.</p>
+            <p class="subtitle" data-i18n="library_subtitle">Historias creadas por IA en el idioma que estás aprendiendo.</p>
             <div class="library-filters">
               <select id="library-level-filter">
                 <option value="" data-i18n="filter_all_levels">Todos los niveles</option>
@@ -326,18 +345,18 @@
         <div id="tab-academy" class="tab-panel hidden">
           <div class="academy-disclaimer">
             <svg class="icon"><use href="#icon-clock"/></svg>
-            <p data-i18n-html="academy_disclaimer">Ruta de estudio acelerada y autodirigida creada por IA — <strong>no es un programa acreditado</strong> ni otorga créditos, certificados ni títulos oficiales. Es solo para aprender; para un título real necesitas inscribirte en una universidad acreditada.</p>
+            <p data-i18n-html="academy_disclaimer">Ruta de estudio acelerada creada por IA — <strong>no es un programa acreditado</strong> ni otorga créditos ni títulos oficiales.</p>
           </div>
 
           <div id="academy-picker">
             <div class="library-intro">
               <h2 data-i18n="academy_picker_title">¿Qué quieres estudiar?</h2>
-              <p class="subtitle" data-i18n="academy_picker_subtitle">Elige una carrera y un nivel de profundidad — tú decides el ritmo.</p>
+              <p class="subtitle" data-i18n="academy_picker_subtitle">Elige una carrera y un nivel — tú decides el ritmo.</p>
               <div class="library-filters">
                 <select id="academy-level-select">
-                  <option value="ASSOCIATE" data-i18n="academy_level_associate">Técnico (equivalente a Asociado) — más rápido</option>
-                  <option value="BACHELOR" data-i18n="academy_level_bachelor">Profesional (equivalente a Licenciatura)</option>
-                  <option value="MASTER" data-i18n="academy_level_master">Avanzado (equivalente a Maestría)</option>
+                  <option value="ASSOCIATE" data-i18n="academy_level_associate">Técnico (Asociado) — más rápido</option>
+                  <option value="BACHELOR" data-i18n="academy_level_bachelor">Profesional (Licenciatura)</option>
+                  <option value="MASTER" data-i18n="academy_level_master">Avanzado (Maestría)</option>
                 </select>
               </div>
             </div>
@@ -362,47 +381,44 @@
           </div>
         </div>
 
+        <!-- Talk Live — redesigned as a real video call UI -->
         <div id="tab-talk" class="tab-panel hidden">
           <div class="call-frame">
-            <div class="avatar-tile">
-              <div id="avatar" class="avatar">
-                <svg class="grad-avatar" viewBox="0 0 120 120" aria-hidden="true">
-                  <defs>
-                    <radialGradient id="gradAvatarGrad0" cx="35%" cy="28%" r="80%">
-                      <stop offset="0%" stop-color="#34e8c6"/>
-                      <stop offset="100%" stop-color="#0a875f"/>
-                    </radialGradient>
-                  </defs>
-                  <ellipse cx="60" cy="74" rx="38" ry="34" fill="url(#gradAvatarGrad0)"/>
-                  <ellipse cx="60" cy="81" rx="21" ry="23" fill="#eafff8"/>
-                  <ellipse cx="32" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-                  <ellipse cx="88" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-                  <ellipse cx="20" cy="82" rx="8" ry="11" fill="#0a875f"/>
-                  <ellipse cx="100" cy="82" rx="8" ry="11" fill="#0a875f"/>
-                  <circle cx="44" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="76" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c"/>
-                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c"/>
-                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <path d="M50 78 Q60 84 70 78" stroke="#0a875f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-                  <path d="M30 32 L60 19 L90 32 L60 45 Z" fill="#20303a"/>
-                  <ellipse cx="60" cy="36" rx="15" ry="5" fill="#16232b"/>
-                  <circle cx="60" cy="32" r="3" fill="#ffc800"/>
-                  <path d="M60 32 Q79 37 83 49" stroke="#ffc800" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-                  <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
-                </svg>
+            <!-- Tutor video/avatar area -->
+            <div class="avatar-tile" id="avatar-tile">
+              <div class="tutor-video-bg">
+                <img src="/tutor_avatar_main.png" class="tutor-real-face" id="tutor-face-img" alt="Tutor" />
+                <div class="tutor-speaking-ring" id="tutor-speaking-ring"></div>
+              </div>
+              <div class="tutor-info-overlay">
+                <div class="tutor-name-badge">
+                  <span class="tutor-status-dot" id="tutor-status-dot"></span>
+                  <span class="tutor-name-text">Sofia — Tutora de Lingua</span>
+                </div>
               </div>
               <div id="call-status" class="call-status" data-i18n="talk_connecting">Conectando…</div>
+              <!-- User self-view (small pip) -->
+              <div class="self-view-pip" id="self-view-pip">
+                <div class="self-view-inner">
+                  <svg class="icon self-view-icon"><use href="#icon-mic"/></svg>
+                </div>
+              </div>
             </div>
-            <div id="transcript" class="transcript"></div>
+
+            <!-- Transcript bubbles -->
+            <div id="transcript" class="transcript" aria-live="polite" aria-label="Conversación"></div>
+
+            <!-- Controls -->
             <div class="call-controls">
-              <button id="mic-btn" class="mic-btn"><svg class="icon"><use href="#icon-mic"/></svg> <span data-i18n="talk_mic_btn">Mantén presionado para hablar</span></button>
+              <button id="mic-btn" class="mic-btn" aria-label="Mantén presionado para hablar">
+                <span class="mic-btn-icon"><svg class="icon"><use href="#icon-mic"/></svg></span>
+                <span class="mic-btn-label" data-i18n="talk_mic_btn">Mantén presionado para hablar</span>
+              </button>
               <form id="text-fallback-form" class="text-fallback">
-                <input type="text" id="text-fallback-input" placeholder="…o escribe en su lugar" data-i18n-placeholder="talk_text_placeholder" />
-                <button type="submit" data-i18n="talk_send_btn">Enviar</button>
+                <input type="text" id="text-fallback-input" placeholder="…o escribe aquí" data-i18n-placeholder="talk_text_placeholder" />
+                <button type="submit" class="text-fallback-send" data-i18n="talk_send_btn">
+                  <svg class="icon"><use href="#icon-chat"/></svg>
+                </button>
               </form>
             </div>
             <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
@@ -414,34 +430,7 @@
 
             <div class="card mascot-card" id="mascot-card">
               <div class="mascot-avatar">
-                <svg class="grad-avatar" viewBox="0 0 120 120" aria-hidden="true">
-                  <defs>
-                    <radialGradient id="gradAvatarGrad3" cx="35%" cy="28%" r="80%">
-                      <stop offset="0%" stop-color="#34e8c6"/>
-                      <stop offset="100%" stop-color="#0a875f"/>
-                    </radialGradient>
-                  </defs>
-                  <ellipse cx="60" cy="74" rx="38" ry="34" fill="url(#gradAvatarGrad3)"/>
-                  <ellipse cx="60" cy="81" rx="21" ry="23" fill="#eafff8"/>
-                  <ellipse cx="32" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-                  <ellipse cx="88" cy="70" rx="6" ry="4" fill="#ff9fae" opacity="0.5"/>
-                  <ellipse cx="20" cy="82" rx="8" ry="11" fill="#0a875f"/>
-                  <ellipse cx="100" cy="82" rx="8" ry="11" fill="#0a875f"/>
-                  <circle cx="44" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="76" cy="60" r="16.5" fill="#fff"/>
-                  <circle cx="44" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-                  <circle cx="76" cy="60" r="16.5" fill="none" stroke="#0a875f" stroke-width="2"/>
-                  <circle class="mascot-pupil" cx="46" cy="61" r="7.2" fill="#26343c"/>
-                  <circle class="mascot-pupil" cx="78" cy="61" r="7.2" fill="#26343c"/>
-                  <circle cx="48.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <circle cx="80.7" cy="58.2" r="2.2" fill="#fff"/>
-                  <path d="M50 78 Q60 84 70 78" stroke="#0a875f" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-                  <path d="M30 32 L60 19 L90 32 L60 45 Z" fill="#20303a"/>
-                  <ellipse cx="60" cy="36" rx="15" ry="5" fill="#16232b"/>
-                  <circle cx="60" cy="32" r="3" fill="#ffc800"/>
-                  <path d="M60 32 Q79 37 83 49" stroke="#ffc800" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-                  <circle cx="84" cy="52" r="3.4" fill="#ffc800"/>
-                </svg>
+                <img src="/team/mascot_3d.png" class="grad-avatar" alt="Mascot">
                 <span id="mascot-badge" class="mascot-badge"></span>
               </div>
               <div class="mascot-bubble">
@@ -478,14 +467,13 @@
                 <option value="30">30 minutos</option>
                 <option value="60">60 minutos</option>
               </select>
-              <p class="subtitle">Solo una guía personal — nunca un límite. Practica todo lo que quieras.</p>
             </div>
 
             <div id="dash-due-card" class="card due-card hidden">
               <span class="due-icon"><svg class="icon"><use href="#icon-clock"/></svg></span>
               <div>
                 <div class="due-headline" id="dash-due-headline"></div>
-                <p class="subtitle">Estas palabras volverán a aparecer en tu próxima lección.</p>
+                <p class="subtitle">Estas palabras volverán en tu próxima lección.</p>
               </div>
             </div>
 
@@ -494,7 +482,7 @@
                 <h2 class="card-title"><svg class="icon"><use href="#icon-sparkle"/></svg> <span data-i18n="dash_recommended_title">Recomendado para ti</span></h2>
                 <button id="recommendations-refresh-btn" class="link-btn" type="button" data-i18n="dash_recommended_refresh">Nuevas sugerencias</button>
               </div>
-              <p class="subtitle" data-i18n="dash_recommended_subtitle">Libros, canciones y más para reforzar lo que aprendes, fuera de la app.</p>
+              <p class="subtitle" data-i18n="dash_recommended_subtitle">Libros, canciones y más para reforzar lo que aprendes.</p>
               <div id="recommendations-list" class="recommendations-list"></div>
             </div>
 
@@ -530,11 +518,36 @@
         </div>
       </main>
 
+      <!-- Bottom navigation bar (mobile-first) -->
+      <nav class="bottom-nav" role="navigation" aria-label="Navegación principal">
+        <button class="bottom-nav-btn active" data-tab="path" aria-label="Camino">
+          <svg class="icon"><use href="#icon-home"/></svg>
+          <span data-i18n="nav_path">Camino</span>
+        </button>
+        <button class="bottom-nav-btn" data-tab="practice" aria-label="Practicar">
+          <svg class="icon"><use href="#icon-practice"/></svg>
+          <span data-i18n="nav_practice">Practicar</span>
+        </button>
+        <button class="bottom-nav-btn bottom-nav-talk" data-tab="talk" aria-label="Hablar en vivo">
+          <span class="bottom-nav-talk-inner">
+            <svg class="icon"><use href="#icon-phone"/></svg>
+          </span>
+        </button>
+        <button class="bottom-nav-btn" data-tab="library" aria-label="Biblioteca">
+          <svg class="icon"><use href="#icon-book"/></svg>
+          <span data-i18n="nav_library">Libros</span>
+        </button>
+        <button class="bottom-nav-btn" data-tab="progress" aria-label="Progreso">
+          <svg class="icon"><use href="#icon-chart"/></svg>
+          <span data-i18n="nav_progress">Progreso</span>
+        </button>
+      </nav>
+
       <div id="toast" class="toast hidden"></div>
 
       <div id="coach-toast" class="coach-toast hidden">
         <button id="coach-toast-close" class="coach-toast-close" type="button"><svg class="icon"><use href="#icon-x"/></svg></button>
-        <img src="/team/mascot_3d.png" class="grad-avatar coach-avatar-sm" alt="Mascot">
+        <img src="/team/mascot_3d.png" class="coach-avatar-sm" alt="Mascot">
         <div class="coach-toast-body">
           <p id="coach-toast-message" class="coach-message"></p>
           <button id="coach-toast-listen" class="link-btn" type="button"><svg class="icon"><use href="#icon-volume"/></svg> Escuchar</button>
@@ -565,7 +578,7 @@
         </div>
         <h2 id="complete-title">¡Lección completada! <svg class="icon"><use href="#icon-sparkle"/></svg></h2>
         <div class="complete-rewards">
-          <span class="reward-pill"><svg class="icon"><use href="#icon-star"/></svg> <b id="complete-xp-pill">0</b> XP</span>
+          <span class="reward-pill"><svg class="icon"></svg> <b id="complete-xp-pill">0</b> XP</span>
           <span class="reward-pill"><svg class="icon"><use href="#icon-gem"/></svg> <b id="complete-gems-pill">0</b> gemas</span>
         </div>
         <p id="complete-streak"></p>
@@ -597,7 +610,7 @@
         <div class="reader-header">
           <button id="course-exit" class="btn-icon"><svg class="icon"><use href="#icon-x"/></svg></button>
           <a id="course-youtube-link" class="link-btn course-youtube-link" href="#" target="_blank" rel="noopener">
-            <svg class="icon"><use href="#icon-volume"/></svg> Videos relacionados en YouTube
+            <svg class="icon"><use href="#icon-volume"/></svg> Videos en YouTube
           </a>
         </div>
         <h2 id="course-title" class="reader-title"></h2>
@@ -609,7 +622,7 @@
 
         <div class="course-practice-row">
           <button id="course-practice-btn" class="btn btn-secondary" type="button">Practicar con un caso real</button>
-          <button id="course-video-btn" class="btn btn-secondary" type="button">Generar video corto sobre el tema</button>
+          <button id="course-video-btn" class="btn btn-secondary" type="button">Generar video corto</button>
         </div>
         <div id="practice-scenario-box" class="practice-scenario-box hidden"></div>
         <div id="course-video-box" class="practice-scenario-box hidden"></div>
