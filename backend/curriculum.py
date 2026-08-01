@@ -18,6 +18,14 @@ from .models import CEFRLevel, ExerciseType, Unit
 # (topic, description_native placeholder key) per level, in learning order.
 _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
     CEFRLevel.A1: [
+        # Always first: before any vocabulary, a learner needs to be able to
+        # read the target language at all — its alphabet/writing system,
+        # individual letters or characters, and their sounds. Skipping
+        # straight to "Greetings" assumes a shared (or at least readable)
+        # script, which silently fails for anyone learning a language whose
+        # writing system they've never seen (see build_exercise_generation_
+        # prompt's ALPHABET_TOPIC handling below).
+        "Alphabet & first sounds",
         "Greetings & introductions",
         "Numbers & counting",
         "Family",
@@ -76,6 +84,7 @@ _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
 # own copy of this map (frontend/app.js TOPIC_ES) since there's no shared
 # JS/Python module in this repo.
 _TOPIC_ES: dict[str, str] = {
+    "Alphabet & first sounds": "El alfabeto y los primeros sonidos",
     "Greetings & introductions": "Saludos y presentaciones",
     "Numbers & counting": "Números y conteo",
     "Family": "Familia",
@@ -210,6 +219,22 @@ class LessonRequest:
     recent_mistakes: list[str]  # target-language words/phrases the user got wrong recently
 
 
+# Target languages whose everyday writing system a Latin-script reader
+# cannot sound out at all without being taught it first — "pure immersion,
+# no translation" (the A1 default below) silently fails for these, since an
+# image can teach what a word *means* but not how to *read* unfamiliar
+# characters. Scoped to what onboarding's language picker actually offers
+# (see frontend/client/src/lib/languages.ts) rather than every script on
+# earth.
+_NON_LATIN_SCRIPT_LANGS = {"ja", "ko", "zh", "ru"}
+
+ALPHABET_TOPIC = "Alphabet & first sounds"
+
+
+def _uses_unfamiliar_script(target_lang: str) -> bool:
+    return target_lang.lower()[:2] in _NON_LATIN_SCRIPT_LANGS
+
+
 def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> str:
     """Builds the instruction sent to the HF chat model to produce a JSON batch
     of exercises for this unit, personalized to the learner. `mix_override` lets
@@ -225,10 +250,41 @@ def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[Exer
         if req.recent_mistakes
         else ""
     )
-    show_translation = "Include the native-language translation." if req.unit.level.uses_translation else (
-        "Do NOT include any native-language translation — this level is pure immersion: "
-        "teach meaning only through the image_prompt and example sentence context."
-    )
+
+    unfamiliar_script = _uses_unfamiliar_script(req.target_lang)
+    # "Pure immersion, no translation" assumes the learner can at least read
+    # the target text — true for A1 Spanish/French/etc, false the instant
+    # the target language uses a script the learner has never seen. Force
+    # translation on in that case regardless of CEFR level; a real
+    # transliteration (see below) still keeps the immersion goal for
+    # everything except literacy itself.
+    if unfamiliar_script:
+        show_translation = (
+            f"ALWAYS include the native-language translation in native_text — {req.target_lang} does not "
+            f"share {req.native_lang}'s writing system, so an image alone cannot teach a learner what an "
+            "unfamiliar word means. In native_text, put BOTH the translation and a romanized "
+            'transliteration of target_text, like this: "hello — annyeonghaseyo". Never leave a learner '
+            "looking at a script they cannot read with no way to know what it says or means."
+        )
+    elif req.unit.level.uses_translation:
+        show_translation = "Include the native-language translation in native_text."
+    else:
+        show_translation = (
+            "Do NOT include any native-language translation — this level is pure immersion: "
+            "teach meaning only through the image_prompt and example sentence context."
+        )
+
+    alphabet_unit_note = ""
+    if req.unit.topic == ALPHABET_TOPIC:
+        alphabet_unit_note = f"""
+This is the learner's very first unit in {req.target_lang} — before any vocabulary, teach the
+writing system itself. Each exercise must introduce ONE letter, character, or basic sound of
+{req.target_lang} (e.g. a vowel, or the most common/simplest character): what it looks like
+(target_text = just that single letter/character), how it sounds (audio_text = the letter/character
+itself, or a single word that starts with it if letters alone can't be pronounced meaningfully),
+and its name/sound spelled out phonetically in {req.native_lang} in native_text (e.g. for Korean
+ㅏ: native_text = "se pronuncia como la 'a' en 'casa'"). Do NOT jump ahead to full words or phrases —
+this unit is only about recognizing and sounding out individual letters/characters."""
 
     return f"""You are a curriculum designer for a language-learning app, similar in
 methodology to Duolingo and Rosetta Stone. Generate a JSON array of exactly {len(mix)}
@@ -243,25 +299,36 @@ explanation, accurate vocabulary — not a dumbed-down one.
 
 Personalize the example sentences and vocabulary choices around the learner's
 interests where natural: {interests}. {mistakes}
+{alphabet_unit_note}
 
 Exercise types to use, in this order: {types_list}.
 {show_translation}
 
 Return ONLY a JSON array. Each element must have these exact fields:
 - "type": one of {[t.value for t in ExerciseType]}
-- "prompt": the instruction shown to the learner, written in {req.native_lang} for
-  levels below B1, or in {req.target_lang} for B1+ (to build immersion)
+- "prompt": a short INSTRUCTION telling the learner what to do, written in {req.native_lang} for
+  levels below B1, or in {req.target_lang} for B1+ (to build immersion). This is NOT a description
+  of an image and NOT in English unless {req.native_lang} is English — e.g. "¿Qué imagen corresponde
+  a esta palabra?" or "Elige la opción correcta.", never a sentence describing what a picture shows.
 - "target_text": the key word/phrase/sentence in {req.target_lang}
-- "native_text": the translation in {req.native_lang} (empty string if translations
-  are disabled for this level)
+- "native_text": the translation in {req.native_lang} (empty string only if translations
+  are disabled for this level — see the translation rule above)
 - "options": array of 3-4 answer choices in {req.target_lang} (only for
   multiple_choice and image_match; empty array otherwise)
 - "correct_answer": the correct answer string
 - "image_prompt": a short, concrete visual description (in English, for an image
   generator) illustrating target_text — required for image_match, optional/empty
-  otherwise
+  otherwise. This text is ONLY for the image generator — never copy it into "prompt".
 - "audio_text": the {req.target_lang} text that should be spoken aloud (usually
   same as target_text)
+
+Example of one well-formed image_match item (native_lang=es, target_lang=en) — note how
+"prompt" is a short instruction and "image_prompt" is a separate, purely visual description
+that never leaks into "prompt":
+{{"type": "image_match", "prompt": "Elige la imagen que corresponde a esta palabra.",
+"target_text": "handshake", "native_text": "apretón de manos", "options": ["handshake", "hug", "wave"],
+"correct_answer": "handshake", "image_prompt": "two people shaking hands, simple flat illustration",
+"audio_text": "handshake", "vocab_key": "greetings.handshake"}}
 - "vocab_key": a short lowercase slug identifying this vocabulary item, stable
   across repeats (e.g. "greetings.hello")
 

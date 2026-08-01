@@ -90,19 +90,37 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
   const [completing, setCompleting] = useState(false);
 
   useEffect(() => {
-    setLoadingContent(true);
-    api
-      .getAcademyCourse(userId, course.id)
-      .then(setContent)
-      .catch((err) => toast.error(err instanceof Error ? err.message : "No se pudo cargar el curso"))
-      .finally(() => setLoadingContent(false));
+    let cancelled = false;
+    // Sequential, not parallel: both calls hit the same rate-limited free AI
+    // tier (Pollinations' anonymous budget is small and shared per source —
+    // see backend/config.py), so firing them at once meant one would
+    // routinely lose the race and fall back to "no se pudo generar", even
+    // though the content itself was generatable on its own.
+    const load = async () => {
+      setLoadingContent(true);
+      try {
+        const data = await api.getAcademyCourse(userId, course.id);
+        if (!cancelled) setContent(data);
+      } catch (err) {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : "No se pudo cargar el curso");
+      } finally {
+        if (!cancelled) setLoadingContent(false);
+      }
 
-    setLoadingAssignments(true);
-    api
-      .getAcademyAssignments(userId, course.id)
-      .then(setAssignments)
-      .catch(() => setAssignments([]))
-      .finally(() => setLoadingAssignments(false));
+      setLoadingAssignments(true);
+      try {
+        const data = await api.getAcademyAssignments(userId, course.id);
+        if (!cancelled) setAssignments(data);
+      } catch {
+        if (!cancelled) setAssignments([]);
+      } finally {
+        if (!cancelled) setLoadingAssignments(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course.id]);
 

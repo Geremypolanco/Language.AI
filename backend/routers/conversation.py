@@ -100,7 +100,22 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     
     if mission:
         system_prompt += f"\n\n### ACTIVE MISSION:\n{mission}\nYou must act as the persona required by this mission and evaluate if the learner achieves the goal."
-    
+
+    # Previously a separate chat() call analyzed each message for frustration
+    # before generating the real reply. That call competed with the reply
+    # itself for the same small, easily-exhausted free chat quota (see
+    # backend/config.py's Pollinations note) — on a multi-turn conversation
+    # it would routinely be the one to get rate-limited, and since it ran
+    # inside the same try/except as the reply, its failure aborted a reply
+    # that would otherwise have succeeded, surfacing as "Lo siento, no puedo
+    # responder" even though the tutor was available. Folding this into a
+    # standing instruction costs zero extra calls — the model judges tone
+    # itself, in the one call it was already making.
+    system_prompt += (
+        "\n\n### ADAPTIVE TONE: If the learner's latest message reads as frustrated, confused, or "
+        "like they're struggling, respond with extra patience, simpler words, and more encouragement."
+    )
+
     # PREDICTIVE SRS: surface real due-for-review vocab (or, failing that, past
     # mistakes) from vocab_progress instead of a hardcoded placeholder list.
     # vocab_key is stored as "{unit_id}.{word}" (or "item-{i}" with no dot),
@@ -163,22 +178,14 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
             try:
                 with telemetry.timed(chat_timing):
-                    # Elite: Emotional Intelligence - Detect frustration or difficulty
-                    sentiment_prompt = f"Analyze the following user input and determine if the user is frustrated, confused, or struggling (True/False). Input: '{transcript}'"
-                    is_struggling = "true" in (await hf_client.chat([{"role": "user", "content": sentiment_prompt}], max_tokens=10)).lower()
-
-                    adjusted_system_prompt = system_prompt
-                    if is_struggling:
-                        adjusted_system_prompt += "\n\n### ADAPTIVE MODE: The user seems to be struggling. Be extra patient, use simpler words, and offer more encouragement."
-
-                    messages = [{"role": "system", "content": adjusted_system_prompt}, *history]
+                    messages = [{"role": "system", "content": system_prompt}, *history]
                     async for chunk in hf_client.stream_chat(messages, temperature=teacher.sampling_temperature):
                         reply_text += chunk
                         await websocket.send_json({"type": "reply_chunk", "text": chunk})
             except Exception:
-                # Every AI chat provider failed (or the sentiment check itself
-                # did) — the client already got reply_start, so it must still
-                # get reply_done or the reply bubble is stuck empty forever.
+                # Every AI chat provider failed — the client already got
+                # reply_start, so it must still get reply_done or the reply
+                # bubble is stuck empty forever.
                 logger.exception("Chat reply generation failed for user %s", user_id)
                 reply_text = "Lo siento, no puedo responder en este momento — inténtalo de nuevo en unos segundos."
                 await websocket.send_json({"type": "error", "message": "El tutor no está disponible en este momento."})

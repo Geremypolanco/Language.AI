@@ -279,9 +279,11 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     );
   }
 
-  // target_text often *is* the correct_answer for graded types — showing it
-  // plainly there would give the exercise away before the learner attempts it.
+  // target_text/native_text often *is* the correct_answer for graded types —
+  // showing it plainly there would give the exercise away before the
+  // learner attempts it.
   const targetTextIsAnswer = GRADED_TYPES.has(exercise.type) && normalize(exercise.target_text) === normalize(exercise.correct_answer);
+  const nativeTextIsAnswer = GRADED_TYPES.has(exercise.type) && normalize(exercise.native_text) === normalize(exercise.correct_answer);
 
   return (
     <Card className="max-w-lg mx-auto p-8 space-y-6">
@@ -299,6 +301,12 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
         <p className="text-lg font-semibold text-foreground mb-1">{exercise.prompt}</p>
         {exercise.target_text && !targetTextIsAnswer && (
           <p className="text-2xl font-bold text-primary mb-2">{exercise.target_text}</p>
+        )}
+        {/* The translation/meaning — without this, a learner facing a
+            script or word they've never seen before (e.g. a new alphabet)
+            has no way to know what it means at all. */}
+        {exercise.native_text && !nativeTextIsAnswer && (
+          <p className="text-base text-muted-foreground italic">{exercise.native_text}</p>
         )}
       </div>
 

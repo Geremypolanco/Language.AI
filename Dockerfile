@@ -22,9 +22,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies. libgomp1 (OpenMP runtime) is required by
+# onnxruntime, which piper-tts (backend/piper_tts.py) uses for inference —
+# without it, `from piper import PiperVoice` fails at import/load time with
+# "libgomp.so.1: cannot open shared object file", which the surrounding
+# try/except swallows and reports as "no audio available" instead of the
+# real cause. python:3.12-slim doesn't ship it by default.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python requirements and install

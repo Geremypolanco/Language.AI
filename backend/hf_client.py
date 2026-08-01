@@ -633,7 +633,12 @@ class HFClient:
                     {"role": "system", "content": "You output only valid JSON, nothing else."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=1200,
+                # 3 detailed, native-language instruction blocks (submission
+                # format, word counts, exact questions) routinely ran past a
+                # smaller budget and got cut off mid-JSON, which then failed
+                # to parse and fell straight to the "no se pudo generar"
+                # fallback even though the model was actually answering.
+                max_tokens=1800,
                 temperature=0.6,
             )
             cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
@@ -756,23 +761,37 @@ class HFClient:
 
     async def generate_image(self, prompt: str) -> bytes | None:
         """Pollinations' image endpoint is a plain keyless GET that returns
-        the image bytes directly — no request body, no JSON envelope."""
+        the image bytes directly — no request body, no JSON envelope.
+
+        _get_with_retry only retries transport-level failures (DNS blips,
+        resets) — it treats a 429/5xx as a normal response, not something to
+        retry. Under a burst (e.g. Talk Live's persona picker requesting all
+        5 teacher portraits within the same second) that free, shared,
+        rate-limited endpoint routinely 429s a couple of them, and since a
+        failed generation is never cached, that portrait stays permanently
+        broken until someone happens to hit this code path again. A few
+        retries with backoff here — specifically for HTTP-level failures,
+        which the shared retry helper doesn't cover — fixes that without
+        changing behavior for every other caller of _get_with_retry."""
         cache_path = self._cache_path("img", prompt, "jpg")
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
                 return f.read()
         if settings.testing:
             return None
+        url = f"{settings.pollinations_image_endpoint}/{urllib.parse.quote(prompt)}"
         try:
-            url = f"{settings.pollinations_image_endpoint}/{urllib.parse.quote(prompt)}"
-            resp = await self._get_with_retry(
-                url, headers=self._pollinations_headers(), params={"model": settings.image_model}
-            )
-            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
-                with open(cache_path, "wb") as f:
-                    f.write(resp.content)
-                return resp.content
-            logger.warning("Pollinations image generation HTTP %s: %s", resp.status_code, resp.text[:200])
+            for attempt in range(3):
+                resp = await self._get_with_retry(
+                    url, headers=self._pollinations_headers(), params={"model": settings.image_model}
+                )
+                if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
+                    with open(cache_path, "wb") as f:
+                        f.write(resp.content)
+                    return resp.content
+                logger.warning("Pollinations image generation HTTP %s (attempt %d): %s", resp.status_code, attempt + 1, resp.text[:200])
+                if attempt < 2:
+                    await asyncio.sleep(1.5 * (attempt + 1))
         except Exception:
             logger.exception("Pollinations image generation failed")
         return None
