@@ -304,6 +304,61 @@ class ApiClient {
     });
   }
 
+  // Returns a same-origin blob: URL — caller must URL.revokeObjectURL() it
+  // once no longer displayed/played (image_match/listen_type exercises).
+  private async fetchMediaUrl(path: string, body: unknown): Promise<string> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(error) || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  async getExerciseImage(prompt: string): Promise<string> {
+    return this.fetchMediaUrl("/api/content/image", { prompt });
+  }
+
+  async getExerciseAudio(text: string, targetLang: string): Promise<string> {
+    return this.fetchMediaUrl("/api/content/tts", { text, target_lang: targetLang });
+  }
+
+  async transcribeAudio(audioBlob: Blob): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/api/content/stt`, {
+      method: "POST",
+      headers: { "Content-Type": audioBlob.type || "audio/webm" },
+      credentials: "include",
+      body: audioBlob,
+    });
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(error) || `HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    return data.text ?? "";
+  }
+
+  async getExerciseTutorReply(payload: {
+    target_lang: string;
+    native_lang: string;
+    level: CEFRLevel;
+    interests: string[];
+    prompt: string;
+    user_answer: string;
+  }): Promise<string> {
+    const data = await this.request<{ reply: string }>("/api/content/tutor-reply", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return data.reply;
+  }
+
   async practiceLessonSkill(
     userId: string,
     exerciseType: string,
