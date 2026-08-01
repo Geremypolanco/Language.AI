@@ -1215,27 +1215,46 @@ function _tutorHairPath(style, hairColor) {
   return ""; // style 3: no hair drawn, cap sits directly on the head
 }
 
+const TUTOR_AVATAR_MAPPING = {
+  "computer-science": "accountant.png",
+  "software-engineering": "artdirector.png",
+  "data-science": "automationengineer.png",
+  "artificial-intelligence": "brandstrategist.png",
+  "cybersecurity": "businessstrategist.png",
+  "business-administration": "chiefofstaff.png",
+  "accounting": "communitymanager.png",
+  "marketing": "contentstrategist.png",
+  "finance": "contractsspecialist.png",
+  "entrepreneurship": "copywriter.png",
+  "nursing-foundations": "corporatelawyer.png",
+  "nutrition": "customersuccessmanager.png",
+  "public-health": "dataanalyst.png",
+  "psychology": "datascientist.png",
+  "biology": "developer.png",
+  "chemistry": "emailmarketingspecialist.png",
+  "physics": "executiveassistant.png",
+  "mathematics": "financialanalyst.png",
+  "environmental-science": "growthmarketer.png",
+  "civil-engineering": "hrpeoplepartner.png",
+  "mechanical-engineering": "iptrademarkspecialist.png",
+  "electrical-engineering": "marketresearchanalyst.png",
+  "history": "operationsmanager.png",
+  "philosophy": "paidadsspecialist.png",
+  "political-science": "prcommunicationsmanager.png",
+  "economics": "presentationdesigner.png",
+  "sociology": "privacycomplianceofficer.png",
+  "international-relations": "productmanager.png",
+  "graphic-design": "productmarketingmanager.png",
+  "journalism": "projectmanager.png",
+  "music": "qaengineer.png"
+};
+
 function tutorAvatarSvg(field) {
   const [light, dark] = ACADEMY_CATEGORY_COLORS[field.category] || ["#2dd4bf", "#0f766e"];
-  const seed = _hashString((field.tutor_name || "") + (field.id || ""));
-  const skin = _TUTOR_SKIN_TONES[seed % _TUTOR_SKIN_TONES.length];
-  const hairColor = _TUTOR_HAIR_COLORS[(seed >> 3) % _TUTOR_HAIR_COLORS.length];
-  const hairStyle = (seed >> 6) % 4;
-
+  const avatarFile = TUTOR_AVATAR_MAPPING[field.id] || 'productmanager.png';
   return `
     <span class="tutor-avatar" style="border-color: ${dark}" title="${escapeHtml(field.tutor_name || "")}">
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="50" r="50" fill="#fff"/>
-        <path d="M12 100 Q18 66 50 66 Q82 66 88 100 Z" fill="${light}"/>
-        <circle cx="50" cy="45" r="27" fill="${skin}"/>
-        ${_tutorHairPath(hairStyle, hairColor)}
-        <circle cx="40" cy="47" r="3.1" fill="#26343c"/>
-        <circle cx="60" cy="47" r="3.1" fill="#26343c"/>
-        <path d="M41 58 Q50 63 59 58" stroke="#26343c" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-        <path d="M20 28 L50 15 L80 28 L50 41 Z" fill="${dark}"/>
-        <ellipse cx="50" cy="31.5" rx="14" ry="4.4" fill="${dark}"/>
-        <circle cx="50" cy="28" r="2.6" fill="${light}"/>
-      </svg>
+      <img src="/team/${avatarFile}" class="grad-avatar" alt="${escapeHtml(field.tutor_name || "")}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
     </span>
   `;
 }
