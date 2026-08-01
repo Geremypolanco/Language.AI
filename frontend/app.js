@@ -1217,7 +1217,7 @@ function tutorAvatarSvg(field) {
   const avatarFile = TUTOR_AVATAR_MAPPING[field.id] || 'productmanager.png';
   return `
     <span class="tutor-avatar" style="border-color: ${dark}" title="${escapeHtml(field.tutor_name || "")}">
-      <img src="/team/${avatarFile}" class="grad-avatar" alt="${escapeHtml(field.tutor_name || "")}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
+      <img src="/public/team/${avatarFile}" class="grad-avatar" alt="${escapeHtml(field.tutor_name || "")}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">
     </span>
   `;
 }
