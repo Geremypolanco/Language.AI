@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import quote
+
 import httpx
-from .config import settings
 
 logger = logging.getLogger("lingua.youtube_search")
 
@@ -21,7 +22,7 @@ async def search_youtube_videos(query: str, limit: int = 1) -> list[dict[str, st
     """
     try:
         # Search URL
-        url = f"https://www.youtube.com/results?search_query={httpx.utils.quote(query)}"
+        url = f"https://www.youtube.com/results?search_query={quote(query)}"
         resp = await _http.get(url)
         if resp.status_code != 200:
             logger.warning("YouTube search failed with status %s", resp.status_code)
