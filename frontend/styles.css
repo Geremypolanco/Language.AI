@@ -1839,3 +1839,53 @@ h1, h2, h3, .brand-name, .btn, .stat-value {
 @media (prefers-color-scheme: dark) {
 .book-card { background: #1b2b32; border-color: rgba(255,255,255,0.08); }
 }
+
+/* ========== ELITE WRITING ASSISTANT & VISUAL VOCAB ========== */
+.input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.writing-hint {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--purple-dark);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+  animation: fadeIn 0.2s ease;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.btn-icon:hover {
+  color: var(--blue);
+}
+
+.btn-icon .icon {
+  font-size: 1.5rem;
+}
+
+.accent-feedback {
+  font-size: 0.8rem;
+  color: var(--gold-dark);
+  margin-top: 0.25rem;
+  font-weight: 700;
+}

@@ -447,11 +447,18 @@
                 <p class="mic-hint" data-i18n="talk_mic_hint">Mantén presionado para hablar</p>
               </div>
               <form id="text-fallback-form" class="text-fallback">
-                <input type="text" id="text-fallback-input" placeholder="Escribe un mensaje…" data-i18n-placeholder="talk_text_placeholder" />
+                <div class="input-wrapper">
+                  <input type="text" id="text-fallback-input" placeholder="Escribe un mensaje…" data-i18n-placeholder="talk_text_placeholder" />
+                  <div id="writing-assistant-hint" class="writing-hint hidden"></div>
+                </div>
+                <button type="button" id="visual-vocab-btn" class="btn-icon" title="Sube una foto para aprender">
+                  <svg class="icon"><use href="#icon-camera"/></svg>
+                </button>
                 <button type="submit" class="text-fallback-send" data-i18n="talk_send_btn">
                   <svg class="icon"><use href="#icon-chat"/></svg>
                 </button>
               </form>
+              <input type="file" id="visual-vocab-input" class="hidden" accept="image/*">
             </div>
             <p class="ai-disclaimer-footer" data-i18n="ai_disclaimer">La IA de élite puede proporcionar respuestas imprecisas. Verifica la información importante.</p>
           </div>
