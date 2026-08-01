@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +35,7 @@ logger = logging.getLogger("lingua.main")
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
 _TEAM_AVATARS_DIR = _PUBLIC_DIR / "team"
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend_dist"
 
 
 @asynccontextmanager
@@ -107,8 +108,21 @@ if _PUBLIC_DIR.exists():
     if _TEAM_AVATARS_DIR.exists():
         app.mount("/team", StaticFiles(directory=str(_TEAM_AVATARS_DIR)), name="team-avatars")
 
-if _FRONTEND_DIR.exists():
-    # Mount frontend assets under /static
+# Serve React frontend (built from Vite)
+if _FRONTEND_DIST.exists():
+    # Mount frontend assets
+    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="frontend-assets")
+    
+    # Serve index.html for all non-API routes (SPA routing)
+    @app.get("/{path:path}")
+    async def serve_spa(path: str) -> FileResponse:
+        # If it's an API route, let FastAPI handle it
+        if path.startswith(("api/", "auth/", "public/", "team/")):
+            raise HTTPException(status_code=404)
+        # Otherwise serve the React app
+        return FileResponse(str(_FRONTEND_DIST / "index.html"))
+elif _FRONTEND_DIR.exists():
+    # Fallback: Mount old frontend assets under /static
     app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
 
     # Serve the main entry point
