@@ -1889,3 +1889,75 @@ h1, h2, h3, .brand-name, .btn, .stat-value {
   margin-top: 0.25rem;
   font-weight: 700;
 }
+
+/* ========== ACHIEVEMENTS & THEMES ========== */
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.achievement-card {
+  text-align: center;
+  padding: 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.achievement-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.achievement-info h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.achievement-info p {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-light);
+}
+
+.theme-grid {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.theme-btn {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  font-weight: 800;
+  transition: all 0.2s ease;
+}
+
+.theme-btn.active {
+  border-color: var(--green);
+  background: var(--green-light);
+  color: var(--green-dark);
+}
+
+/* Theme Variants */
+body.theme-dark {
+  --bg: #000000;
+  --card-bg: #121212;
+  --text: #ffffff;
+  --border: #333333;
+}
+
+body.theme-cyber {
+  --bg: #0b0e14;
+  --card-bg: #1a1f29;
+  --text: #00ffcc;
+  --border: #ff00ff;
+  --green: #ff00ff;
+  --blue: #00ffcc;
+}

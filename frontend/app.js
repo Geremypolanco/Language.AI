@@ -480,9 +480,13 @@ function startMission(type) {
   const missions = {
     airport: "Control de Fronteras: Convence al oficial de que tus documentos están en regla.",
     doctor: "Emergencia Médica: Explica tus síntomas y entiende las instrucciones del doctor.",
-    job: "Entrevista de Trabajo: Consigue el puesto de tus sueños."
+    job: "Entrevista de Trabajo: Consigue el puesto de tus sueños.",
+    mars: "Supervivencia en Marte: Convence a la base de que tienes oxígeno suficiente.",
+    detective: "Escena del Crimen: Interroga al sospechoso y resuelve el misterio.",
+    negotiator: "Negociación de Rehenes: Libera a los civiles usando tu diplomacia.",
+    hacker: "Ciberseguridad: Explica la vulnerabilidad al CEO antes del ataque."
   };
-  state.activeMission = missions[type];
+  state.activeMission = missions[type] || missions.airport;
   showTab("talk");
   showToast(`Iniciando misión: ${type}`, "flame");
   if (state.ws) state.ws.close();
@@ -789,6 +793,7 @@ async function loadDashboard() {
     refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
     renderLevelMeter, renderDailyGoal, setupDailyGoalEditor, renderDueCard,
     setupRecommendations, setupShop, renderActivity, renderMasteryChart, renderRecentLessons,
+    renderAchievements
   ];
   for (const render of sections) {
     try {
@@ -797,6 +802,27 @@ async function loadDashboard() {
       console.error(`Dashboard section "${render.name}" failed to render`, err);
     }
   }
+}
+
+function renderAchievements(data) {
+  const container = $("#achievements-grid");
+  if (!container) return;
+  const achievements = [
+    { id: 'streak_7', title: 'Fuego Inicial', desc: 'Racha de 7 días', icon: '🔥' },
+    { id: 'xp_1000', title: 'Sabio', desc: 'Llega a 1000 XP', icon: '📜' },
+    { id: 'talk_10', title: 'Locuaz', desc: '10 min de charla IA', icon: '🗣️' },
+    { id: 'mission_3', title: 'Héroe', desc: '3 misiones cumplidas', icon: '🛡️' },
+    { id: 'academy_1', title: 'Graduado', desc: 'Primer curso terminado', icon: '🎓' }
+  ];
+  container.innerHTML = achievements.map(a => `
+    <div class="achievement-card card animate-scale">
+      <div class="achievement-icon">${a.icon}</div>
+      <div class="achievement-info">
+        <h4>${a.title}</h4>
+        <p>${a.desc}</p>
+      </div>
+    </div>
+  `).join("");
 }
 
 function diaWord(n) {
@@ -2530,3 +2556,14 @@ window.showTab = function(id) {
     loadProgress().then(data => initMasteryChart(data));
   }
 };
+
+function setTheme(theme) {
+  document.body.classList.remove('theme-dark', 'theme-cyber');
+  if (theme !== 'default') {
+    document.body.classList.add(`theme-${theme}`);
+  }
+  $$('.theme-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = Array.from($$('.theme-btn')).find(b => b.textContent.toLowerCase().includes(theme === 'default' ? 'clásico' : theme));
+  if (activeBtn) activeBtn.classList.add('active');
+  showToast(`Tema cambiado a ${theme}`, "sparkle");
+}

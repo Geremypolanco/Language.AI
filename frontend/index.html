@@ -319,7 +319,7 @@
           </div>
           <div class="missions-section">
             <h3 class="section-title">Misiones de Élite (Roleplay)</h3>
-            <div class="missions-grid" id="missions-grid">
+              <div class="missions-grid" id="missions-grid">
               <div class="mission-card" onclick="startMission('airport')">
                 <div class="mission-icon">✈️</div>
                 <h4>Control de Fronteras</h4>
@@ -334,6 +334,21 @@
                 <div class="mission-icon">💼</div>
                 <h4>Entrevista de Trabajo</h4>
                 <p>Consigue el puesto de tus sueños en una multinacional.</p>
+              </div>
+              <div class="mission-card" onclick="startMission('mars')">
+                <div class="mission-icon">🚀</div>
+                <h4>Misión Marte</h4>
+                <p>Negocia recursos críticos en la base roja.</p>
+              </div>
+              <div class="mission-card" onclick="startMission('detective')">
+                <div class="mission-icon">🔍</div>
+                <h4>Detective Noir</h4>
+                <p>Resuelve un crimen usando pistas lingüísticas.</p>
+              </div>
+              <div class="mission-card" onclick="startMission('negotiator')">
+                <div class="mission-icon">🤝</div>
+                <h4>Negociador</h4>
+                <p>Libera rehenes mediante la diplomacia.</p>
               </div>
             </div>
           </div>
@@ -551,6 +566,20 @@
             <div class="card">
               <h2 class="card-title" data-i18n="dash_activity_title">Últimos 14 días</h2>
               <div class="chart-frame chart-frame-activity"><canvas id="dash-activity-chart"></canvas></div>
+            </div>
+
+            <div class="card achievements-card animate-scale">
+              <h2 class="card-title">Logros de Élite</h2>
+              <div id="achievements-grid" class="achievements-grid"></div>
+            </div>
+
+            <div class="card theme-card animate-scale">
+              <h2 class="card-title">Personalización de Interfaz</h2>
+              <div class="theme-grid">
+                <button class="theme-btn active" onclick="setTheme('default')">Clásico</button>
+                <button class="theme-btn" onclick="setTheme('dark')">OLED Dark</button>
+                <button class="theme-btn" onclick="setTheme('cyber')">Cyberpunk</button>
+              </div>
             </div>
 
             <div class="card animate-scale">
