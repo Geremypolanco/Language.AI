@@ -160,6 +160,13 @@ class Settings:
     session_secret: str = field(
         default_factory=lambda: os.environ.get("LINGUA_SESSION_SECRET", "") or _EPHEMERAL_SESSION_SECRET
     )
+    # True whenever LINGUA_SESSION_SECRET wasn't set and session_secret fell
+    # back to the per-process random one above — every session cookie signed
+    # with it stops validating the moment this process restarts (a redeploy,
+    # a crash, a Fly machine restart), silently logging everyone out
+    # (including anyone with an open Talk Live call). main.py logs this at
+    # startup so it's visible in production logs instead of failing silently.
+    session_secret_is_ephemeral: bool = field(default_factory=lambda: not os.environ.get("LINGUA_SESSION_SECRET"))
 
     # Lets you sign in locally/in tests without real Google credentials —
     # mirrors this app's "runs without HF_TOKEN too" demo-mode philosophy.

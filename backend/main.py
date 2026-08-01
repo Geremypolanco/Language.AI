@@ -54,6 +54,15 @@ async def lifespan(app: FastAPI):
             "enabled" if settings.dev_login_enabled else "disabled",
         )
 
+    if settings.session_secret_is_ephemeral:
+        logger.warning(
+            "LINGUA_SESSION_SECRET not set — using a random per-process secret. "
+            "Every logged-in session (including any open Talk Live call) will be "
+            "invalidated the next time this process restarts (redeploy, crash, or "
+            "machine restart). Set LINGUA_SESSION_SECRET to a fixed value for any "
+            "real deployment."
+        )
+
     # Keeps the disk cache under budget for as long as the app runs — see
     # cache_gc.py. Skipped in tests: it's a disk-scanning background loop
     # with nothing to do against the tests' throwaway cache dir, and no

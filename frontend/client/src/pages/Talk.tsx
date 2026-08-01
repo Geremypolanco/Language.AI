@@ -60,6 +60,8 @@ export default function Talk() {
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [connectionLost, setConnectionLost] = useState(false);
+  const [reconnectKey, setReconnectKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -86,8 +88,14 @@ export default function Talk() {
     const ws = api.connectConversation(user.id, selectedPersonaId);
     wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
+    ws.onopen = () => {
+      setConnected(true);
+      setConnectionLost(false);
+    };
+    ws.onclose = () => {
+      setConnected(false);
+      setConnectionLost(true);
+    };
     ws.onerror = () => toast.error("Conexión con el tutor interrumpida");
 
     ws.onmessage = (event) => {
@@ -135,7 +143,7 @@ export default function Talk() {
 
     return () => ws.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, selectedPersonaId]);
+  }, [user?.id, selectedPersonaId, reconnectKey]);
 
   const playNextAudio = () => {
     if (playingRef.current) return;
@@ -160,10 +168,14 @@ export default function Talk() {
 
       mediaRecorder.ondataavailable = (event) => audioChunksRef.current.push(event.data);
       mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         const base64 = await blobToBase64(audioBlob);
-        wsRef.current?.send(JSON.stringify({ type: "audio", data: base64, content_type: "audio/webm" }));
-        stream.getTracks().forEach((t) => t.stop());
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "audio", data: base64, content_type: "audio/webm" }));
+        } else {
+          toast.error("Se perdió la conexión — tu grabación no se envió. Reconecta e intenta de nuevo.");
+        }
       };
 
       mediaRecorder.start();
@@ -201,11 +213,11 @@ export default function Talk() {
       <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
         <div className="max-w-4xl mx-auto px-4 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">Choose your teacher</h1>
-            <p className="text-muted-foreground">Each one has a different teaching style and voice.</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Elige tu maestro</h1>
+            <p className="text-muted-foreground">Cada uno tiene un estilo de enseñanza y una voz diferentes.</p>
           </div>
           {personas.length === 0 ? (
-            <p className="text-muted-foreground">Loading teachers...</p>
+            <p className="text-muted-foreground">Cargando maestros...</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {personas.map((p) => (
@@ -238,14 +250,23 @@ export default function Talk() {
             <div>
               <h1 className="text-2xl font-bold text-foreground">{activePersona?.name || "Talk Live"}</h1>
               <p className="text-sm text-muted-foreground">
-                {activePersona?.title || (!connected && "connecting...")}
+                {activePersona?.title || (!connected && "conectando...")}
               </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => setSelectedPersonaId(null)}>
-            Change teacher
+            Cambiar de maestro
           </Button>
         </div>
+
+        {connectionLost && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <span>Se perdió la conexión con el tutor.</span>
+            <Button size="sm" variant="outline" onClick={() => setReconnectKey((k) => k + 1)}>
+              Reconectar
+            </Button>
+          </div>
+        )}
 
         <div className="flex-1 bg-card rounded-lg border border-border p-6 mb-6 overflow-y-auto space-y-4 min-h-[300px]">
           {messages.map((msg) => (
@@ -268,12 +289,12 @@ export default function Talk() {
             onClick={isRecording ? stopRecording : startRecording}
             disabled={!connected}
           >
-            {isRecording ? "🛑 Stop Recording" : "🎤 Record"}
+            {isRecording ? "🛑 Detener grabación" : "🎤 Grabar"}
           </Button>
 
           <div className="flex gap-2">
             <Input
-              placeholder="Or type..."
+              placeholder="O escribe..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
@@ -281,7 +302,7 @@ export default function Talk() {
               disabled={!connected}
             />
             <Button onClick={handleSendMessage} disabled={!input.trim() || !connected}>
-              Send
+              Enviar
             </Button>
           </div>
         </div>
