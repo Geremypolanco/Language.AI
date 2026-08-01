@@ -32,9 +32,11 @@ from .security_headers import SecurityHeadersMiddleware
 
 logger = logging.getLogger("lingua.main")
 
-_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 _PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
 _TEAM_AVATARS_DIR = _PUBLIC_DIR / "team"
+# Built by the Docker frontend-builder stage (see Dockerfile); absent in
+# CI/tests, which don't run the frontend build — the app must not crash
+# when it's missing, just skip serving a root page (see below).
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend_dist"
 
 
@@ -121,14 +123,6 @@ if _FRONTEND_DIST.exists():
             raise HTTPException(status_code=404)
         # Otherwise serve the React app
         return FileResponse(str(_FRONTEND_DIST / "index.html"))
-elif _FRONTEND_DIR.exists():
-    # Fallback: Mount old frontend assets under /static
-    app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
-
-    # Serve the main entry point
-    @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(str(_FRONTEND_DIR / "index.html"))
 
 
 def main() -> None:
