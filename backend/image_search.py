@@ -114,6 +114,111 @@ async def search_image(query: str) -> bytes | None:
         return None
 
 
+async def search_images(query: str, count: int = 4) -> list[bytes]:
+    """Like search_image(), but returns up to `count` distinct results for
+    a real image gallery (see routers/content.py's /image-gallery-item) —
+    one real search call per source, each result cached individually by
+    (query, index) so repeat requests for the same gallery are free.
+    Google CSE first, Wikimedia Commons fallback if Google isn't
+    configured or returns nothing; never raises."""
+    results = await _search_images_google(query, count)
+    if results:
+        return results
+    return await _search_images_wikimedia(query, count)
+
+
+async def _search_images_google(query: str, count: int) -> list[bytes]:
+    if not settings.google_images_configured:
+        return []
+
+    cached = [p for i in range(count) if os.path.exists(p := _cache_path(f"gimg-gallery-{i}", query))]
+    if len(cached) == count:
+        return [open(p, "rb").read() for p in cached]
+
+    try:
+        resp = await _get_with_retry(
+            _SEARCH_ENDPOINT,
+            params={
+                "key": settings.google_cse_api_key,
+                "cx": settings.google_cse_cx,
+                "q": query,
+                "searchType": "image",
+                "num": min(count, 10),
+                "safe": "active",
+                "imgSize": "medium",
+            },
+        )
+        if resp.status_code != 200:
+            logger.warning("Google image search HTTP %s: %s", resp.status_code, resp.text[:200])
+            return []
+        items = resp.json().get("items") or []
+        results = []
+        for i, item in enumerate(items[:count]):
+            try:
+                image_resp = await _get_with_retry(item["link"])
+                if image_resp.status_code != 200 or not image_resp.headers.get("content-type", "").startswith("image"):
+                    continue
+                cache_path = _cache_path(f"gimg-gallery-{i}", query)
+                with open(cache_path, "wb") as f:
+                    f.write(image_resp.content)
+                results.append(image_resp.content)
+            except Exception:
+                continue
+        return results
+    except Exception:
+        logger.exception("Google image gallery search failed")
+        return []
+
+
+async def _search_images_wikimedia(query: str, count: int) -> list[bytes]:
+    cached = [p for i in range(count) if os.path.exists(p := _cache_path(f"wmimg-gallery-{i}", query))]
+    if len(cached) == count:
+        return [open(p, "rb").read() for p in cached]
+    if settings.testing:
+        return []
+
+    try:
+        resp = await _get_with_retry(
+            _COMMONS_ENDPOINT,
+            client=_commons_http,
+            params={
+                "action": "query",
+                "generator": "search",
+                "gsrsearch": f"filetype:bitmap {query}",
+                "gsrnamespace": 6,
+                "gsrlimit": count,
+                "prop": "imageinfo",
+                "iiprop": "url|mime",
+                "iiurlwidth": 800,
+                "format": "json",
+            },
+        )
+        if resp.status_code != 200:
+            logger.warning("Wikimedia Commons gallery search HTTP %s: %s", resp.status_code, resp.text[:200])
+            return []
+        pages = (resp.json().get("query") or {}).get("pages") or {}
+        infos = [p["imageinfo"][0] for p in pages.values() if p.get("imageinfo")]
+        results = []
+        for i, info in enumerate(infos[:count]):
+            try:
+                image_url = info.get("thumburl") or info.get("url")
+                if not image_url or not str(info.get("mime", "")).startswith("image"):
+                    continue
+                image_resp = await _get_with_retry(image_url, client=_commons_http)
+                if image_resp.status_code != 200 or not image_resp.headers.get("content-type", "").startswith("image"):
+                    continue
+                cache_path = _cache_path(f"wmimg-gallery-{i}", query)
+                with open(cache_path, "wb") as f:
+                    f.write(image_resp.content)
+                results.append(image_resp.content)
+            except Exception:
+                continue
+        return results
+    except Exception:
+        logger.exception("Wikimedia Commons gallery search failed")
+        return []
+
+
 async def search_wikimedia_commons(query: str) -> bytes | None:
     """Returns the bytes of a matching image from Wikimedia Commons'
     own media library, cached to disk thereafter. Needs no API key and has

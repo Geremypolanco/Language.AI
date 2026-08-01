@@ -4,6 +4,8 @@ and short topic-explainer videos."""
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -83,14 +85,32 @@ class ImageGalleryRequest(BaseModel):
 
 @router.post("/image-gallery")
 async def get_image_gallery(payload: ImageGalleryRequest) -> list[str]:
-    """Returns a list of image URLs (placeholders or real search results) for the gallery."""
-    # This is a placeholder for a multi-image search implementation
-    # For now, we'll return a few variants of the search query to simulate a gallery
-    # In a real app, this would call a search API and return multiple result links.
+    """Returns same-origin URLs for a real image gallery (Google Image
+    Search / Wikimedia Commons — the same sources /image already uses, via
+    image_search.search_images), each served by /image-gallery-item below.
+    Same-origin because the CSP's img-src is 'self' (plus a couple of
+    specific exceptions for other features) — this endpoint used to return
+    raw image.pollinations.ai URLs straight to the client, which wasn't
+    real "Google Images" at all, just 4 near-identical AI-generated
+    illustrations of the same prompt."""
+    limit = max(1, min(payload.limit, 10))
     return [
-        f"https://image.pollinations.ai/prompt/{payload.query.replace(' ', '%20')}?width=512&height=512&n={i}"
-        for i in range(payload.limit)
+        f"/api/content/image-gallery-item?query={quote(payload.query)}&limit={limit}&index={i}"
+        for i in range(limit)
     ]
+
+
+@router.get("/image-gallery-item")
+async def get_gallery_item(query: str, index: int = 0, limit: int = 4) -> Response:
+    images = await image_search.search_images(query, count=limit)
+    if index < len(images):
+        return Response(content=images[index], media_type="image/jpeg")
+    # Fewer real results than gallery slots requested — fill the rest with
+    # AI generation rather than leaving a broken <img>.
+    image = await hf_client.generate_image(query)
+    if image is None:
+        raise HTTPException(status_code=503, detail="Imagen no disponible en este momento — inténtalo de nuevo")
+    return Response(content=image, media_type="image/jpeg")
 
 
 @router.post("/stt")

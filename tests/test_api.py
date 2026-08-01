@@ -290,6 +290,31 @@ def test_image_endpoint_falls_back_to_503_when_no_image_source_configured():
         assert res.status_code == 503
 
 
+def test_image_gallery_returns_same_origin_item_urls_not_external_ones():
+    # Regression test: this endpoint used to return raw image.pollinations.ai
+    # URLs straight to the client (an AI generator, not a real image search,
+    # despite being advertised as one) which the CSP's img-src also didn't
+    # allowlist for a while. It should return same-origin URLs that this
+    # app itself serves via /image-gallery-item, backed by the same real
+    # search chain as /api/content/image.
+    with TestClient(app) as client:
+        _onboard(client, email="gallery@example.com")
+        res = client.post("/api/content/image-gallery", json={"query": "manzana", "limit": 3})
+        assert res.status_code == 200
+        urls = res.json()
+        assert len(urls) == 3
+        for url in urls:
+            assert url.startswith("/api/content/image-gallery-item?")
+            assert "pollinations" not in url
+
+
+def test_image_gallery_item_falls_back_to_503_when_no_image_source_configured():
+    with TestClient(app) as client:
+        _onboard(client, email="galleryfallback@example.com")
+        res = client.get("/api/content/image-gallery-item", params={"query": "manzana", "index": 0, "limit": 4})
+        assert res.status_code == 503
+
+
 def test_daily_goal_minutes_is_user_editable_not_a_cap():
     with TestClient(app) as client:
         user = _onboard(client, email="goal@example.com")
