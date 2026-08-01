@@ -7,6 +7,7 @@ disclaimer (enforced in the frontend, not here)."""
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,6 +27,8 @@ from ..models import (
     CourseStub,
 )
 from .users import get_user_by_id_or_404
+
+logger = logging.getLogger("lingua.academy")
 
 router = APIRouter(prefix="/api/academy", tags=["academy"])
 
@@ -97,13 +100,22 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
         return AcademyProgress(enrollment=None)
 
     enrollment = _build_enrollment(field, level, row["enrolled_at"])
-    curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
+    try:
+        curriculum = await _load_curriculum(user_id, field, level, user.native_lang)
+        total_courses = len(curriculum.courses)
+    except Exception:
+        # generate_curriculum does live arXiv/Wikipedia/AI calls on first
+        # request (nothing cached yet) — any of those failing shouldn't 500
+        # the whole progress page. Fall back to the level's nominal course
+        # count so the UI still has something sane to show.
+        logger.exception("Curriculum generation failed for %s/%s", field.id, level.value)
+        total_courses = level.course_count
 
     with db.cursor() as cur:
         cur.execute("SELECT course_id FROM academy_course_progress WHERE user_id=?", (user_id,))
         completed = [r["course_id"] for r in cur.fetchall()]
 
-    return AcademyProgress(enrollment=enrollment, completed_course_ids=completed, total_courses=len(curriculum.courses))
+    return AcademyProgress(enrollment=enrollment, completed_course_ids=completed, total_courses=total_courses)
 
 
 @router.get("/{user_id}/curriculum", response_model=Curriculum)

@@ -6,6 +6,45 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api, AcademicField, AcademyProgress } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  BookOpen,
+  MessageCircle,
+  Flame,
+  Gem,
+  Heart,
+  Image as ImageIcon,
+  Lock,
+  Pencil,
+  Sparkles,
+  Trophy,
+  Volume2,
+  Waves,
+  GraduationCap,
+  type LucideIcon,
+} from "lucide-react";
+
+// backend/academy.py's AcademicField.icon is a semantic name, not an emoji —
+// map it to the matching lucide icon (falls back to a generic cap icon for
+// any name not in this list, rather than printing the raw word).
+const FIELD_ICONS: Record<string, LucideIcon> = {
+  book: BookOpen,
+  chat: MessageCircle,
+  flame: Flame,
+  gem: Gem,
+  heart: Heart,
+  image: ImageIcon,
+  lock: Lock,
+  pencil: Pencil,
+  sparkle: Sparkles,
+  trophy: Trophy,
+  volume: Volume2,
+  wave: Waves,
+};
+
+function FieldIcon({ name, className }: { name: string; className?: string }) {
+  const Icon = FIELD_ICONS[name] || GraduationCap;
+  return <Icon className={className} />;
+}
 
 // Course counts per depth — mirrors AcademicLevel.course_count in backend/models.py
 // (not returned by GET /api/academy/fields, which lists fields only).
@@ -112,7 +151,7 @@ export default function University() {
                       <Card key={field.id} className="p-6 hover:shadow-md transition-smooth">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-start gap-4">
-                            <span className="text-4xl">{field.icon}</span>
+                            <FieldIcon name={field.icon} className="w-10 h-10 text-primary" />
                             <div>
                               <h3 className="text-2xl font-bold text-foreground">{field.name}</h3>
                               <p className="text-muted-foreground mt-1">{field.description}</p>

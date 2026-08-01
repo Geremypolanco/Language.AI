@@ -76,12 +76,16 @@ export default function Talk() {
             prev.map((m) => (m.id === currentTutorMsgId.current ? { ...m, text: m.text + msg.text } : m))
           );
           break;
-        case "reply_done":
-          setMessages((prev) =>
-            prev.map((m) => (m.id === currentTutorMsgId.current ? { ...m, text: msg.text } : m))
-          );
+        case "reply_done": {
+          // setMessages' updater runs asynchronously (React defers it past
+          // this synchronous block), so nulling the ref on the next line
+          // would already have happened by the time the updater reads it —
+          // capture the id now, while it's still valid.
+          const finishedId = currentTutorMsgId.current;
+          setMessages((prev) => prev.map((m) => (m.id === finishedId ? { ...m, text: msg.text } : m)));
           currentTutorMsgId.current = null;
           break;
+        }
         case "reply_audio_chunk": {
           const audio = new Audio(`data:${msg.audio_mime};base64,${msg.audio_base64}`);
           audioQueueRef.current.push(audio);

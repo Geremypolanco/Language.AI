@@ -154,26 +154,36 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
             chat_timing: dict = {}
             reply_text = ""
-            
+
             # Start streaming the reply text to the UI
             await websocket.send_json({"type": "reply_start"})
-            
-            with telemetry.timed(chat_timing):
-                # Elite: Emotional Intelligence - Detect frustration or difficulty
-                sentiment_prompt = f"Analyze the following user input and determine if the user is frustrated, confused, or struggling (True/False). Input: '{transcript}'"
-                is_struggling = "true" in (await hf_client.chat([{"role": "user", "content": sentiment_prompt}], max_tokens=10)).lower()
-                
-                adjusted_system_prompt = system_prompt
-                if is_struggling:
-                    adjusted_system_prompt += "\n\n### ADAPTIVE MODE: The user seems to be struggling. Be extra patient, use simpler words, and offer more encouragement."
-                
-                messages = [{"role": "system", "content": adjusted_system_prompt}, *history]
-                async for chunk in hf_client.stream_chat(messages):
-                    reply_text += chunk
-                    await websocket.send_json({"type": "reply_chunk", "text": chunk})
-            
+
+            try:
+                with telemetry.timed(chat_timing):
+                    # Elite: Emotional Intelligence - Detect frustration or difficulty
+                    sentiment_prompt = f"Analyze the following user input and determine if the user is frustrated, confused, or struggling (True/False). Input: '{transcript}'"
+                    is_struggling = "true" in (await hf_client.chat([{"role": "user", "content": sentiment_prompt}], max_tokens=10)).lower()
+
+                    adjusted_system_prompt = system_prompt
+                    if is_struggling:
+                        adjusted_system_prompt += "\n\n### ADAPTIVE MODE: The user seems to be struggling. Be extra patient, use simpler words, and offer more encouragement."
+
+                    messages = [{"role": "system", "content": adjusted_system_prompt}, *history]
+                    async for chunk in hf_client.stream_chat(messages):
+                        reply_text += chunk
+                        await websocket.send_json({"type": "reply_chunk", "text": chunk})
+            except Exception:
+                # Every AI chat provider failed (or the sentiment check itself
+                # did) — the client already got reply_start, so it must still
+                # get reply_done or the reply bubble is stuck empty forever.
+                logger.exception("Chat reply generation failed for user %s", user_id)
+                reply_text = "Lo siento, no puedo responder en este momento — inténtalo de nuevo en unos segundos."
+                await websocket.send_json({"type": "error", "message": "El tutor no está disponible en este momento."})
+                await websocket.send_json({"type": "reply_done", "text": reply_text})
+                continue
+
             await websocket.send_json({"type": "reply_done", "text": reply_text})
-            
+
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
@@ -181,17 +191,23 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             # Stream audio in parallel (or after text starts)
             tts_timing: dict = {}
             sentence_count = 0
-            with telemetry.timed(tts_timing):
-                async for sentence, audio, media_type in hf_client.stream_speech(reply_text, user.target_lang):
-                    sentence_count += 1
-                    await websocket.send_json(
-                        {
-                            "type": "reply_audio_chunk",
-                            "text": sentence,
-                            "audio_base64": base64.b64encode(audio).decode(),
-                            "audio_mime": media_type,
-                        }
-                    )
+            try:
+                with telemetry.timed(tts_timing):
+                    async for sentence, audio, media_type in hf_client.stream_speech(reply_text, user.target_lang):
+                        sentence_count += 1
+                        await websocket.send_json(
+                            {
+                                "type": "reply_audio_chunk",
+                                "text": sentence,
+                                "audio_base64": base64.b64encode(audio).decode(),
+                                "audio_mime": media_type,
+                            }
+                        )
+            except Exception:
+                # Text reply already landed — a TTS failure shouldn't cost
+                # the user the (already-delivered) text turn.
+                logger.exception("Speech synthesis failed for user %s", user_id)
+                tts_timing.setdefault("elapsed_ms", 0)
 
             telemetry.log_tutor_turn(
                 user_id=user_id,
