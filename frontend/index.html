@@ -350,6 +350,11 @@
                 <h4>Negociador</h4>
                 <p>Libera rehenes mediante la diplomacia.</p>
               </div>
+              <div class="mission-card" onclick="startDebate('climate')">
+                <div class="mission-icon">⚖️</div>
+                <h4>Club de Debate</h4>
+                <p>Medía entre dos IAs sobre el cambio climático.</p>
+              </div>
             </div>
           </div>
           <div id="practice-grid" class="practice-grid"></div>
@@ -422,6 +427,8 @@
 
         <!-- Talk Live — redesigned as a real video call UI -->
         <div id="tab-talk" class="tab-panel hidden">
+          <div id="soundscape-overlay" class="soundscape-overlay hidden"></div>
+          <audio id="ambient-audio" loop></audio>
           <div class="call-frame">
             <!-- Tutor video/avatar area -->
             <div class="avatar-tile" id="avatar-tile">
@@ -571,6 +578,12 @@
             <div class="card achievements-card animate-scale">
               <h2 class="card-title">Logros de Élite</h2>
               <div id="achievements-grid" class="achievements-grid"></div>
+            </div>
+
+            <div class="card heatmap-card animate-scale">
+              <h2 class="card-title">Mapa de Calor de Conocimiento</h2>
+              <p class="subtitle">Tus áreas de dominio visualizadas por la IA.</p>
+              <div id="knowledge-heatmap" class="knowledge-heatmap"></div>
             </div>
 
             <div class="card theme-card animate-scale">

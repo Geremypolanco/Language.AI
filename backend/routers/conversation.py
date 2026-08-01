@@ -81,6 +81,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
 
     mission = websocket.query_params.get("mission")
     persona = websocket.query_params.get("persona", "friendly")
+    debate = websocket.query_params.get("debate") == "true"
     memory = _get_user_memory(user_id)
     system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
     
@@ -92,8 +93,16 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     }
     system_prompt = f"{personas.get(persona, personas['friendly'])}\n\n{system_prompt}"
     
+    if debate:
+        system_prompt += "\n\n### DEBATE MODE ACTIVE: You are two distinct personas: 'Optimist' and 'Skeptic'. When replying, you must provide a short dialogue between them, and then ask the user for their opinion as the moderator."
+    
     if mission:
         system_prompt += f"\n\n### ACTIVE MISSION:\n{mission}\nYou must act as the persona required by this mission and evaluate if the learner achieves the goal."
+    
+    # PREDICTIVE SRS: Injected words that need review
+    # In a real app, this would query the SRS table for words with low mastery
+    srs_words = ["conundrum", "paradigm", "nevertheless", "hitherto"]
+    system_prompt += f"\n\n### PREDICTIVE SRS: Try to naturally use or elicit the following words from the user: {', '.join(srs_words)}."
     history = _recent_history(user_id)
 
     await websocket.send_json(

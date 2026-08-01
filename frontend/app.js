@@ -487,10 +487,48 @@ function startMission(type) {
     hacker: "Ciberseguridad: Explica la vulnerabilidad al CEO antes del ataque."
   };
   state.activeMission = missions[type] || missions.airport;
+  state.isDebate = false;
   showTab("talk");
+  updateSoundscape(type);
   showToast(`Iniciando misión: ${type}`, "flame");
   if (state.ws) state.ws.close();
   ensureConversationSocket();
+}
+
+function startDebate(topic) {
+  const topics = {
+    climate: "El Cambio Climático: ¿Acción radical o transición lenta?",
+    ai: "IA: ¿Salvación o fin de la humanidad?",
+    crypto: "Cripto: ¿El futuro del dinero o una burbuja?"
+  };
+  state.activeMission = `DEBATE CLUB: ${topics[topic] || topics.climate}. You are the moderator. Two other AI personas (Optimist and Skeptic) will argue, and you must facilitate the conversation and give your own points.`;
+  state.isDebate = true;
+  showTab("talk");
+  showToast("Iniciando Club de Debate...", "sparkle");
+  if (state.ws) state.ws.close();
+  ensureConversationSocket();
+}
+
+function updateSoundscape(type) {
+  const audio = $("#ambient-audio");
+  const overlay = $("#soundscape-overlay");
+  if (!audio || !overlay) return;
+  
+  const sounds = {
+    airport: "https://www.soundjay.com/ambient/airport-terminal-1.mp3",
+    doctor: "https://www.soundjay.com/ambient/hospital-hallway-1.mp3",
+    mars: "https://www.soundjay.com/ambient/wind-howl-01.mp3",
+    detective: "https://www.soundjay.com/ambient/rain-01.mp3"
+  };
+  
+  if (sounds[type]) {
+    audio.src = sounds[type];
+    audio.play().catch(() => console.log("Audio autoplay blocked"));
+    overlay.classList.remove("hidden");
+  } else {
+    audio.pause();
+    overlay.classList.add("hidden");
+  }
 }
 
 function refreshTopbar(progress) {
@@ -793,7 +831,7 @@ async function loadDashboard() {
     refreshTopbar, renderStatRow, renderMascot, renderLeaderboard,
     renderLevelMeter, renderDailyGoal, setupDailyGoalEditor, renderDueCard,
     setupRecommendations, setupShop, renderActivity, renderMasteryChart, renderRecentLessons,
-    renderAchievements
+    renderAchievements, renderKnowledgeHeatmap
   ];
   for (const render of sections) {
     try {
@@ -823,6 +861,23 @@ function renderAchievements(data) {
       </div>
     </div>
   `).join("");
+}
+
+function renderKnowledgeHeatmap(data) {
+  const container = $("#knowledge-heatmap");
+  if (!container) return;
+  
+  const topics = [
+    "Saludos", "Familia", "Comida", "Viajes", "Negocios", "Salud", "Deportes",
+    "Ciencia", "Arte", "Historia", "Música", "Moda", "Tecnología", "Derecho",
+    "Cine", "Cocina", "Clima", "Animales", "Hogar", "Ropa", "Ciudad",
+    "Naturaleza", "Espacio", "Futuro", "Pasado", "Opiniones", "Emociones", "Debates"
+  ];
+  
+  container.innerHTML = topics.map(t => {
+    const lvl = Math.floor(Math.random() * 5); // Simulated level
+    return `<div class="heatmap-cell heatmap-lvl-${lvl}" data-topic="${t}"></div>`;
+  }).join("");
 }
 
 function diaWord(n) {
@@ -2093,7 +2148,8 @@ function ensureConversationSocket() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const missionParam = state.activeMission ? `&mission=${encodeURIComponent(state.activeMission)}` : "";
   const personaParam = state.tutorPersona ? `&persona=${state.tutorPersona}` : "";
-  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}?v=1${missionParam}${personaParam}`);
+  const debateParam = state.isDebate ? `&debate=true` : "";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/conversation/${state.userId}?v=1${missionParam}${personaParam}${debateParam}`);
   state.ws = ws;
 
     ws.addEventListener("message", (event) => {
