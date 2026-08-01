@@ -13,6 +13,7 @@ from .. import auth, image_search, youtube_search
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
+from .users import get_user_by_id_or_404
 
 # Gated behind "signed in" (any account, not a specific user_id) — video and
 # speech-to-text still hit optional paid HF inference, so none of these
@@ -182,14 +183,18 @@ Topics: {interests}.
 Level: {user.level.value}.
 Format: Return ONLY a JSON array of objects: [{{"title": "...", "content": "...", "translation": "..."}}]"""
     
-    news_raw = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=800)
     try:
         import json
         import re
+        news_raw = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=800)
         cleaned = re.sub(r"^```(json)?|```$", "", news_raw.strip(), flags=re.MULTILINE).strip()
         news = json.loads(cleaned)
         return {"news": news}
-    except:
+    except Exception:
+        # hf_client.chat can itself raise (all providers down, or disabled
+        # in tests) — that used to happen outside this try/except, before
+        # it only wrapped the JSON parsing, so it 500'd instead of using
+        # this endpoint's own intended fallback below.
         return {"news": [{"title": "News Unavailable", "content": "The AI news anchor is sleeping. Try again later.", "translation": ""}]}
 
 

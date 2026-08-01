@@ -315,6 +315,19 @@ def test_image_gallery_item_falls_back_to_503_when_no_image_source_configured():
         assert res.status_code == 503
 
 
+def test_daily_news_endpoint_degrades_gracefully_when_ai_is_unavailable():
+    # Regression test: get_daily_news referenced get_user_by_id_or_404
+    # without importing it (NameError on every call), and separately its
+    # try/except only wrapped the JSON-parsing step, not the hf_client.chat
+    # call itself — so when every AI provider is unavailable (as in tests),
+    # the endpoint 500'd instead of returning its own intended fallback.
+    with TestClient(app) as client:
+        _onboard(client, email="newsfallback@example.com")
+        res = client.get("/api/content/news")
+        assert res.status_code == 200
+        assert res.json()["news"][0]["title"] == "News Unavailable"
+
+
 def test_daily_goal_minutes_is_user_editable_not_a_cap():
     with TestClient(app) as client:
         user = _onboard(client, email="goal@example.com")
