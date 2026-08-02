@@ -164,7 +164,10 @@ def build_curriculum_prompt(field: AcademicField, level_label: str, course_count
         f"({field.description}), at a depth roughly equivalent to a {level_label} program. "
         f"Base it on real, standard, well-established course sequences universities actually use for "
         f"this field — do not invent implausible or fictional course topics. "
-        f"Order the courses from foundational to advanced. "
+        f"Order the courses from foundational to advanced, so difficulty builds gradually across the "
+        f"{course_count} courses rather than jumping straight to advanced material. "
+        f"Write each one-sentence description in plain, clear language a curious 7-year-old could follow, "
+        f"even though the course title itself keeps the real, correct academic name. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "course title in {native_lang}", "description": "one sentence, in {native_lang}, on what it covers"}}'
     )
@@ -179,7 +182,7 @@ def build_course_prompt(field: AcademicField, level_label: str, course_title: st
         f"cover, using the correct professional/technical terms this field actually uses — with clear "
         f"explanations and at least one concrete example per module. "
         f"If a concept is complex, include a Mermaid.js diagram in the content using the format [DIAGRAM: graph TD...]. "
-        f"Explain each term the first time it appears clearly enough that a bright 10-year-old could follow the explanation, "
+        f"Explain each term the first time it appears clearly enough that a curious 7-year-old could follow the explanation, "
         f"even though the terminology itself stays accurate and professional — simplify the explanation, never the vocabulary. "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs with diagrams if helpful"}}'
@@ -206,7 +209,9 @@ def build_practice_scenario_prompt(
         f"to solve, a decision to make — appropriate for this field (a clinical-style case for health "
         f"fields, a design/debugging problem for engineering or computer science, a business case for "
         f"business fields, a text/argument to analyze for humanities, etc). End with a direct question "
-        f"asking what the student would do. 2 to 4 short paragraphs. Output ONLY the scenario text."
+        f"asking what the student would do. 2 to 4 short paragraphs. Write it in plain, clear language "
+        f"a curious 7-year-old could follow, keeping any necessary technical terms but explaining them "
+        f"the first time they appear. Output ONLY the scenario text."
     )
 
 
@@ -220,7 +225,7 @@ def build_assignments_prompt(
         f"homework task (\"tarea\"), one written report (\"informe\"), and one small project (\"proyecto\"), "
         f"each appropriately scoped for self-study (a report or project a self-paced learner can realistically "
         f"finish in one sitting, not a semester-long undertaking). "
-        f"Write instructions clear enough for a bright 10-year-old to follow, using the correct "
+        f"Write instructions clear enough for a curious 7-year-old to follow, using the correct "
         f"professional/technical vocabulary this field actually uses — simplify the explanation, never the "
         f"terminology. Each item's instructions must say exactly what to submit (e.g. word count, what "
         f"questions to answer, what the project should include). "

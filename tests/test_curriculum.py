@@ -73,6 +73,20 @@ def test_exercise_prompt_weaves_in_mistakes_and_interests():
     assert "greetings.hello" in prompt
 
 
+def test_exercise_prompt_scales_difficulty_with_cefr_level():
+    beginner_unit = units_for_level(CEFRLevel.A2)[0]
+    advanced_unit = units_for_level(CEFRLevel.C2)[0]
+    beginner_prompt = build_exercise_generation_prompt(
+        LessonRequest(unit=beginner_unit, native_lang="English", target_lang="Spanish", interests=[], recent_mistakes=[])
+    )
+    advanced_prompt = build_exercise_generation_prompt(
+        LessonRequest(unit=advanced_unit, native_lang="English", target_lang="Spanish", interests=[], recent_mistakes=[])
+    )
+    assert "Difficulty: beginner" in beginner_prompt
+    assert "Difficulty: advanced" in advanced_prompt
+    assert "7-year-old" in beginner_prompt and "7-year-old" in advanced_prompt
+
+
 def test_alphabet_unit_is_first_a1_unit_and_excludes_image_match():
     alphabet_unit = units_for_level(CEFRLevel.A1)[0]
     assert alphabet_unit.topic == ALPHABET_TOPIC

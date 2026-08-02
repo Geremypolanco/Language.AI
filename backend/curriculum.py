@@ -262,6 +262,37 @@ def _uses_unfamiliar_script(target_lang: str) -> bool:
     return target_lang.lower()[:2] in _NON_LATIN_SCRIPT_LANGS
 
 
+def _difficulty_note_for_level(level: CEFRLevel) -> str:
+    """Explicit vocabulary/grammar guidance per CEFR band. Naming just the
+    bare CEFR code (e.g. "at CEFR level B1") leans entirely on the model
+    already knowing that standard precisely — fine for a strong model, but
+    the chat() call generating this content can fall all the way through to
+    Qwen2.5-7B-Instruct on Hugging Face (see hf_client.py) when Groq and
+    Pollinations are both unavailable, and a smaller model calibrates
+    difficulty more reliably when it's spelled out than when it has to
+    infer it from a label alone. Mirrors the same rank-based tiering
+    build_conversation_system_prompt already uses for spoken replies,
+    applied here to written exercise content instead."""
+    rank = level.rank
+    if rank <= 1:  # A1, A2
+        return (
+            "Difficulty: beginner. Use only common, everyday, high-frequency words — nothing "
+            "obscure or technical. Short sentences. Present tense only, unless the topic itself "
+            "is about a different tense. No idioms, no compound/nested clauses."
+        )
+    if rank <= 3:  # B1, B2
+        return (
+            "Difficulty: intermediate. Use everyday vocabulary a comfortable-but-not-native "
+            "speaker would know. Natural sentence length, past and future tenses are fine, a "
+            "few common idioms are okay if explained."
+        )
+    # C1, C2, NATIVE
+    return (
+        "Difficulty: advanced. Use natural, native-level vocabulary, idioms, and nuanced "
+        "grammar — the same complexity a native speaker would use in everyday life."
+    )
+
+
 def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> str:
     """Builds the instruction sent to the HF chat model to produce a JSON batch
     of exercises for this unit, personalized to the learner. `mix_override` lets
@@ -326,9 +357,11 @@ methodology to Duolingo and Rosetta Stone. Generate a JSON array of exactly {len
 exercises for a learner studying {req.target_lang} (native language: {req.native_lang}),
 at CEFR level {req.unit.level.value}, on the topic "{req.unit.topic}".
 
-Write every instruction and example so a bright 10-year-old could follow it —
-short sentences, no unexplained jargon in the instructions themselves — while
-still using the correct grammatical terms (e.g. "verbo", "adjetivo",
+{_difficulty_note_for_level(req.unit.level)}
+
+Write every instruction and example so a curious 7-year-old could follow it —
+short, simple sentences, no unexplained jargon in the instructions themselves —
+while still using the correct grammatical terms (e.g. "verbo", "adjetivo",
 "pretérito") where naming a concept actually helps the learner. Simple
 explanation, accurate vocabulary — not a dumbed-down one.
 
