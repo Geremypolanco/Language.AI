@@ -31,10 +31,10 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   const { logout } = useAuth();
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       {/* Sidebar */}
       <aside
-        className={`fixed md:relative z-40 w-64 h-screen bg-sidebar border-r border-sidebar-border flex flex-col transition-transform duration-300 ${
+        className={`fixed md:relative z-40 w-64 h-dvh bg-sidebar border-r border-sidebar-border flex flex-col overflow-y-auto transition-transform duration-300 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
