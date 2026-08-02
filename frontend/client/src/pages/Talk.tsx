@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, PersonaInfo } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import { toast } from "sonner";
 
 interface Message {
@@ -159,6 +160,7 @@ export default function Talk() {
           const id = `t-${Date.now()}`;
           currentTutorMsgId.current = id;
           setMessages((prev) => [...prev, { id, role: "tutor", text: "" }]);
+          haptics.thinking();
           break;
         }
         case "reply_chunk":

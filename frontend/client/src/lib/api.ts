@@ -332,7 +332,7 @@ class ApiClient {
 
   async submitLessonAnswer(
     userId: string,
-    data: { vocab_key: string; correct: boolean; attempts_before_correct?: number }
+    data: { vocab_key: string; correct: boolean; attempts_before_correct?: number; response_ms?: number }
   ): Promise<{ srs: Record<string, unknown> }> {
     return this.request(`/api/lessons/${userId}/answer`, {
       method: "POST",

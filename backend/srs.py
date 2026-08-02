@@ -20,11 +20,27 @@ class ShopError(Exception):
     """Raised when a gem purchase can't go through (not enough gems, etc)."""
 
 
-def grade_to_quality(correct: bool, attempts_before_correct: int = 0) -> int:
+# A correct answer that took longer than this to give is graded as
+# hesitant rather than confident recall — "dynamic scaffolding": schedule
+# it for sooner review (see schedule_review's quality->ease formula) even
+# though it was technically right, instead of treating every correct
+# answer as equally mastered regardless of how long it took. Deliberately
+# crude (a fixed threshold, not adapted per exercise type or learner) —
+# good enough to catch "answered right but clearly had to think hard about
+# it" without needing per-user response-time baselines.
+_SLOW_RESPONSE_MS = 8000
+
+
+def grade_to_quality(correct: bool, attempts_before_correct: int = 0, response_ms: int | None = None) -> int:
     """Maps a boolean result to an SM-2 quality score (0-5)."""
     if not correct:
         return 1
-    return max(3, 5 - attempts_before_correct)
+    quality = max(3, 5 - attempts_before_correct)
+    if response_ms is not None and response_ms > _SLOW_RESPONSE_MS:
+        # Still passes (never below 3 — it WAS correct), but caps at the
+        # "needs more practice" tier instead of a full-confidence 5.
+        quality = min(quality, 3)
+    return quality
 
 
 def schedule_review(user_id: str, vocab_key: str, quality: int) -> dict:

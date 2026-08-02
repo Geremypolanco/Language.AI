@@ -155,6 +155,13 @@ class AnswerRequest(BaseModel):
     vocab_key: str = ""
     correct: bool
     attempts_before_correct: int = 0
+    # How long the learner took to answer, in milliseconds — 0 means "not
+    # measured" (the default for exercise types where timing doesn't
+    # cleanly separate thinking time from network/AI latency, e.g.
+    # speak_repeat's recording+transcription round trip). See srs.py's
+    # grade_to_quality: a slow-but-correct answer schedules sooner review
+    # than a quick one, instead of treating every correct answer the same.
+    response_ms: int = 0
 
 
 class AnswerResult(BaseModel):
@@ -166,7 +173,9 @@ def submit_answer(user_id: str, payload: AnswerRequest, session: dict = Depends(
     get_user_by_id_or_404(user_id)
     schedule = {}
     if payload.vocab_key:
-        quality = srs.grade_to_quality(payload.correct, payload.attempts_before_correct)
+        quality = srs.grade_to_quality(
+            payload.correct, payload.attempts_before_correct, payload.response_ms or None
+        )
         schedule = srs.schedule_review(user_id, payload.vocab_key, quality)
     return AnswerResult(srs=schedule)
 

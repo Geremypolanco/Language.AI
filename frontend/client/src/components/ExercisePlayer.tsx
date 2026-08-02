@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { api, Exercise } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import { useAuth } from "@/contexts/AuthContext";
 import { Volume2 } from "lucide-react";
 import { toast } from "sonner";
@@ -90,6 +91,20 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
   const exercise = exercises[index];
   const isLast = index === exercises.length - 1;
 
+  // When this exercise was first shown — used for "dynamic scaffolding"
+  // (see backend/srs.py's grade_to_quality): a correct answer that took
+  // unusually long to give schedules sooner review than a quick one,
+  // instead of treating every correct answer as equally confident. Only
+  // meaningful for choice/typed answers, where the clock is purely the
+  // learner's own thinking time — speak_repeat/free_conversation_prompt
+  // involve recording+transcription+AI-reply round trips that would
+  // swamp any real signal about hesitation, so those never send it (see
+  // handleChoice/handleTextSubmit vs. the recording/conversation handlers).
+  const exerciseStartedAtRef = useRef(Date.now());
+  useEffect(() => {
+    exerciseStartedAtRef.current = Date.now();
+  }, [index]);
+
   // Fetch image_match / listen_type media whenever the exercise changes.
   useEffect(() => {
     setImageUrl(null);
@@ -135,17 +150,20 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     };
   }, [imageUrl, audioUrl]);
 
-  const recordAnswer = async (correct: boolean, feedback: string | null = null) => {
+  const recordAnswer = async (correct: boolean, feedback: string | null = null, responseMs = 0) => {
     setWasCorrect(correct);
     setFeedbackText(feedback);
     setRevealed(true);
     if (correct) setCorrectCount((c) => c + 1);
+    if (correct) haptics.correct();
+    else haptics.incorrect();
     if (exercise.vocab_key) {
       try {
         await api.submitLessonAnswer(userId, {
           vocab_key: exercise.vocab_key,
           correct,
           attempts_before_correct: 0,
+          response_ms: responseMs,
         });
       } catch {
         // SRS scheduling is best-effort — a failure here shouldn't block the lesson.
@@ -155,14 +173,14 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
 
   const handleChoice = (option: string) => {
     if (revealed) return;
-    recordAnswer(normalize(option) === normalize(exercise.correct_answer));
+    recordAnswer(normalize(option) === normalize(exercise.correct_answer), null, Date.now() - exerciseStartedAtRef.current);
   };
 
   const handleTextSubmit = () => {
     if (revealed || !textAnswer.trim()) return;
     const given = normalize(textAnswer);
     const correct = acceptableTextAnswers(exercise).some((answer) => normalize(answer) === given);
-    recordAnswer(correct);
+    recordAnswer(correct, null, Date.now() - exerciseStartedAtRef.current);
   };
 
   const handleSelfAssess = (correct: boolean) => {

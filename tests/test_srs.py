@@ -49,6 +49,36 @@ def test_grade_to_quality():
     assert srs.grade_to_quality(correct=True, attempts_before_correct=3) == 3
 
 
+def test_grade_to_quality_dynamic_scaffolding_for_slow_correct_answers():
+    # "Dynamic scaffolding": a correct answer that took unusually long
+    # signals hesitation, not confident recall — it should still pass
+    # (never drop to the "wrong" tier) but schedule sooner review than a
+    # quick correct answer would, instead of every correct answer being
+    # treated as equally mastered.
+    fast = srs.grade_to_quality(correct=True, attempts_before_correct=0, response_ms=500)
+    slow = srs.grade_to_quality(correct=True, attempts_before_correct=0, response_ms=15000)
+    assert fast == 5
+    assert slow == 3
+    assert slow >= 3  # still a pass, never treated as an actual mistake
+
+    # A wrong answer is graded the same regardless of how long it took —
+    # slowness only matters as a signal on top of an otherwise-correct answer.
+    assert srs.grade_to_quality(correct=False, response_ms=15000) == 1
+
+    # response_ms=None (the default) means "not measured" — must not be
+    # misread as "instant," which would otherwise trivially always pass
+    # through as fast/confident.
+    assert srs.grade_to_quality(correct=True, attempts_before_correct=0, response_ms=None) == 5
+
+
+def test_slow_correct_answer_schedules_sooner_review_than_a_fast_one():
+    _make_user()
+    fast_schedule = srs.schedule_review("u1", "word.fast", quality=srs.grade_to_quality(True, 0, response_ms=500))
+    slow_schedule = srs.schedule_review("u1", "word.slow", quality=srs.grade_to_quality(True, 0, response_ms=15000))
+    assert slow_schedule["interval_days"] <= fast_schedule["interval_days"]
+    assert slow_schedule["ease_factor"] < fast_schedule["ease_factor"]
+
+
 def test_recent_mistakes_orders_by_mistake_count():
     _make_user()
     srs.schedule_review("u1", "a.word", quality=1)
