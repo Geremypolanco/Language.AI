@@ -21,7 +21,24 @@ type ServerEvent =
   | { type: "reply_start" }
   | { type: "reply_chunk"; text: string }
   | { type: "reply_done"; text: string }
-  | { type: "reply_audio_chunk"; text: string; audio_base64: string; audio_mime: string };
+  | { type: "reply_audio_chunk"; text: string; audio_base64: string; audio_mime: string }
+  // Sent once the server has nothing more to say for this turn (whether
+  // TTS succeeded, failed, or there was no reply at all) — the one
+  // reliable "safe to start listening again" signal, since reply_audio_chunk
+  // messages arrive incrementally and an empty queue doesn't by itself mean
+  // no more are coming.
+  | { type: "turn_complete" };
+
+// Voice-activity detection tuning for hands-free mode: continuously
+// analyzes the mic's volume (RMS of the time-domain waveform) to detect
+// when the learner starts and stops talking, instead of requiring a manual
+// "stop recording" tap — the difference between a walkie-talkie and an
+// actual spoken conversation like Alexa/Siri. Thresholds are a starting
+// point tuned by ear, not measured against real hardware in this
+// environment — a genuinely quiet/noisy mic may need different values.
+const VAD_SILENCE_RMS = 0.02;
+const VAD_SILENCE_MS_TO_STOP = 1200;
+const VAD_MAX_UTTERANCE_MS = 20000; // safety cap so a stuck-open mic can't record forever
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -62,12 +79,36 @@ export default function Talk() {
   const [connected, setConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  // Hands-free mode: listens continuously, auto-detects when the learner
+  // stops talking (voice activity detection, no manual "stop" tap needed),
+  // and automatically starts listening again once the tutor's spoken reply
+  // finishes — the actual thing being asked for ("una conversación fluida
+  // ... como Alexa, Siri"), not a push-to-talk walkie-talkie. Defaults on;
+  // a learner who prefers manual control (noisy room, wants to type
+  // instead) can turn it off.
+  const [handsFree, setHandsFree] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioQueueRef = useRef<HTMLAudioElement[]>([]);
   const playingRef = useRef(false);
   const currentTutorMsgId = useRef<string | null>(null);
+  // Voice-activity detection plumbing — see VAD_* constants above.
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const vadFrameRef = useRef<number | null>(null);
+  // True once the server's turn_complete has arrived AND any queued reply
+  // audio has finished playing — the actual "safe to listen again" signal,
+  // since those two events can arrive/finish in either order.
+  const turnCompleteRef = useRef(false);
+  // Mirrors isRecording in a ref — maybeResumeListening is called from
+  // callbacks (ws.onmessage, audio.onended) set up once per WebSocket
+  // connection, so it would otherwise close over a stale isRecording value
+  // from whatever render was active when those callbacks were created.
+  const isRecordingRef = useRef(false);
+  const handsFreeRef = useRef(handsFree);
+  useEffect(() => {
+    handsFreeRef.current = handsFree;
+  }, [handsFree]);
 
   // Load the roster of selectable teachers once, and default to the
   // learner's previously-saved persona (if any) so returning users don't
@@ -104,6 +145,9 @@ export default function Talk() {
         case "ready":
           setActivePersona(msg.persona);
           setMessages([{ id: "greeting", role: "tutor", text: msg.message }]);
+          // The greeting is text-only (no spoken audio turn), so there's no
+          // turn_complete to wait for here — just start listening directly.
+          if (handsFreeRef.current) startListening();
           break;
         case "error":
           toast.error(msg.message);
@@ -138,6 +182,10 @@ export default function Talk() {
           playNextAudio();
           break;
         }
+        case "turn_complete":
+          turnCompleteRef.current = true;
+          maybeResumeListening();
+          break;
       }
     };
 
@@ -148,7 +196,14 @@ export default function Talk() {
   const playNextAudio = () => {
     if (playingRef.current) return;
     const next = audioQueueRef.current.shift();
-    if (!next) return;
+    if (!next) {
+      // Nothing left queued right now — if the server already told us the
+      // turn is fully done, this is the point where "done talking" actually
+      // becomes true (reply_audio_chunk messages can still arrive after an
+      // empty queue moment, but never after turn_complete).
+      maybeResumeListening();
+      return;
+    }
     playingRef.current = true;
     next.onended = () => {
       playingRef.current = false;
@@ -159,7 +214,33 @@ export default function Talk() {
     });
   };
 
-  const startRecording = async () => {
+  const stopVad = () => {
+    if (vadFrameRef.current !== null) {
+      cancelAnimationFrame(vadFrameRef.current);
+      vadFrameRef.current = null;
+    }
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+  };
+
+  // The actual "safe to listen again" check — hands-free mode must wait for
+  // BOTH signals (server done sending, AND any queued audio has finished
+  // playing) since they can arrive/finish in either order.
+  const maybeResumeListening = () => {
+    if (
+      handsFreeRef.current &&
+      turnCompleteRef.current &&
+      audioQueueRef.current.length === 0 &&
+      !playingRef.current &&
+      !isRecordingRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
+      turnCompleteRef.current = false;
+      startListening();
+    }
+  };
+
+  const startListening = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -169,6 +250,7 @@ export default function Talk() {
       mediaRecorder.ondataavailable = (event) => audioChunksRef.current.push(event.data);
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        stopVad();
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         const base64 = await blobToBase64(audioBlob);
         if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -179,16 +261,75 @@ export default function Talk() {
       };
 
       mediaRecorder.start();
+      isRecordingRef.current = true;
       setIsRecording(true);
-    } catch (err) {
+
+      // Voice activity detection: watches the mic's live volume so the
+      // recording stops on its own once the learner stops talking, instead
+      // of requiring a manual tap — see the VAD_* constants above.
+      if (handsFreeRef.current) {
+        const audioContext = new AudioContext();
+        audioContextRef.current = audioContext;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+
+        let speechDetected = false;
+        let silenceStartedAt: number | null = null;
+        const listenStartedAt = Date.now();
+
+        const tick = () => {
+          if (mediaRecorderRef.current?.state !== "recording") return;
+
+          if (Date.now() - listenStartedAt > VAD_MAX_UTTERANCE_MS) {
+            stopListening();
+            return;
+          }
+
+          analyser.getByteTimeDomainData(data);
+          let sumSquares = 0;
+          for (let i = 0; i < data.length; i++) {
+            const normalized = (data[i] - 128) / 128;
+            sumSquares += normalized * normalized;
+          }
+          const rms = Math.sqrt(sumSquares / data.length);
+
+          if (rms > VAD_SILENCE_RMS) {
+            speechDetected = true;
+            silenceStartedAt = null;
+          } else if (speechDetected) {
+            if (silenceStartedAt === null) {
+              silenceStartedAt = Date.now();
+            } else if (Date.now() - silenceStartedAt > VAD_SILENCE_MS_TO_STOP) {
+              stopListening();
+              return;
+            }
+          }
+          vadFrameRef.current = requestAnimationFrame(tick);
+        };
+        vadFrameRef.current = requestAnimationFrame(tick);
+      }
+    } catch {
       toast.error("No se pudo acceder al micrófono");
     }
   };
 
-  const stopRecording = () => {
+  const stopListening = () => {
     mediaRecorderRef.current?.stop();
+    isRecordingRef.current = false;
     setIsRecording(false);
   };
+
+  // Clean up the mic/VAD if the learner navigates away mid-recording.
+  useEffect(() => {
+    return () => {
+      stopVad();
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSendMessage = () => {
     if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -286,11 +427,25 @@ export default function Talk() {
           <Button
             size="lg"
             className={`w-full h-12 ${isRecording ? "bg-destructive" : "bg-primary"}`}
-            onClick={isRecording ? stopRecording : startRecording}
+            onClick={isRecording ? stopListening : startListening}
             disabled={!connected}
           >
-            {isRecording ? "🛑 Detener grabación" : "🎤 Grabar"}
+            {isRecording
+              ? handsFree
+                ? "🎙️ Escuchando... (toca para enviar)"
+                : "🛑 Detener grabación"
+              : "🎤 Hablar"}
           </Button>
+
+          <button
+            type="button"
+            className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-smooth"
+            onClick={() => setHandsFree((v) => !v)}
+          >
+            {handsFree
+              ? "🔊 Modo manos libres activado — el tutor te escuchará de nuevo automáticamente. Desactivar"
+              : "Modo manos libres desactivado — activar para conversar sin tocar botones"}
+          </button>
 
           <div className="flex gap-2">
             <Input

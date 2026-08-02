@@ -156,6 +156,12 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                     await websocket.send_json(
                         {"type": "error", "message": "No se pudo transcribir el audio — intenta de nuevo o escribe en su lugar."}
                     )
+                    # Hands-free mode (see Talk.tsx) waits for this to know
+                    # it's safe to start listening again — without it, a
+                    # failed transcription would silently break the
+                    # continuous listen/reply loop until the learner
+                    # manually restarted it.
+                    await websocket.send_json({"type": "turn_complete"})
                     continue
             elif msg_type == "text":
                 transcript = str(msg.get("data", "")).strip()
@@ -190,6 +196,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 reply_text = "Lo siento, no puedo responder en este momento — inténtalo de nuevo en unos segundos."
                 await websocket.send_json({"type": "error", "message": "El tutor no está disponible en este momento."})
                 await websocket.send_json({"type": "reply_done", "text": reply_text})
+                await websocket.send_json({"type": "turn_complete"})
                 continue
 
             await websocket.send_json({"type": "reply_done", "text": reply_text})
@@ -229,6 +236,12 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 chars_out=len(reply_text),
                 sentence_count=sentence_count,
             )
+            # Tells the client (see Talk.tsx's hands-free mode) that no more
+            # audio chunks are coming for this turn — whether TTS succeeded
+            # or failed above — so it's safe to start listening again for
+            # the next thing the learner says, the way a real voice
+            # assistant resumes listening after it finishes speaking.
+            await websocket.send_json({"type": "turn_complete"})
             # Background task to update memory every few turns
             if len(history) % 4 == 0:
                 import asyncio
