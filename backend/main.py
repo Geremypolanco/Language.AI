@@ -126,11 +126,25 @@ if _FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="frontend-assets")
     
     # Serve index.html for all non-API routes (SPA routing)
+    _frontend_dist_resolved = _FRONTEND_DIST.resolve()
+
     @app.get("/{path:path}")
     async def serve_spa(path: str) -> FileResponse:
         # If it's an API route, let FastAPI handle it
         if path.startswith(("api/", "auth/", "public/", "team/")):
             raise HTTPException(status_code=404)
+        # Vite's `client/public/` files (manifest.json, sw.js, icon.svg,
+        # robots.txt, ...) land directly at the dist root, not under
+        # /assets — this used to fall straight through to the index.html
+        # fallback below, so e.g. /sw.js served the SPA shell's HTML
+        # instead of the actual service worker script, and the browser
+        # refused to register it (wrong MIME type). Serve the real file
+        # when one exists at that path; resolve+is_relative_to guards
+        # against a path like "../../etc/passwd" escaping the dist dir.
+        if path:
+            candidate = (_FRONTEND_DIST / path).resolve()
+            if candidate.is_file() and candidate.is_relative_to(_frontend_dist_resolved):
+                return FileResponse(str(candidate))
         # Otherwise serve the React app
         return FileResponse(str(_FRONTEND_DIST / "index.html"))
 

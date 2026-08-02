@@ -1,0 +1,13 @@
+{
+  "name": "Language.AI",
+  "short_name": "Language.AI",
+  "description": "Aprende idiomas con tutoría de IA — lecciones, práctica y conversación en vivo.",
+  "start_url": "/path",
+  "id": "/path",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#a8d5ff",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
