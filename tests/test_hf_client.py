@@ -14,8 +14,8 @@ import pytest
 from backend import hf_client as hf_client_module
 from backend.config import settings
 from backend.curriculum import ALPHABET_TOPIC, LessonRequest, units_for_level
-from backend.hf_client import _HFGuard
-from backend.models import CEFRLevel
+from backend.hf_client import _HFGuard, _with_teaching_intros
+from backend.models import CEFRLevel, Exercise, ExerciseType
 
 
 @pytest.fixture
@@ -69,6 +69,51 @@ def test_budget_resets_on_a_new_day():
     assert guard.allowed() is True
 
 
+def test_with_teaching_intros_precedes_each_graded_exercise_with_a_matching_card():
+    # Regression: lessons quizzed a learner on a word cold — a real
+    # classroom teaches it first. Each graded exercise must be preceded by
+    # a vocab_intro built from that same exercise's own word/translation/
+    # audio/image, so the two are always in sync by construction.
+    quiz = Exercise(
+        id="ex-0-hola",
+        type=ExerciseType.MULTIPLE_CHOICE,
+        prompt="Elige la traducción correcta.",
+        target_text="hello",
+        native_text="hola",
+        options=["hello", "goodbye", "please"],
+        correct_answer="hello",
+        image_prompt="a person waving hello",
+        audio_text="hello",
+        vocab_key="greetings.hello",
+    )
+    result = _with_teaching_intros([quiz])
+    assert len(result) == 2
+    intro, graded = result
+    assert intro.type == ExerciseType.VOCAB_INTRO
+    assert graded is quiz
+    assert intro.target_text == quiz.target_text
+    assert intro.native_text == quiz.native_text
+    assert intro.audio_text == quiz.audio_text
+    assert intro.image_prompt == quiz.image_prompt
+    assert intro.vocab_key == quiz.vocab_key
+    assert intro.options == []  # never graded — nothing to click
+
+
+def test_with_teaching_intros_skips_free_conversation_prompt():
+    conversation = Exercise(
+        id="ex-0-chat",
+        type=ExerciseType.FREE_CONVERSATION_PROMPT,
+        prompt="Cuéntame sobre tu día.",
+        target_text="",
+        native_text="",
+        options=[],
+        correct_answer="",
+        vocab_key="",
+    )
+    result = _with_teaching_intros([conversation])
+    assert result == [conversation]
+
+
 _FAKE_EXERCISE_JSON = json.dumps(
     [
         {
@@ -117,7 +162,7 @@ def test_alphabet_prompt_version_busts_only_the_alphabet_units_cache(monkeypatch
         mix = resolve_exercise_mix(req.unit)
         key = (
             f"{req.unit.id}:{req.unit.topic}:{req.unit.level.value}:{req.target_lang}:{req.native_lang}:"
-            f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}"
+            f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}:{hf_client_module.EXERCISE_FORMAT_VERSION}"
             f"{':' + version if req.unit.topic == ALPHABET_TOPIC else ''}"
         )
         return hf_client_module.hf_client._cache_path("exercises", key, "json")

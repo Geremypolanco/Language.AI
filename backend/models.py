@@ -40,6 +40,12 @@ class CEFRLevel(StrEnum):
 
 
 class ExerciseType(StrEnum):
+    # A self-paced, ungraded teaching card shown immediately before the
+    # graded exercise that tests the same vocab_key — see
+    # hf_client._with_teaching_intros. Never produced directly by the AI
+    # prompt; always synthesized in Python from the graded exercise it
+    # precedes, so the two are always about the same word by construction.
+    VOCAB_INTRO = "vocab_intro"
     IMAGE_MATCH = "image_match"  # Rosetta-Stone style: pick the image for the target word/audio
     LISTEN_TYPE = "listen_type"  # hear audio, type what you heard
     TRANSLATE_TO_TARGET = "translate_to_target"

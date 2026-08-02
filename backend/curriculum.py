@@ -220,6 +220,16 @@ ALPHABET_TOPIC = "Alphabet & first sounds"
 # engines are trained on natural speech, not isolated letter-names.
 ALPHABET_PROMPT_VERSION = "v2"
 
+# Bumped whenever generate_exercises' output SHAPE changes in a way that
+# affects every unit, not just the alphabet one — unlike
+# ALPHABET_PROMPT_VERSION, hf_client folds this into every unit's cache key
+# unconditionally. History: v2 added a self-paced "vocab_intro" teaching
+# card before each graded exercise (see hf_client._with_teaching_intros) —
+# previously every lesson jumped straight to quizzing the learner on a word
+# they'd never actually been shown, which is backwards for anyone actually
+# trying to learn the word for the first time.
+EXERCISE_FORMAT_VERSION = "v2"
+
 # image_match doesn't make sense for a single letter/character — there's no
 # real "picture of a sound" to match against, and asking the model to
 # invent one anyway produces incoherent exercises (or, worse, the model

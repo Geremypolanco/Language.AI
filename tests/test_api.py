@@ -355,8 +355,11 @@ def test_practice_session_generates_exercises_of_one_type_and_completes_normally
         assert res.status_code == 200
         body = res.json()
         assert body["unit_id"] == "practice-listen_type-A1"
-        assert len(body["exercises"]) == 5
-        assert all(ex["type"] == "listen_type" for ex in body["exercises"])
+        # Each of the 5 requested listen_type exercises now has its own
+        # preceding vocab_intro teaching card (see
+        # hf_client._with_teaching_intros) — 10 total, alternating.
+        assert len(body["exercises"]) == 10
+        assert [ex["type"] for ex in body["exercises"]] == ["vocab_intro", "listen_type"] * 5
 
         complete_res = client.post(
             f"/api/lessons/{user['id']}/complete",

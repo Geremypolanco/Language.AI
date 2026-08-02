@@ -139,6 +139,9 @@ export interface DashboardData {
 export interface Exercise {
   id: string;
   type:
+    // Self-paced, ungraded teaching card shown before the graded exercise
+    // that tests the same word — see backend/hf_client._with_teaching_intros.
+    | "vocab_intro"
     | "image_match"
     | "listen_type"
     | "translate_to_target"

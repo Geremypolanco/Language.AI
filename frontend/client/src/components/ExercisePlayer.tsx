@@ -100,12 +100,13 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     setSttUnavailable(false);
 
     let cancelled = false;
-    if (exercise.type === "image_match") {
+    if (exercise.type === "image_match" || (exercise.type === "vocab_intro" && exercise.image_prompt)) {
       api
         .getExerciseImage(exercise.image_prompt || exercise.target_text)
         .then((url) => !cancelled && setImageUrl(url))
         .catch(() => !cancelled && setImageFailed(true));
-    } else if (exercise.type === "listen_type" && user) {
+    }
+    if ((exercise.type === "listen_type" || exercise.type === "vocab_intro") && user) {
       api
         .getExerciseAudio(exercise.audio_text || exercise.target_text, user.target_lang)
         .then((url) => !cancelled && setAudioUrl(url))
@@ -167,6 +168,15 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
   const handleSelfAssess = (correct: boolean) => {
     if (revealed) return;
     recordAnswer(correct);
+  };
+
+  // vocab_intro is a teaching card, not a question — there's nothing to
+  // grade and no vocab_key attempt to log, so this advances directly
+  // instead of going through recordAnswer (which would count it toward
+  // correctCount and log a spurious SRS attempt for a word the learner
+  // was only just shown, not tested on).
+  const handleContinueTeaching = () => {
+    handleNext();
   };
 
   const replayAudio = async () => {
@@ -257,8 +267,12 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     }
     setSubmitting(true);
     try {
-      const finalCorrect = correctCount;
-      const score = finalCorrect / exercises.length;
+      // vocab_intro teaching cards are never graded (see recordAnswer /
+      // handleContinueTeaching) — excluding them from the denominator too,
+      // so a lesson with teaching cards doesn't look like it was scored
+      // out of a bigger total than what was actually tested.
+      const gradedCount = exercises.filter((ex) => ex.type !== "vocab_intro").length;
+      const score = gradedCount > 0 ? correctCount / gradedCount : 1;
       const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
       const result = await api.completeLesson(userId, unitId, score, elapsedSeconds);
       setSummary(result as typeof summary);
@@ -318,7 +332,9 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
       </div>
 
       <div>
-        <p className="text-lg font-semibold text-foreground mb-1">{exercise.prompt}</p>
+        <p className="text-lg font-semibold text-foreground mb-1">
+          {exercise.type === "vocab_intro" ? "📖 Aprende esta palabra antes de practicar" : exercise.prompt}
+        </p>
         {exercise.target_text && !targetTextIsAnswer && (
           <p className="text-2xl font-bold text-primary mb-2">{exercise.target_text}</p>
         )}
@@ -330,7 +346,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
         )}
       </div>
 
-      {exercise.type === "image_match" && (
+      {(exercise.type === "image_match" || (exercise.type === "vocab_intro" && exercise.image_prompt)) && (
         <div className="flex justify-center">
           {imageUrl ? (
             <img src={imageUrl} alt="" className="max-h-48 rounded-lg object-cover" />
@@ -338,6 +354,19 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
             <p className="text-sm text-muted-foreground italic">(Imagen no disponible en este momento)</p>
           ) : (
             <div className="h-48 w-48 rounded-lg bg-muted animate-pulse" />
+          )}
+        </div>
+      )}
+
+      {exercise.type === "vocab_intro" && (
+        <div className="flex flex-col items-center gap-2">
+          {audioUrl && <audio ref={audioRef} src={audioUrl} />}
+          <Button type="button" variant="outline" size="lg" onClick={replayAudio} disabled={!user}>
+            <Volume2 className="w-5 h-5 mr-2" />
+            Escuchar pronunciación
+          </Button>
+          {audioFailed && (
+            <p className="text-sm text-muted-foreground italic">(Audio no disponible en este momento)</p>
           )}
         </div>
       )}
@@ -461,9 +490,9 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
         <Button variant="ghost" onClick={onExit}>
           Salir
         </Button>
-        {revealed && (
-          <Button onClick={handleNext} disabled={submitting}>
-            {submitting ? "Guardando..." : isLast ? "Terminar" : "Siguiente"}
+        {(revealed || exercise.type === "vocab_intro") && (
+          <Button onClick={exercise.type === "vocab_intro" ? handleContinueTeaching : handleNext} disabled={submitting}>
+            {submitting ? "Guardando..." : isLast ? "Terminar" : exercise.type === "vocab_intro" ? "Entendido, practicar" : "Siguiente"}
           </Button>
         )}
       </div>

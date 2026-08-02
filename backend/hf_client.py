@@ -60,7 +60,14 @@ import httpx
 from num2words import num2words
 
 from .config import settings
-from .curriculum import ALPHABET_PROMPT_VERSION, ALPHABET_TOPIC, LessonRequest, build_exercise_generation_prompt, topic_es
+from .curriculum import (
+    ALPHABET_PROMPT_VERSION,
+    ALPHABET_TOPIC,
+    EXERCISE_FORMAT_VERSION,
+    LessonRequest,
+    build_exercise_generation_prompt,
+    topic_es,
+)
 from .models import Exercise, ExerciseType
 
 if TYPE_CHECKING:
@@ -458,10 +465,10 @@ class HFClient:
         # cached exercises under the new topic's identity forever.
         cache_key = (
             f"{req.unit.id}:{req.unit.topic}:{req.unit.level.value}:{req.target_lang}:{req.native_lang}:"
-            f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}"
-            # Only the alphabet unit's cache key carries this — see
-            # ALPHABET_PROMPT_VERSION's docstring for why a prompt fix alone
-            # doesn't reach learners with an already-cached exercise set.
+            f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}:{EXERCISE_FORMAT_VERSION}"
+            # Only the alphabet unit's cache key carries this additionally —
+            # see ALPHABET_PROMPT_VERSION's docstring for why a prompt fix
+            # alone doesn't reach learners with an already-cached exercise set.
             f"{':' + ALPHABET_PROMPT_VERSION if req.unit.topic == ALPHABET_TOPIC else ''}"
         )
         cache_path = self._cache_path("exercises", cache_key, "json")
@@ -478,13 +485,13 @@ class HFClient:
                 ],
                 max_tokens=1500,
             )
-            exercises = _parse_exercises(raw)
+            exercises = _with_teaching_intros(_parse_exercises(raw))
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump([e.model_dump() for e in exercises], f)
             return exercises
         except Exception:
             logger.exception("AI exercise generation failed, using offline fallback content")
-        return _fallback_exercises(req, mix_override)
+        return _with_teaching_intros(_fallback_exercises(req, mix_override))
 
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         messages = [{"role": "system", "content": system_prompt}, *history]
@@ -1160,6 +1167,41 @@ def _parse_exercises(raw: str) -> list[Exercise]:
             )
         )
     return exercises
+
+
+def _with_teaching_intros(exercises: list[Exercise]) -> list[Exercise]:
+    """Prepends a self-paced, ungraded 'vocab_intro' card before each graded
+    exercise, built from that same exercise's own already-generated fields
+    (word, translation, audio, image) — this is the fix for lessons that
+    quizzed a learner on a word cold, before ever showing it to them. A real
+    classroom teaches a word first (how it's written, what it means, how it
+    sounds) and only then tests it; this makes that the actual shape of
+    every lesson instead of relying on the AI prompt to somehow produce
+    twice the content reliably. Deriving the teaching card from the graded
+    exercise's own fields (rather than asking the model for a separate one)
+    guarantees they're always about the exact same word — no risk of the
+    two drifting apart. Skipped for free_conversation_prompt, which has no
+    single fixed vocab item to preview — it's open-ended practice, not
+    vocabulary recall."""
+    result: list[Exercise] = []
+    for ex in exercises:
+        if ex.type != ExerciseType.FREE_CONVERSATION_PROMPT:
+            result.append(
+                Exercise(
+                    id=f"{ex.id}-intro",
+                    type=ExerciseType.VOCAB_INTRO,
+                    prompt="",
+                    target_text=ex.target_text,
+                    native_text=ex.native_text,
+                    options=[],
+                    correct_answer=ex.target_text,
+                    image_prompt=ex.image_prompt,
+                    audio_text=ex.audio_text or ex.target_text,
+                    vocab_key=ex.vocab_key,
+                )
+            )
+        result.append(ex)
+    return result
 
 
 def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | None = None) -> list[Exercise]:
