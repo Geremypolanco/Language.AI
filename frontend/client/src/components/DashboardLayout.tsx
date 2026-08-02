@@ -111,6 +111,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
             size="sm"
             variant="ghost"
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
