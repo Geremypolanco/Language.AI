@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import academy, auth, db
@@ -69,6 +69,24 @@ def _get_enrollment_row(user_id: str) -> Any:
         return cur.fetchone()
 
 
+async def _prefetch_first_course(field: AcademicField, level: AcademicLevel, content_lang: str) -> None:
+    """Warms the curriculum + first course's content/assignments cache
+    right after enrollment — same "make the next click instant" rationale
+    as lessons.py's unit prefetch, so opening the first course doesn't sit
+    on an AI generation wait right when a learner has just committed to a
+    field. Best-effort: a failure here just means it generates on demand
+    like before, same as any cache miss."""
+    try:
+        curriculum = await _load_curriculum(field, level, content_lang)
+        if not curriculum.courses:
+            return
+        first = curriculum.courses[0]
+        await hf_client.generate_course_content(field, level, first.id, first.title, first.description, content_lang)
+        await hf_client.generate_assignments(field, level, first.id, first.title, first.description, content_lang)
+    except Exception:
+        logger.exception("Background academy prefetch failed for field %s", field.id)
+
+
 class EnrollRequest(BaseModel):
     field_id: str
     level: AcademicLevel
@@ -80,7 +98,9 @@ class EnrollRequest(BaseModel):
 
 
 @router.post("/{user_id}/enroll", response_model=AcademyEnrollment)
-def enroll(user_id: str, payload: EnrollRequest, session: dict = Depends(auth.require_owner)) -> AcademyEnrollment:
+def enroll(
+    user_id: str, payload: EnrollRequest, background_tasks: BackgroundTasks, session: dict = Depends(auth.require_owner)
+) -> AcademyEnrollment:
     user = get_user_by_id_or_404(user_id)
     field = academy.get_field(payload.field_id)
     if not field:
@@ -96,6 +116,7 @@ def enroll(user_id: str, payload: EnrollRequest, session: dict = Depends(auth.re
             "enrolled_at=excluded.enrolled_at, content_lang=excluded.content_lang",
             (user_id, field.id, payload.level.value, enrolled_at, content_lang),
         )
+    background_tasks.add_task(_prefetch_first_course, field, payload.level, content_lang)
     return _build_enrollment(field, payload.level, enrolled_at, content_lang)
 
 

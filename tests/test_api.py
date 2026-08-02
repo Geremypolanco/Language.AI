@@ -390,10 +390,13 @@ def test_a1_free_practice_never_seeds_content_from_the_alphabet_unit(monkeypatch
         seen_units.append(req.unit.topic)
         return await original(req, mix_override)
 
-    monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", spy)
-
     with TestClient(app) as client:
+        # Onboarding schedules its own background exercise prefetch (see
+        # users.py's _prefetch_units) — the spy is only installed after
+        # onboarding completes so it observes just the /practice request
+        # under test, not that unrelated prefetch.
         user = _onboard(client, email="practice-alphabet@example.com")
+        monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", spy)
         res = client.post(
             f"/api/lessons/{user['id']}/practice",
             json={"exercise_type": "free_conversation_prompt", "level": "A1"},

@@ -7,16 +7,45 @@ read/updated by the session that owns it.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from .. import auth, db
 from ..config import settings
 from ..models import CEFRLevel, UserProfile
 
+logger = logging.getLogger("lingua.users")
+
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+# How many of a level's units to warm the exercise cache for right after
+# onboarding — small on purpose: this is "make the learner's very next few
+# clicks feel instant," not "pre-generate the whole curriculum for someone
+# who might never open it." lessons.py's complete_lesson keeps one unit
+# ahead of an active learner from here on.
+_PREFETCH_UNIT_COUNT = 3
+
+
+async def _prefetch_units(native_lang: str, target_lang: str, level: CEFRLevel, interests: list[str], count: int) -> None:
+    """Warms generate_exercises' disk cache for a learner's upcoming units
+    so Path feels instant on first open instead of generating on demand.
+    Fire-and-forget via FastAPI's BackgroundTasks: runs after the response
+    has already been sent, so it never adds latency to onboarding itself,
+    and a failure here just means the affected unit falls back to
+    generating on demand like before — never a broken app."""
+    from ..curriculum import LessonRequest, units_for_level
+    from ..hf_client import hf_client
+
+    for unit in units_for_level(level)[:count]:
+        try:
+            await hf_client.generate_exercises(
+                LessonRequest(unit=unit, native_lang=native_lang, target_lang=target_lang, interests=interests, recent_mistakes=[])
+            )
+        except Exception:
+            logger.exception("Background exercise prefetch failed for unit %s", unit.id)
 
 
 def get_user_by_id_or_404(user_id: str) -> UserProfile:
@@ -51,7 +80,9 @@ class CreateUserRequest(BaseModel):
 
 
 @router.post("", response_model=UserProfile)
-def create_user(payload: CreateUserRequest, request: Request, response: Response) -> UserProfile:
+def create_user(
+    payload: CreateUserRequest, request: Request, response: Response, background_tasks: BackgroundTasks
+) -> UserProfile:
     pending = auth.verify_pending(request.cookies.get(auth.PENDING_COOKIE))
     if not pending:
         raise HTTPException(status_code=401, detail="Inicia sesión con Google primero")
@@ -94,6 +125,9 @@ def create_user(payload: CreateUserRequest, request: Request, response: Response
 
     _set_session_cookie(response, user_id, email)
     response.delete_cookie(auth.PENDING_COOKIE)
+    background_tasks.add_task(
+        _prefetch_units, payload.native_lang, payload.target_lang, payload.level, payload.interests, _PREFETCH_UNIT_COUNT
+    )
     return get_user_by_id_or_404(user_id)
 
 
@@ -119,7 +153,7 @@ class UpdateUserRequest(BaseModel):
 
 @router.patch("/{user_id}", response_model=UserProfile)
 def update_user(
-    user_id: str, payload: UpdateUserRequest, session: dict = Depends(auth.require_owner)
+    user_id: str, payload: UpdateUserRequest, background_tasks: BackgroundTasks, session: dict = Depends(auth.require_owner)
 ) -> UserProfile:
     if payload.tutor_persona_id is not None:
         from .. import personas
@@ -147,4 +181,15 @@ def update_user(
             )
         if payload.tutor_persona_id is not None:
             cur.execute("UPDATE users SET tutor_persona_id=? WHERE id=?", (payload.tutor_persona_id, user_id))
-    return get_user_by_id_or_404(user_id)
+
+    updated = get_user_by_id_or_404(user_id)
+    # Changing target/native language, level, or interests changes
+    # generate_exercises' cache key entirely — the learner's existing
+    # prefetched/cached units (from onboarding or normal play) are for a
+    # combination that no longer applies, so warm the new one the same way
+    # onboarding does, instead of leaving Path to generate on demand again.
+    if payload.native_lang is not None or payload.target_lang is not None or payload.level is not None or payload.interests is not None:
+        background_tasks.add_task(
+            _prefetch_units, updated.native_lang, updated.target_lang, updated.level, updated.interests, _PREFETCH_UNIT_COUNT
+        )
+    return updated
