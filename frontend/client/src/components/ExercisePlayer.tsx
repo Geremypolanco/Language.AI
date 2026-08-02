@@ -29,6 +29,24 @@ function normalize(s: string): string {
   return s.trim().toLowerCase().replace(/[.,!?¡¿]/g, "");
 }
 
+// For a target language whose script the learner can't read/type yet (see
+// backend/curriculum.py's _uses_unfamiliar_script), native_text is written
+// as "translation — romanized transliteration" (e.g. "hello — annyeonghaseyo")
+// specifically so the learner has something they CAN read and type on a
+// normal keyboard — a real phone/computer has no Hangul/Kana/Cyrillic input
+// installed by default. But correct_answer/target_text stay in the real
+// target script (안녕하세요), so grading a typed answer against only
+// correct_answer marked the romanization — the exact thing the exercise
+// itself displayed as the answer to type — as wrong. Accept either form.
+function acceptableTextAnswers(exercise: { target_text: string; native_text: string; correct_answer: string }): string[] {
+  const answers = [exercise.correct_answer, exercise.target_text];
+  const emDashIndex = exercise.native_text.indexOf(" — ");
+  if (emDashIndex !== -1) {
+    answers.push(exercise.native_text.slice(emDashIndex + 3));
+  }
+  return answers;
+}
+
 export default function ExercisePlayer({ userId, unitId, exercises, onExit }: ExercisePlayerProps) {
   const { user } = useAuth();
   const [index, setIndex] = useState(0);
@@ -141,7 +159,9 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
 
   const handleTextSubmit = () => {
     if (revealed || !textAnswer.trim()) return;
-    recordAnswer(normalize(textAnswer) === normalize(exercise.correct_answer));
+    const given = normalize(textAnswer);
+    const correct = acceptableTextAnswers(exercise).some((answer) => normalize(answer) === given);
+    recordAnswer(correct);
   };
 
   const handleSelfAssess = (correct: boolean) => {
