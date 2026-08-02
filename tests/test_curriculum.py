@@ -123,6 +123,22 @@ def test_alphabet_teaching_note_only_applies_to_the_alphabet_units_own_mix():
     assert "ONE letter" not in practice_prompt
 
 
+def test_alphabet_unit_never_asks_for_bare_letter_as_audio_text():
+    # Regression: the prompt used to let the model choose between a bare
+    # letter/character or a real word for audio_text ("...or a single word
+    # that starts with it if letters alone can't be pronounced
+    # meaningfully") — confirmed live that a bare isolated Korean jamo
+    # (ㅏ) sent to text-to-speech made synthesis fail outright ("Audio no
+    # disponible"), since a real speech engine is trained on natural
+    # speech, not isolated letter-names. audio_text must now always be a
+    # real, pronounceable word — never left to the model's discretion.
+    alphabet_unit = units_for_level(CEFRLevel.A1)[0]
+    req = LessonRequest(unit=alphabet_unit, native_lang="Spanish", target_lang="Korean", interests=[], recent_mistakes=[])
+    prompt = build_exercise_generation_prompt(req)
+    assert "NEVER use the bare letter/character alone" in prompt
+    assert "letters alone can't be pronounced meaningfully" not in prompt
+
+
 def test_conversation_prompt_adapts_to_level():
     beginner = build_conversation_system_prompt("Spanish", "English", CEFRLevel.A1, [])
     advanced = build_conversation_system_prompt("Spanish", "English", CEFRLevel.C2, [])

@@ -208,6 +208,18 @@ def get_unit(unit_id: str) -> Unit | None:
 
 ALPHABET_TOPIC = "Alphabet & first sounds"
 
+# Bumped whenever build_exercise_generation_prompt's alphabet-specific
+# instructions change in a way that fixes previously-generated content —
+# hf_client.generate_exercises folds this into its disk cache key (only for
+# the alphabet unit) so a fix here actually reaches learners who already
+# have a cached, now-known-bad exercise set, instead of that unit silently
+# keeping its stale content forever (disk caches never expire on their own).
+# History: v2 stopped audio_text ever being a bare, isolated letter/character
+# — confirmed live that sending a lone Korean jamo (ㅏ) to text-to-speech
+# made synthesis fail outright ("Audio no disponible"), since real speech
+# engines are trained on natural speech, not isolated letter-names.
+ALPHABET_PROMPT_VERSION = "v2"
+
 # image_match doesn't make sense for a single letter/character — there's no
 # real "picture of a sound" to match against, and asking the model to
 # invent one anyway produces incoherent exercises (or, worse, the model
@@ -346,11 +358,16 @@ def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[Exer
 This is the learner's very first unit in {req.target_lang} — before any vocabulary, teach the
 writing system itself. Each exercise must introduce ONE letter, character, or basic sound of
 {req.target_lang} (e.g. a vowel, or the most common/simplest character): what it looks like
-(target_text = just that single letter/character), how it sounds (audio_text = the letter/character
-itself, or a single word that starts with it if letters alone can't be pronounced meaningfully),
-and its name/sound spelled out phonetically in {req.native_lang} in native_text (e.g. for Korean
-ㅏ: native_text = "se pronuncia como la 'a' en 'casa'"). Do NOT jump ahead to full words or phrases —
-this unit is only about recognizing and sounding out individual letters/characters."""
+(target_text = just that single letter/character), and its name/sound spelled out phonetically in
+{req.native_lang} in native_text (e.g. for Korean ㅏ: native_text = "se pronuncia como la 'a' en
+'casa'"). For audio_text, NEVER use the bare letter/character alone — a real speech engine is
+trained on natural speech, not isolated letter-names, and reliably fails or produces nothing
+audible for a single character on its own (confirmed in production: Korean ㅏ sent as audio_text
+by itself made the text-to-speech engine fail outright). Instead audio_text MUST always be a short,
+real, natural word in {req.target_lang} that starts with or clearly contains this letter/character's
+sound — exactly like teaching a child phonics with "A is for Apple" rather than just the bare letter
+"A". Do NOT jump ahead to full sentences or grammar — this unit is only about recognizing and
+sounding out individual letters/characters through real, pronounceable example words."""
 
     return f"""You are a curriculum designer for a language-learning app, similar in
 methodology to Duolingo and Rosetta Stone. Generate a JSON array of exactly {len(mix)}

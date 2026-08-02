@@ -60,7 +60,7 @@ import httpx
 from num2words import num2words
 
 from .config import settings
-from .curriculum import LessonRequest, build_exercise_generation_prompt, topic_es
+from .curriculum import ALPHABET_PROMPT_VERSION, ALPHABET_TOPIC, LessonRequest, build_exercise_generation_prompt, topic_es
 from .models import Exercise, ExerciseType
 
 if TYPE_CHECKING:
@@ -459,6 +459,10 @@ class HFClient:
         cache_key = (
             f"{req.unit.id}:{req.unit.topic}:{req.unit.level.value}:{req.target_lang}:{req.native_lang}:"
             f"{','.join(sorted(req.interests))}:{','.join(t.value for t in mix)}"
+            # Only the alphabet unit's cache key carries this — see
+            # ALPHABET_PROMPT_VERSION's docstring for why a prompt fix alone
+            # doesn't reach learners with an already-cached exercise set.
+            f"{':' + ALPHABET_PROMPT_VERSION if req.unit.topic == ALPHABET_TOPIC else ''}"
         )
         cache_path = self._cache_path("exercises", cache_key, "json")
         if os.path.exists(cache_path):
