@@ -302,7 +302,15 @@ def build_exercise_generation_prompt(req: LessonRequest, mix_override: list[Exer
         )
 
     alphabet_unit_note = ""
-    if req.unit.topic == ALPHABET_TOPIC:
+    # Gated on mix_override being unset: the alphabet unit's own fixed lesson
+    # (mix_override=None, resolve_exercise_mix falls through to _ALPHABET_MIX)
+    # should teach individual letters, but free-practice mode (lessons.py's
+    # get_practice_exercises) always passes an explicit mix_override for
+    # whatever modality the learner picked — conversation, translation,
+    # listening — and forcing "each exercise is one single letter" onto e.g.
+    # a free-conversation practice request produces content that ignores
+    # what the learner actually asked to practice.
+    if req.unit.topic == ALPHABET_TOPIC and mix_override is None:
         alphabet_unit_note = f"""
 This is the learner's very first unit in {req.target_lang} — before any vocabulary, teach the
 writing system itself. Each exercise must introduce ONE letter, character, or basic sound of

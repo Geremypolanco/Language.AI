@@ -369,6 +369,37 @@ def test_practice_session_generates_exercises_of_one_type_and_completes_normally
         assert progress["today_minutes"] == 2
 
 
+def test_a1_free_practice_never_seeds_content_from_the_alphabet_unit(monkeypatch):
+    # Regression: A1's first unit is "Alphabet & first sounds" (see
+    # curriculum.py), and get_practice_exercises used to always build its
+    # LessonRequest from units_for_level(level)[0] — which meant any A1
+    # free-practice session (translate, listen, speak, free conversation...)
+    # silently got the alphabet unit as its topic/context, forcing "teach
+    # one letter at a time" instructions into requests that had nothing to
+    # do with the alphabet.
+    from backend.curriculum import ALPHABET_TOPIC
+    from backend.routers import lessons as lessons_router
+
+    seen_units = []
+    original = lessons_router.hf_client.generate_exercises
+
+    async def spy(req, mix_override=None):
+        seen_units.append(req.unit.topic)
+        return await original(req, mix_override)
+
+    monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", spy)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="practice-alphabet@example.com")
+        res = client.post(
+            f"/api/lessons/{user['id']}/practice",
+            json={"exercise_type": "free_conversation_prompt", "level": "A1"},
+        )
+        assert res.status_code == 200
+        assert len(seen_units) == 1
+        assert seen_units[0] != ALPHABET_TOPIC
+
+
 def test_library_catalog_has_500_plus_titles_across_every_level():
     with TestClient(app) as client:
         user = _onboard(client, email="library1@example.com")

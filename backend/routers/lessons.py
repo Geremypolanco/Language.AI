@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import auth, db, srs
-from ..curriculum import LessonRequest, all_units, get_unit, topic_es, units_for_level
+from ..curriculum import ALPHABET_TOPIC, LessonRequest, all_units, get_unit, topic_es, units_for_level
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Exercise, ExerciseType
 from .users import get_user_by_id_or_404
@@ -100,7 +100,13 @@ async def get_practice_exercises(
     units = units_for_level(level)
     if not units:
         raise HTTPException(status_code=404, detail="No hay unidades para ese nivel")
-    unit = units[0]
+    # Skip the Alphabet unit as this level's content seed: free practice lets
+    # the learner pick an arbitrary modality (conversation, translation,
+    # listening, ...), and the alphabet unit only exists to teach individual
+    # letters/sounds — a mismatch that used to leak "teach one letter at a
+    # time" instructions into e.g. a free-conversation practice request (see
+    # build_exercise_generation_prompt's alphabet_unit_note gating).
+    unit = next((u for u in units if u.topic != ALPHABET_TOPIC), units[0])
 
     req = LessonRequest(
         unit=unit,

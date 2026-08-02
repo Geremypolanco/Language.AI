@@ -1,10 +1,12 @@
 from backend.curriculum import (
+    ALPHABET_TOPIC,
     LessonRequest,
     all_units,
     build_conversation_system_prompt,
     build_exercise_generation_prompt,
     exercise_mix_for,
     get_unit,
+    resolve_exercise_mix,
     units_for_level,
 )
 from backend.models import CEFRLevel, ExerciseType
@@ -69,6 +71,42 @@ def test_exercise_prompt_weaves_in_mistakes_and_interests():
     prompt = build_exercise_generation_prompt(req)
     assert "football" in prompt
     assert "greetings.hello" in prompt
+
+
+def test_alphabet_unit_is_first_a1_unit_and_excludes_image_match():
+    alphabet_unit = units_for_level(CEFRLevel.A1)[0]
+    assert alphabet_unit.topic == ALPHABET_TOPIC
+    mix = resolve_exercise_mix(alphabet_unit)
+    assert ExerciseType.IMAGE_MATCH not in mix
+
+
+def test_mix_override_always_wins_even_for_the_alphabet_unit():
+    # Free-practice mode (lessons.py's get_practice_exercises) always passes
+    # an explicit mix_override for whatever modality the learner picked —
+    # that choice must never be silently replaced by a topic-specific
+    # default, alphabet included.
+    alphabet_unit = units_for_level(CEFRLevel.A1)[0]
+    override = [ExerciseType.IMAGE_MATCH] * 3
+    assert resolve_exercise_mix(alphabet_unit, override) == override
+
+
+def test_alphabet_teaching_note_only_applies_to_the_alphabet_units_own_mix():
+    # Regression: build_exercise_generation_prompt used to force "teach one
+    # letter at a time" instructions onto ANY request against the alphabet
+    # unit, including free-practice requests that pass their own
+    # mix_override for an unrelated modality (e.g. free conversation) — see
+    # lessons.py's get_practice_exercises, which now avoids seeding practice
+    # content from the alphabet unit at all, but the prompt builder itself
+    # should also never leak the note when a caller explicitly overrides the
+    # mix for something the alphabet note doesn't apply to.
+    alphabet_unit = units_for_level(CEFRLevel.A1)[0]
+    req = LessonRequest(unit=alphabet_unit, native_lang="English", target_lang="Korean", interests=[], recent_mistakes=[])
+
+    real_lesson_prompt = build_exercise_generation_prompt(req)
+    assert "ONE letter" in real_lesson_prompt
+
+    practice_prompt = build_exercise_generation_prompt(req, mix_override=[ExerciseType.FREE_CONVERSATION_PROMPT] * 5)
+    assert "ONE letter" not in practice_prompt
 
 
 def test_conversation_prompt_adapts_to_level():
