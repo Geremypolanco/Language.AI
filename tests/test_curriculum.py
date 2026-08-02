@@ -87,6 +87,14 @@ def test_exercise_prompt_scales_difficulty_with_cefr_level():
     assert "7-year-old" in beginner_prompt and "7-year-old" in advanced_prompt
 
 
+def test_exercise_prompt_requires_communicative_real_world_context():
+    unit = units_for_level(CEFRLevel.A2)[0]
+    req = LessonRequest(unit=unit, native_lang="English", target_lang="Spanish", interests=[], recent_mistakes=[])
+    prompt = build_exercise_generation_prompt(req)
+    assert "COMMUNICATIVE APPROACH" in prompt
+    assert "isolated dictionary word" in prompt
+
+
 def test_alphabet_unit_is_first_a1_unit_and_excludes_image_match():
     alphabet_unit = units_for_level(CEFRLevel.A1)[0]
     assert alphabet_unit.topic == ALPHABET_TOPIC

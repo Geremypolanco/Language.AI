@@ -379,12 +379,33 @@ sound — exactly like teaching a child phonics with "A is for Apple" rather tha
 "A". Do NOT jump ahead to full sentences or grammar — this unit is only about recognizing and
 sounding out individual letters/characters through real, pronounceable example words."""
 
-    return f"""You are a curriculum designer for a language-learning app, similar in
-methodology to Duolingo and Rosetta Stone. Generate a JSON array of exactly {len(mix)}
-exercises for a learner studying {req.target_lang} (native language: {req.native_lang}),
-at CEFR level {req.unit.level.value}, on the topic "{req.unit.topic}".
+    return f"""You are a real, experienced language teacher designing a lesson, not a flashcard
+generator. Generate a JSON array of exactly {len(mix)} exercises for a learner studying
+{req.target_lang} (native language: {req.native_lang}), at CEFR level {req.unit.level.value},
+on the topic "{req.unit.topic}".
 
 {_difficulty_note_for_level(req.unit.level)}
+
+COMMUNICATIVE APPROACH — this is the single most important rule in this prompt, and the one
+most often ignored: a real teacher teaches a language through real communication in real
+situations, not through isolated vocabulary flashcards. Concretely:
+- "target_text" must be a natural phrase or short sentence a person would actually SAY in a
+  real situation tied to "{req.unit.topic}" (e.g. for "Food & drink": "¿Me traes la cuenta,
+  por favor?" — not the bare word "cuenta"). Single, isolated words are only acceptable when
+  the topic is inherently about naming individual items (numbers, colors, the alphabet unit) —
+  everywhere else, teach the word being USED, not the word in isolation.
+- "image_prompt" must depict the SITUATION the phrase is used in (a person at a market stall
+  handing over coins, two people greeting each other at a door), not a sterile studio photo of
+  an isolated object — the picture should let a learner infer meaning from context and body
+  language the way a real classroom's gestures and visual aids do, without needing a
+  translation at all.
+- Prefer teaching meaning through the image and the situation over the translation, even on
+  levels where native_text is shown — native_text is a safety net for when context genuinely
+  isn't enough, not the first or only way the learner is meant to understand the word.
+- For "free_conversation_prompt" specifically: frame it as a short role-play in a concrete
+  everyday situation (ordering food, asking for directions, introducing your family), the way
+  a real class practices speaking without fear of being wrong — never a bare, out-of-context
+  question like "Say something about food."
 
 Write every instruction and example so a curious 7-year-old could follow it —
 short, simple sentences, no unexplained jargon in the instructions themselves —
@@ -405,14 +426,16 @@ Return ONLY a JSON array. Each element must have these exact fields:
   levels below B1, or in {req.target_lang} for B1+ (to build immersion). This is NOT a description
   of an image and NOT in English unless {req.native_lang} is English — e.g. "¿Qué imagen corresponde
   a esta palabra?" or "Elige la opción correcta.", never a sentence describing what a picture shows.
-- "target_text": the key word/phrase/sentence in {req.target_lang}
+- "target_text": the key phrase or short sentence in {req.target_lang} — a real thing someone
+  would say in this situation (see COMMUNICATIVE APPROACH above), not an isolated dictionary word
+  unless the topic itself is about naming individual items.
 - "native_text": the translation in {req.native_lang} (empty string only if translations
   are disabled for this level — see the translation rule above)
 - "options": array of 3-4 answer choices in {req.target_lang} (only for
   multiple_choice and image_match; empty array otherwise)
 - "correct_answer": the correct answer string
-- "image_prompt": a short, concrete visual description (in English, for an image
-  generator) illustrating target_text — required for image_match, optional/empty
+- "image_prompt": a short, concrete visual description (in English, for an image generator)
+  depicting the SITUATION target_text is used in — required for image_match, optional/empty
   otherwise. This text is ONLY for the image generator — never copy it into "prompt".
 - "audio_text": the {req.target_lang} text that should be spoken aloud (usually
   same as target_text)

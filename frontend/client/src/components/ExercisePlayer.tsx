@@ -497,9 +497,9 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           {feedbackText ? (
             <p>{feedbackText}</p>
           ) : wasCorrect ? (
-            "¡Correcto!"
+            "¡Correcto! 🎉"
           ) : (
-            `La respuesta era: ${exercise.correct_answer}`
+            `Casi. La forma natural de decirlo es: "${exercise.correct_answer}" — no pasa nada, así se aprende. Sigamos.`
           )}
         </div>
       )}
