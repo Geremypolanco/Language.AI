@@ -1180,12 +1180,15 @@ def _with_teaching_intros(exercises: list[Exercise]) -> list[Exercise]:
     twice the content reliably. Deriving the teaching card from the graded
     exercise's own fields (rather than asking the model for a separate one)
     guarantees they're always about the exact same word — no risk of the
-    two drifting apart. Skipped for free_conversation_prompt, which has no
-    single fixed vocab item to preview — it's open-ended practice, not
-    vocabulary recall."""
+    two drifting apart. Skipped for free_conversation_prompt (no single
+    fixed vocab item to preview — it's open-ended practice) and for an
+    exercise that's already vocab_intro itself (the offline fallback
+    downgrades multiple_choice/image_match to vocab_intro when it can't
+    generate real distractors — see _fallback_exercises — and that IS the
+    teaching card, so it needs no second one prepended before it)."""
     result: list[Exercise] = []
     for ex in exercises:
-        if ex.type != ExerciseType.FREE_CONVERSATION_PROMPT:
+        if ex.type not in (ExerciseType.FREE_CONVERSATION_PROMPT, ExerciseType.VOCAB_INTRO):
             result.append(
                 Exercise(
                     id=f"{ex.id}-intro",
@@ -1220,16 +1223,25 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
         word = f"{req.unit.topic.split()[0].lower()}_{i}"
         target = f"{topic} ({req.target_lang}) #{i + 1}"
         native = f"{topic} ({req.native_lang}) #{i + 1}"
+        # multiple_choice/image_match need real, meaningfully DIFFERENT
+        # distractors to mean anything — without AI there's no way to
+        # generate those, so the old fallback offered 3 copies of the same
+        # placeholder text with "otra opción" tacked on, which looked like
+        # a real quiz but tested nothing at all. Downgrading these two
+        # specific types to vocab_intro (the same self-paced, ungraded
+        # teaching card _with_teaching_intros already shows before every
+        # exercise) is the honest option: show the placeholder content
+        # plainly instead of faking an assessment that has no real answer
+        # to get right or wrong.
+        effective_type = ExerciseType.VOCAB_INTRO if ex_type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH) else ex_type
         exercises.append(
             Exercise(
                 id=f"ex-{i}-{word}",
-                type=ex_type,
+                type=effective_type,
                 prompt=f"(Sin conexión con la IA en este momento — contenido de práctica sin conexión) {topic}",
                 target_text=target,
                 native_text=native if req.unit.level.uses_translation else "",
-                options=[target, f"{topic} ({req.target_lang}) — otra opción", f"{topic} ({req.target_lang}) — otra opción más"]
-                if ex_type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH)
-                else [],
+                options=[],
                 correct_answer=target,
                 image_prompt=f"a simple, clear illustration of {req.unit.topic}, item {i + 1}",
                 audio_text=target,

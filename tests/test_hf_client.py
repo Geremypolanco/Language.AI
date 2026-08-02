@@ -14,7 +14,7 @@ import pytest
 from backend import hf_client as hf_client_module
 from backend.config import settings
 from backend.curriculum import ALPHABET_TOPIC, LessonRequest, units_for_level
-from backend.hf_client import _HFGuard, _with_teaching_intros
+from backend.hf_client import _HFGuard, _fallback_exercises, _with_teaching_intros
 from backend.models import CEFRLevel, Exercise, ExerciseType
 
 
@@ -112,6 +112,35 @@ def test_with_teaching_intros_skips_free_conversation_prompt():
     )
     result = _with_teaching_intros([conversation])
     assert result == [conversation]
+
+
+def test_fallback_exercises_never_produce_fake_duplicate_options():
+    # Regression: offline fallback content used to give multiple_choice/
+    # image_match exercises 3 "options" that were all the same placeholder
+    # text with "otra opción"/"otra opción más" tacked on — visually a
+    # quiz, but with no real distinct answer to actually test, since there
+    # is no AI available to generate genuine distractors. Confirmed live
+    # via screenshot. These two types must now be downgraded to the
+    # ungraded vocab_intro teaching card instead of faking a quiz.
+    unit = units_for_level(CEFRLevel.A1)[1]  # a normal unit whose per-level mix includes image_match
+    req = LessonRequest(unit=unit, native_lang="es", target_lang="en", interests=[], recent_mistakes=[])
+
+    exercises = _fallback_exercises(req)
+    assert not any(ex.type in (ExerciseType.MULTIPLE_CHOICE, ExerciseType.IMAGE_MATCH) for ex in exercises)
+    assert all(ex.options == [] for ex in exercises)
+
+
+def test_with_teaching_intros_does_not_double_up_on_already_downgraded_fallback_cards():
+    unit = units_for_level(CEFRLevel.A1)[1]
+    req = LessonRequest(unit=unit, native_lang="es", target_lang="en", interests=[], recent_mistakes=[])
+
+    full_sequence = _with_teaching_intros(_fallback_exercises(req))
+    # No two consecutive vocab_intro cards for the exact same word — that
+    # would mean a downgraded item got ANOTHER teaching card prepended
+    # before it, showing the same thing twice in a row.
+    for i in range(len(full_sequence) - 1):
+        if full_sequence[i].type == ExerciseType.VOCAB_INTRO and full_sequence[i + 1].type == ExerciseType.VOCAB_INTRO:
+            assert full_sequence[i].vocab_key != full_sequence[i + 1].vocab_key
 
 
 _FAKE_EXERCISE_JSON = json.dumps(
