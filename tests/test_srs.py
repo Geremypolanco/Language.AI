@@ -150,15 +150,33 @@ def test_record_lesson_result_awards_xp_and_streak():
     assert result["mastered"] is True
 
 
-def test_record_lesson_result_levels_up_after_enough_mastered_units():
+def test_record_lesson_result_levels_up_only_after_mastering_the_whole_level():
+    # A genuine 0-to-native progression requires actually covering a CEFR
+    # level's curriculum, not a small, level-size-independent fraction of
+    # it — see srs.units_required_for_level_up.
     _make_user()
     from backend.curriculum import units_for_level
 
     unit_ids = [u.id for u in units_for_level(CEFRLevel.A1)]
+    assert len(unit_ids) > 1  # otherwise this test wouldn't prove anything
+
     result = None
-    for unit_id in unit_ids[: srs.UNITS_TO_UNLOCK_NEXT_LEVEL]:
+    for unit_id in unit_ids[:-1]:
         result = srs.record_lesson_result("u1", unit_id, score=1.0)
+    assert result["leveled_up"] is None  # not yet — one unit still unmastered
+
+    result = srs.record_lesson_result("u1", unit_ids[-1], score=1.0)
     assert result["leveled_up"] == CEFRLevel.A2.value
+
+
+def test_units_required_for_level_up_scales_with_level_size():
+    # Regression: the old flat constant (3) meant advancing past A1 (8
+    # units) needed ~37% mastered while advancing past C2 (4 units) needed
+    # 75% — an inconsistent bar purely because of level size, not because
+    # C2 learners are held to a stricter standard on purpose.
+    assert srs.units_required_for_level_up(8) == 8
+    assert srs.units_required_for_level_up(4) == 4
+    assert srs.units_required_for_level_up(0) == 1  # never zero — always at least 1
 
 
 def test_record_lesson_result_awards_gems():

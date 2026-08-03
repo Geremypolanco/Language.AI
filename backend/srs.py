@@ -10,7 +10,17 @@ from . import db
 from .models import CEFRLevel
 
 MASTERY_SCORE_THRESHOLD = 0.8  # avg correctness required to consider a unit mastered
-UNITS_TO_UNLOCK_NEXT_LEVEL = 3  # mastered units at current level before leveling up
+
+
+def units_required_for_level_up(total_units_at_level: int) -> int:
+    """A genuine 0-to-native progression means actually covering a CEFR
+    level's curriculum before moving to the next one — not a flat count
+    that happened to be a small fraction of A1 (3 of 8 units, ~37%) but a
+    much stricter one of C2 (3 of 4, 75%) purely because the level-size-
+    independent constant this replaced didn't scale with how many units
+    each level actually has. Requiring all of them keeps the requirement
+    consistent and honest at every level."""
+    return max(1, total_units_at_level)
 
 GEM_BASE = 5  # gems per completed lesson, plus a score-scaled bonus below
 GEM_STREAK_FREEZE_COST = 200
@@ -263,7 +273,7 @@ def _maybe_level_up(cur, user_id: str, current_level: CEFRLevel) -> str | None:
         (user_id, *unit_ids),
     )
     mastered_count = cur.fetchone()["c"]
-    if mastered_count >= min(UNITS_TO_UNLOCK_NEXT_LEVEL, len(unit_ids)):
+    if mastered_count >= units_required_for_level_up(len(unit_ids)):
         next_level = current_level.next
         if next_level != current_level:
             cur.execute("UPDATE users SET level=? WHERE id=?", (next_level.value, user_id))

@@ -108,6 +108,16 @@ def test_review_prompt_asks_for_recombination_not_bare_repetition():
     assert "exactly 2 objects" in prompt
 
 
+def test_a1_and_b1_have_explicit_grammar_throughline_units():
+    # A genuine 0-to-native curriculum needs deliberate grammar progression,
+    # not just vocabulary-by-topic — verbs (to be/to have) and tenses
+    # (past at A2, future at B1) are taught as their own units.
+    a1_topics = [u.topic for u in units_for_level(CEFRLevel.A1)]
+    b1_topics = [u.topic for u in units_for_level(CEFRLevel.B1)]
+    assert "Basic sentence structure: to be & to have" in a1_topics
+    assert "Future tense & making predictions" in b1_topics
+
+
 def test_alphabet_unit_is_first_a1_unit_and_excludes_image_match():
     alphabet_unit = units_for_level(CEFRLevel.A1)[0]
     assert alphabet_unit.topic == ALPHABET_TOPIC

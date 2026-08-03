@@ -27,6 +27,11 @@ _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
         # prompt's ALPHABET_TOPIC handling below).
         "Alphabet & first sounds",
         "Greetings & introductions",
+        # Explicit grammar throughline, not just vocabulary-by-topic: "to be"
+        # and "to have" are the two verbs a genuine beginner curriculum
+        # needs earliest — "I am ___", "I have ___" — everything else
+        # (family, food, objects) leans on being able to say those first.
+        "Basic sentence structure: to be & to have",
         "Numbers & counting",
         "Family",
         "Food & drink",
@@ -50,6 +55,10 @@ _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
         "Opinions & preferences",
         "Describing people",
         "Telling a past experience",
+        # Second explicit grammar throughline — A2 covered past tense, so B1
+        # completes the basic tense system a learner needs before free
+        # conversation practice starts asking them to talk about the future.
+        "Future tense & making predictions",
         "Free conversation: small talk",
     ],
     CEFRLevel.B2: [
@@ -86,6 +95,7 @@ _TOPICS_BY_LEVEL: dict[CEFRLevel, list[str]] = {
 _TOPIC_ES: dict[str, str] = {
     "Alphabet & first sounds": "El alfabeto y los primeros sonidos",
     "Greetings & introductions": "Saludos y presentaciones",
+    "Basic sentence structure: to be & to have": "Estructura básica: ser/estar y tener",
     "Numbers & counting": "Números y conteo",
     "Family": "Familia",
     "Food & drink": "Comida y bebida",
@@ -105,6 +115,7 @@ _TOPIC_ES: dict[str, str] = {
     "Opinions & preferences": "Opiniones y preferencias",
     "Describing people": "Describir personas",
     "Telling a past experience": "Contar una experiencia pasada",
+    "Future tense & making predictions": "Futuro y hacer predicciones",
     "Free conversation: small talk": "Conversación libre: charla informal",
     "News & current events": "Noticias y actualidad",
     "Emotions & relationships": "Emociones y relaciones",
