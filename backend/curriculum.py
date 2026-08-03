@@ -227,8 +227,12 @@ ALPHABET_PROMPT_VERSION = "v2"
 # card before each graded exercise (see hf_client._with_teaching_intros) —
 # previously every lesson jumped straight to quizzing the learner on a word
 # they'd never actually been shown, which is backwards for anyone actually
-# trying to learn the word for the first time.
-EXERCISE_FORMAT_VERSION = "v2"
+# trying to learn the word for the first time. v3 rewrote the prompt to
+# require real communicative context (a situational phrase + a scene-
+# depicting image_prompt) instead of isolated dictionary words — without
+# this bump, learners who'd already generated a unit kept seeing the old
+# flashcard-style content forever, since the prompt fix never reached them.
+EXERCISE_FORMAT_VERSION = "v3"
 
 # image_match doesn't make sense for a single letter/character — there's no
 # real "picture of a sound" to match against, and asking the model to
