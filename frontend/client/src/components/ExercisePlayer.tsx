@@ -164,6 +164,9 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           correct,
           attempts_before_correct: 0,
           response_ms: responseMs,
+          target_text: exercise.target_text,
+          native_text: exercise.native_text,
+          unit_id: unitId,
         });
       } catch {
         // SRS scheduling is best-effort — a failure here shouldn't block the lesson.

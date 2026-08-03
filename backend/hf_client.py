@@ -66,6 +66,7 @@ from .curriculum import (
     EXERCISE_FORMAT_VERSION,
     LessonRequest,
     build_exercise_generation_prompt,
+    build_review_exercise_prompt,
     topic_es,
 )
 from .models import Exercise, ExerciseType
@@ -492,6 +493,35 @@ class HFClient:
         except Exception:
             logger.exception("AI exercise generation failed, using offline fallback content")
         return _with_teaching_intros(_fallback_exercises(req, mix_override))
+
+    async def generate_review_exercises(
+        self, items: list[dict], native_lang: str, target_lang: str
+    ) -> list[Exercise]:
+        """Turns due spaced-repetition items (see srs.due_review_items) into
+        real, gradable exercises. Deliberately NOT disk-cached like
+        generate_exercises: the due set is personal to one learner and keeps
+        changing (SM-2 reschedules every item after every answer), so a cache
+        keyed on it would almost never hit — caching would only cost disk
+        with no benefit, unlike the shared-across-learners unit content
+        generate_exercises caches. No teaching intro is prepended either:
+        these are words the learner already knows, being re-tested for
+        recall, not first exposure.
+        """
+        if not items:
+            return []
+        prompt = build_review_exercise_prompt(items, native_lang, target_lang)
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1200,
+            )
+            return _parse_review_exercises(raw, items)
+        except Exception:
+            logger.exception("AI review-exercise generation failed, using content-snapshot fallback")
+        return _fallback_review_exercises(items)
 
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         messages = [{"role": "system", "content": system_prompt}, *history]
@@ -1167,6 +1197,61 @@ def _parse_exercises(raw: str) -> list[Exercise]:
             )
         )
     return exercises
+
+
+def _parse_review_exercises(raw: str, items: list[dict]) -> list[Exercise]:
+    """Like _parse_exercises, but for review sessions the model is never
+    trusted with vocab_key/unit_id identity — those are force-assigned from
+    `items` by position, since only the caller actually knows which
+    vocab_progress row each due item belongs to (see
+    build_review_exercise_prompt's docstring). If the model returns a
+    different number of items than were asked for, we zip to the shorter
+    length rather than crash or silently drop the mismatch elsewhere."""
+    cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+    parsed = json.loads(cleaned)
+    exercises = []
+    for item, generated in zip(items, parsed, strict=False):
+        exercises.append(
+            Exercise(
+                id=f"review-{item['vocab_key']}",
+                type=ExerciseType(generated.get("type", "translate_to_native")),
+                prompt=generated.get("prompt", ""),
+                target_text=generated.get("target_text", item["target_text"]),
+                native_text=generated.get("native_text", item["native_text"]),
+                options=[],
+                correct_answer=generated.get("correct_answer", item["native_text"] or item["target_text"]),
+                image_prompt="",
+                audio_text=generated.get("audio_text", generated.get("target_text", item["target_text"])),
+                vocab_key=item["vocab_key"],
+            )
+        )
+    if not exercises:
+        raise ValueError("Review generation returned no usable items")
+    return exercises
+
+
+def _fallback_review_exercises(items: list[dict]) -> list[Exercise]:
+    """Network-free review content built directly from each item's own
+    stored content snapshot — unlike _fallback_exercises' generic
+    placeholder text, this is genuinely correct and gradable (the real word
+    the learner is due to review), just without a freshly recombined
+    sentence around it. Honest, not degraded: translate_to_native with a
+    real target_text/native_text pair needs no AI to be a valid exercise."""
+    return [
+        Exercise(
+            id=f"review-{item['vocab_key']}",
+            type=ExerciseType.TRANSLATE_TO_NATIVE,
+            prompt="Traduce esta palabra o frase.",
+            target_text=item["target_text"],
+            native_text=item["native_text"],
+            options=[],
+            correct_answer=item["native_text"] or item["target_text"],
+            image_prompt="",
+            audio_text=item["target_text"],
+            vocab_key=item["vocab_key"],
+        )
+        for item in items
+    ]
 
 
 def _with_teaching_intros(exercises: list[Exercise]) -> list[Exercise]:

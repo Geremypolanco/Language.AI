@@ -14,7 +14,7 @@ import pytest
 from backend import hf_client as hf_client_module
 from backend.config import settings
 from backend.curriculum import ALPHABET_TOPIC, LessonRequest, units_for_level
-from backend.hf_client import _HFGuard, _fallback_exercises, _with_teaching_intros
+from backend.hf_client import _HFGuard, _fallback_exercises, _fallback_review_exercises, _with_teaching_intros
 from backend.models import CEFRLevel, Exercise, ExerciseType
 
 
@@ -141,6 +141,67 @@ def test_with_teaching_intros_does_not_double_up_on_already_downgraded_fallback_
     for i in range(len(full_sequence) - 1):
         if full_sequence[i].type == ExerciseType.VOCAB_INTRO and full_sequence[i + 1].type == ExerciseType.VOCAB_INTRO:
             assert full_sequence[i].vocab_key != full_sequence[i + 1].vocab_key
+
+
+_DUE_ITEMS = [
+    {"vocab_key": "greetings.hello", "target_text": "hola", "native_text": "hello", "unit_id": "A1-0"},
+    {"vocab_key": "food.bread", "target_text": "pan", "native_text": "bread", "unit_id": "A1-2"},
+]
+
+
+def test_fallback_review_exercises_are_honest_and_gradable():
+    # No AI needed: the item's own stored content snapshot is already a
+    # real, correct word pair — unlike _fallback_exercises' generic
+    # placeholder text, there's nothing fake being presented here.
+    exercises = _fallback_review_exercises(_DUE_ITEMS)
+    assert len(exercises) == 2
+    for item, ex in zip(_DUE_ITEMS, exercises):
+        assert ex.vocab_key == item["vocab_key"]
+        assert ex.target_text == item["target_text"]
+        assert ex.correct_answer == item["native_text"]
+        assert ex.type == ExerciseType.TRANSLATE_TO_NATIVE
+
+
+def test_generate_review_exercises_returns_empty_for_no_due_items():
+    result = asyncio.run(hf_client_module.hf_client.generate_review_exercises([], "es", "en"))
+    assert result == []
+
+
+def test_generate_review_exercises_force_assigns_vocab_key_by_position(monkeypatch):
+    # The model is untrusted for identity — even if it echoes back the wrong
+    # (or no) vocab_key, the caller must still reschedule the correct
+    # vocab_progress row, so vocab_key/order is forced from the due items
+    # the caller passed in, not from whatever the model returns.
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        return json.dumps(
+            [
+                {"type": "translate_to_native", "prompt": "p1", "target_text": "Como estas hola",
+                 "native_text": "how are you hello", "correct_answer": "how are you hello", "vocab_key": "WRONG"},
+                {"type": "listen_type", "prompt": "p2", "target_text": "Quiero pan",
+                 "native_text": "I want bread", "correct_answer": "Quiero pan", "audio_text": "Quiero pan"},
+            ]
+        )
+
+    monkeypatch.setattr(hf_client_module.hf_client, "chat", fake_chat)
+    exercises = asyncio.run(hf_client_module.hf_client.generate_review_exercises(_DUE_ITEMS, "en", "es"))
+
+    assert len(exercises) == 2
+    assert exercises[0].vocab_key == "greetings.hello"
+    assert exercises[0].type == ExerciseType.TRANSLATE_TO_NATIVE
+    assert exercises[0].target_text == "Como estas hola"  # recombined into a new sentence, not the bare word
+    assert exercises[1].vocab_key == "food.bread"
+    assert exercises[1].type == ExerciseType.LISTEN_TYPE
+
+
+def test_generate_review_exercises_falls_back_when_ai_call_fails(monkeypatch):
+    async def failing_chat(messages, max_tokens=1000, temperature=0.7):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(hf_client_module.hf_client, "chat", failing_chat)
+    exercises = asyncio.run(hf_client_module.hf_client.generate_review_exercises(_DUE_ITEMS, "en", "es"))
+
+    assert len(exercises) == 2
+    assert [ex.vocab_key for ex in exercises] == ["greetings.hello", "food.bread"]
 
 
 _FAKE_EXERCISE_JSON = json.dumps(

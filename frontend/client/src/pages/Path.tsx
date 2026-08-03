@@ -15,6 +15,8 @@ export default function Path() {
   const [error, setError] = useState("");
   const [activeUnit, setActiveUnit] = useState<{ unitId: string; exercises: Exercise[] } | null>(null);
   const [startingUnitId, setStartingUnitId] = useState<string | null>(null);
+  const [dueReviews, setDueReviews] = useState(0);
+  const [startingReview, setStartingReview] = useState(false);
 
   const fetchLessons = async () => {
     if (!user?.id) return;
@@ -28,8 +30,19 @@ export default function Path() {
     }
   };
 
+  const fetchDueReviews = async () => {
+    if (!user?.id) return;
+    try {
+      const progress = await api.getProgressSnapshot(user.id);
+      setDueReviews(progress.due_reviews);
+    } catch {
+      // Non-critical — the Repaso card just won't show a count.
+    }
+  };
+
   useEffect(() => {
     fetchLessons();
+    fetchDueReviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -43,6 +56,23 @@ export default function Path() {
       toast.error(err instanceof Error ? err.message : "No se pudieron cargar los ejercicios");
     } finally {
       setStartingUnitId(null);
+    }
+  };
+
+  const handleStartReview = async () => {
+    if (!user?.id) return;
+    setStartingReview(true);
+    try {
+      const { unit_id, exercises } = await api.getReviewSession(user.id);
+      if (exercises.length === 0) {
+        toast("No tienes repasos pendientes ahora mismo. ¡Vuelve más tarde!");
+        return;
+      }
+      setActiveUnit({ unitId: unit_id, exercises });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cargar el repaso");
+    } finally {
+      setStartingReview(false);
     }
   };
 
@@ -70,6 +100,7 @@ export default function Path() {
             onExit={() => {
               setActiveUnit(null);
               fetchLessons();
+              fetchDueReviews();
             }}
           />
         </div>
@@ -125,6 +156,29 @@ export default function Path() {
             <p className="text-sm text-muted-foreground">¡Sigue así!</p>
           </Card>
         </div>
+
+        <Card className={`p-6 mb-8 shadow-sm ${dueReviews > 0 ? "bg-amber-50 border-amber-200" : ""}`}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-2xl">🔁</span>
+                <h3 className="text-lg font-semibold text-foreground">Repaso</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {dueReviews > 0
+                  ? `${dueReviews} palabra${dueReviews === 1 ? "" : "s"} lista${dueReviews === 1 ? "" : "s"} para repasar ahora`
+                  : "Palabras que ya aprendiste, para no olvidarlas — te avisamos cuando toque repasar"}
+              </p>
+            </div>
+            <Button
+              variant={dueReviews > 0 ? "default" : "outline"}
+              disabled={startingReview}
+              onClick={handleStartReview}
+            >
+              {startingReview ? "Cargando..." : "Repasar ahora"}
+            </Button>
+          </div>
+        </Card>
 
         <div className="space-y-4">
           <h2 className="text-2xl font-bold text-foreground">Lecciones</h2>

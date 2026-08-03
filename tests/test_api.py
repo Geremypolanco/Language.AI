@@ -372,6 +372,69 @@ def test_practice_session_generates_exercises_of_one_type_and_completes_normally
         assert progress["today_minutes"] == 2
 
 
+def test_review_session_is_empty_when_nothing_is_due():
+    with TestClient(app) as client:
+        user = _onboard(client, email="review-empty@example.com")
+        res = client.get(f"/api/lessons/{user['id']}/review")
+        assert res.status_code == 200
+        assert res.json()["exercises"] == []
+
+
+def test_review_session_serves_and_reschedules_a_due_item():
+    from backend import db
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="review@example.com")
+
+        # Grade an exercise once, capturing its content snapshot — same as
+        # ExercisePlayer does on every graded answer.
+        answer_res = client.post(
+            f"/api/lessons/{user['id']}/answer",
+            json={
+                "vocab_key": "greetings.hello",
+                "correct": True,
+                "target_text": "Hola",
+                "native_text": "Hello",
+                "unit_id": "A1-0",
+            },
+        )
+        assert answer_res.status_code == 200
+
+        # Force it due right now — a fresh correct answer schedules review a
+        # day out, and this test isn't about SM-2 timing, just the session.
+        with db.cursor() as cur:
+            cur.execute(
+                "UPDATE vocab_progress SET due_at='2000-01-01T00:00:00+00:00' "
+                "WHERE user_id=? AND vocab_key='greetings.hello'",
+                (user["id"],),
+            )
+
+        review_res = client.get(f"/api/lessons/{user['id']}/review")
+        assert review_res.status_code == 200
+        body = review_res.json()
+        assert body["unit_id"] == "practice-review"
+        assert len(body["exercises"]) == 1
+        exercise = body["exercises"][0]
+        # No AI configured in tests (settings.testing) — the honest,
+        # content-snapshot-based fallback is what's actually exercised here.
+        assert exercise["vocab_key"] == "greetings.hello"
+        assert exercise["target_text"] == "Hola"
+        assert exercise["correct_answer"] == "Hello"
+
+        # Grading the review answer must reschedule the same row further out.
+        client.post(
+            f"/api/lessons/{user['id']}/answer",
+            json={"vocab_key": "greetings.hello", "correct": True},
+        )
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT due_at FROM vocab_progress WHERE user_id=? AND vocab_key='greetings.hello'",
+                (user["id"],),
+            )
+            due_at = cur.fetchone()["due_at"]
+        assert due_at > "2000-01-01"
+
+
 def test_a1_free_practice_never_seeds_content_from_the_alphabet_unit(monkeypatch):
     # Regression: A1's first unit is "Alphabet & first sounds" (see
     # curriculum.py), and get_practice_exercises used to always build its

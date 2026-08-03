@@ -4,6 +4,7 @@ from backend.curriculum import (
     all_units,
     build_conversation_system_prompt,
     build_exercise_generation_prompt,
+    build_review_exercise_prompt,
     exercise_mix_for,
     get_unit,
     resolve_exercise_mix,
@@ -93,6 +94,18 @@ def test_exercise_prompt_requires_communicative_real_world_context():
     prompt = build_exercise_generation_prompt(req)
     assert "COMMUNICATIVE APPROACH" in prompt
     assert "isolated dictionary word" in prompt
+
+
+def test_review_prompt_asks_for_recombination_not_bare_repetition():
+    items = [
+        {"vocab_key": "greetings.hello", "target_text": "hola", "native_text": "hello", "unit_id": "A1-0"},
+        {"vocab_key": "food.bread", "target_text": "pan", "native_text": "bread", "unit_id": "A1-2"},
+    ]
+    prompt = build_review_exercise_prompt(items, native_lang="English", target_lang="Spanish")
+    assert "hola" in prompt
+    assert "pan" in prompt
+    assert "fresh, natural" in prompt
+    assert "exactly 2 objects" in prompt
 
 
 def test_alphabet_unit_is_first_a1_unit_and_excludes_image_match():

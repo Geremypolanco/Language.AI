@@ -162,6 +162,13 @@ class AnswerRequest(BaseModel):
     # grade_to_quality: a slow-but-correct answer schedules sooner review
     # than a quick one, instead of treating every correct answer the same.
     response_ms: int = 0
+    # Content snapshot of the exercise being graded — persisted into
+    # vocab_progress on first grading so a later /review session has enough
+    # to work with (see srs.schedule_review). Optional: the frontend doesn't
+    # always have a clean native_text (e.g. free_conversation_prompt).
+    target_text: str = ""
+    native_text: str = ""
+    unit_id: str = ""
 
 
 class AnswerResult(BaseModel):
@@ -176,8 +183,26 @@ def submit_answer(user_id: str, payload: AnswerRequest, session: dict = Depends(
         quality = srs.grade_to_quality(
             payload.correct, payload.attempts_before_correct, payload.response_ms or None
         )
-        schedule = srs.schedule_review(user_id, payload.vocab_key, quality)
+        schedule = srs.schedule_review(
+            user_id, payload.vocab_key, quality, payload.target_text, payload.native_text, payload.unit_id
+        )
     return AnswerResult(srs=schedule)
+
+
+@router.get("/{user_id}/review", response_model=PracticeResponse)
+async def get_review_session(user_id: str, session: dict = Depends(auth.require_owner)) -> PracticeResponse:
+    """A real spaced-repetition review session: pulls whatever vocab_progress
+    rows are actually due right now (SM-2, per srs.due_review_items) and
+    generates fresh exercises that specifically re-test those exact words —
+    unlike the soft `recent_mistakes` hints woven into a normal lesson
+    prompt, this is a deterministic, guaranteed-to-land review, closing the
+    loop between "the learner got X wrong" and "X gets asked again on
+    schedule." Returns an empty exercise list (not a 404) when nothing is
+    due, so the frontend can show a calm "nothing to review yet" state."""
+    user = get_user_by_id_or_404(user_id)
+    items = srs.due_review_items(user_id, limit=10)
+    exercises = await hf_client.generate_review_exercises(items, user.native_lang, user.target_lang)
+    return PracticeResponse(unit_id=f"{PRACTICE_UNIT_PREFIX}-review", exercises=exercises)
 
 
 class CompleteLessonRequest(BaseModel):

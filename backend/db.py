@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS vocab_progress (
     due_at TEXT NOT NULL,
     last_result TEXT NOT NULL DEFAULT '',
     mistake_count INTEGER NOT NULL DEFAULT 0,
+    -- Content snapshot captured the first time this vocab_key is graded, so
+    -- a real review session can be rebuilt later from just this row — the
+    -- vocab_key alone (e.g. "greetings.handshake") isn't enough to generate
+    -- an exercise, since it's an opaque slug, not the actual word/phrase.
+    target_text TEXT NOT NULL DEFAULT '',
+    native_text TEXT NOT NULL DEFAULT '',
+    unit_id TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, vocab_key)
 );
 
@@ -164,6 +171,13 @@ CREATE TABLE IF NOT EXISTS vocab_progress (
     due_at TEXT NOT NULL,
     last_result TEXT NOT NULL DEFAULT '',
     mistake_count INTEGER NOT NULL DEFAULT 0,
+    -- Content snapshot captured the first time this vocab_key is graded, so
+    -- a real review session can be rebuilt later from just this row — the
+    -- vocab_key alone (e.g. "greetings.handshake") isn't enough to generate
+    -- an exercise, since it's an opaque slug, not the actual word/phrase.
+    target_text TEXT NOT NULL DEFAULT '',
+    native_text TEXT NOT NULL DEFAULT '',
+    unit_id TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, vocab_key)
 );
 
@@ -314,6 +328,14 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
     enrollment_cols = {row[1] for row in conn.execute("PRAGMA table_info(academy_enrollment)").fetchall()}
     if "content_lang" not in enrollment_cols:
         conn.execute("ALTER TABLE academy_enrollment ADD COLUMN content_lang TEXT NOT NULL DEFAULT ''")
+
+    vocab_cols = {row[1] for row in conn.execute("PRAGMA table_info(vocab_progress)").fetchall()}
+    if "target_text" not in vocab_cols:
+        conn.execute("ALTER TABLE vocab_progress ADD COLUMN target_text TEXT NOT NULL DEFAULT ''")
+    if "native_text" not in vocab_cols:
+        conn.execute("ALTER TABLE vocab_progress ADD COLUMN native_text TEXT NOT NULL DEFAULT ''")
+    if "unit_id" not in vocab_cols:
+        conn.execute("ALTER TABLE vocab_progress ADD COLUMN unit_id TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
@@ -330,6 +352,9 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute(
             "ALTER TABLE academy_enrollment ADD COLUMN IF NOT EXISTS content_lang TEXT NOT NULL DEFAULT ''"
         )
+        cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS target_text TEXT NOT NULL DEFAULT ''")
+        cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS native_text TEXT NOT NULL DEFAULT ''")
+        cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS unit_id TEXT NOT NULL DEFAULT ''")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()
 

@@ -43,8 +43,23 @@ def grade_to_quality(correct: bool, attempts_before_correct: int = 0, response_m
     return quality
 
 
-def schedule_review(user_id: str, vocab_key: str, quality: int) -> dict:
-    """SM-2 update for a single vocabulary item. Returns the new schedule row."""
+def schedule_review(
+    user_id: str,
+    vocab_key: str,
+    quality: int,
+    target_text: str = "",
+    native_text: str = "",
+    unit_id: str = "",
+) -> dict:
+    """SM-2 update for a single vocabulary item. Returns the new schedule row.
+
+    target_text/native_text/unit_id are a content snapshot — captured once,
+    the first time this vocab_key is ever graded — so a later review session
+    can rebuild a real exercise from just this row (see due_review_items).
+    A blank value here never overwrites already-stored content: most call
+    sites (e.g. speak_repeat, which has no separate translation on hand)
+    simply don't have this content to offer on every single grading call.
+    """
     with db.cursor() as cur:
         cur.execute(
             "SELECT ease_factor, interval_days, repetitions, mistake_count "
@@ -76,17 +91,25 @@ def schedule_review(user_id: str, vocab_key: str, quality: int) -> dict:
         cur.execute(
             """
             INSERT INTO vocab_progress
-                (user_id, vocab_key, ease_factor, interval_days, repetitions, due_at, last_result, mistake_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, vocab_key, ease_factor, interval_days, repetitions, due_at,
+                 last_result, mistake_count, target_text, native_text, unit_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id, vocab_key) DO UPDATE SET
                 ease_factor=excluded.ease_factor,
                 interval_days=excluded.interval_days,
                 repetitions=excluded.repetitions,
                 due_at=excluded.due_at,
                 last_result=excluded.last_result,
-                mistake_count=excluded.mistake_count
+                mistake_count=excluded.mistake_count,
+                target_text=CASE WHEN excluded.target_text != '' THEN excluded.target_text ELSE vocab_progress.target_text END,
+                native_text=CASE WHEN excluded.native_text != '' THEN excluded.native_text ELSE vocab_progress.native_text END,
+                unit_id=CASE WHEN excluded.unit_id != '' THEN excluded.unit_id ELSE vocab_progress.unit_id END
             """,
-            (user_id, vocab_key, ease, interval, reps, due_at, "correct" if quality >= 3 else "incorrect", mistakes),
+            (
+                user_id, vocab_key, ease, interval, reps, due_at,
+                "correct" if quality >= 3 else "incorrect", mistakes,
+                target_text, native_text, unit_id,
+            ),
         )
         return {
             "vocab_key": vocab_key,
@@ -95,6 +118,29 @@ def schedule_review(user_id: str, vocab_key: str, quality: int) -> dict:
             "repetitions": reps,
             "due_at": due_at,
         }
+
+
+def due_review_items(user_id: str, limit: int = 10) -> list[dict]:
+    """Due vocab items with enough content to actually build a review
+    exercise from — see schedule_review's content-snapshot docstring. Items
+    with no snapshot yet (blank target_text — e.g. graded before this
+    feature existed) are skipped, since there's nothing to review them with."""
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT vocab_key, target_text, native_text, unit_id FROM vocab_progress "
+            "WHERE user_id=? AND due_at<=? AND target_text != '' "
+            "ORDER BY due_at ASC LIMIT ?",
+            (user_id, datetime.now(UTC).isoformat(), limit),
+        )
+        return [
+            {
+                "vocab_key": r["vocab_key"],
+                "target_text": r["target_text"],
+                "native_text": r["native_text"],
+                "unit_id": r["unit_id"],
+            }
+            for r in cur.fetchall()
+        ]
 
 
 def due_review_keys(user_id: str, limit: int = 10) -> list[str]:

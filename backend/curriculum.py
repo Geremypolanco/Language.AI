@@ -457,6 +457,60 @@ that never leaks into "prompt":
 Respond with raw JSON only, no markdown fences, no commentary."""
 
 
+def build_review_exercise_prompt(items: list[dict], native_lang: str, target_lang: str) -> str:
+    """Builds a real spaced-repetition review session: each item below is a
+    word/phrase the learner already studied and is due to review right now
+    (see srs.due_review_items). This is deliberately NOT the same as a fresh
+    lesson's build_exercise_generation_prompt — retrieval practice research
+    (and the "recombination" half of the communicative approach) says review
+    should re-embed a known word in a NEW situation, not repeat the exact
+    sentence the learner already saw, and it should test *production*
+    (translate into the target language, or transcribe what was heard) since
+    that's a harder, more useful form of recall than just recognizing a word
+    among multiple-choice options again.
+
+    The model is untrusted for identity: the caller must re-attach the
+    correct vocab_key/unit_id to each returned item by position rather than
+    trusting whatever the model echoes back, since only the caller actually
+    knows which vocab_progress row each due item is bound to.
+    """
+    numbered = "\n".join(
+        f'{i + 1}. "{item["target_text"]}" (= "{item["native_text"]}" in {native_lang})'
+        if item["native_text"]
+        else f'{i + 1}. "{item["target_text"]}"'
+        for i, item in enumerate(items)
+    )
+    return f"""You are a real language teacher running a spaced-repetition review
+session for a student who already learned the {len(items)} words/phrases
+below in {target_lang} and is now due to review them, in this exact order:
+
+{numbered}
+
+For EACH one, write ONE new exercise that tests active recall of it —
+never just showing the bare word again. Embed it in a fresh, natural
+{target_lang} sentence or short situation the student hasn't seen before
+(a different context than however they first learned it), so review
+actually strengthens the memory through recombination instead of rote
+repetition of the same sentence.
+
+Alternate between two exercise types across the list:
+- "translate_to_native": prompt is an instruction in {native_lang} to translate
+  the new {target_lang} sentence; target_text is that new sentence (containing
+  the word/phrase); native_text is its {native_lang} translation; correct_answer
+  equals native_text.
+- "listen_type": prompt is an instruction in {native_lang} to type what they
+  hear; target_text/audio_text is the new {target_lang} sentence; correct_answer
+  equals target_text.
+
+Return a JSON array of exactly {len(items)} objects, IN THE SAME ORDER as the
+numbered list above (object N reviews item N), each shaped like:
+{{"type": "translate_to_native" or "listen_type", "prompt": "...",
+"target_text": "...", "native_text": "...", "correct_answer": "...",
+"audio_text": "..."}}
+
+Respond with raw JSON only, no markdown fences, no commentary."""
+
+
 def build_conversation_system_prompt(
     target_lang: str, native_lang: str, level: CEFRLevel, interests: list[str], memory: str = ""
 ) -> str:

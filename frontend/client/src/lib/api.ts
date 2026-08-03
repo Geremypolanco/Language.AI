@@ -332,12 +332,28 @@ class ApiClient {
 
   async submitLessonAnswer(
     userId: string,
-    data: { vocab_key: string; correct: boolean; attempts_before_correct?: number; response_ms?: number }
+    data: {
+      vocab_key: string;
+      correct: boolean;
+      attempts_before_correct?: number;
+      response_ms?: number;
+      target_text?: string;
+      native_text?: string;
+      unit_id?: string;
+    }
   ): Promise<{ srs: Record<string, unknown> }> {
     return this.request(`/api/lessons/${userId}/answer`, {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  // A real spaced-repetition review session built from whatever's actually
+  // due (see backend/routers/lessons.py's get_review_session) — not a fresh
+  // lesson, so it reuses PracticeResponse's shape (synthetic unit_id +
+  // exercises) rather than Lesson/UnitNode.
+  async getReviewSession(userId: string): Promise<{ unit_id: string; exercises: Exercise[] }> {
+    return this.request(`/api/lessons/${userId}/review`);
   }
 
   async completeLesson(userId: string, unitId: string, score: number, elapsedSeconds = 0) {

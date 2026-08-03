@@ -79,6 +79,60 @@ def test_slow_correct_answer_schedules_sooner_review_than_a_fast_one():
     assert slow_schedule["ease_factor"] < fast_schedule["ease_factor"]
 
 
+def test_schedule_review_persists_content_snapshot():
+    _make_user()
+    srs.schedule_review("u1", "greetings.hello", quality=1, target_text="Hola", native_text="Hello", unit_id="A1-0")
+    with db.cursor() as cur:
+        cur.execute("SELECT target_text, native_text, unit_id FROM vocab_progress WHERE user_id='u1' AND vocab_key='greetings.hello'")
+        row = cur.fetchone()
+    assert row["target_text"] == "Hola"
+    assert row["native_text"] == "Hello"
+    assert row["unit_id"] == "A1-0"
+
+
+def test_schedule_review_does_not_blank_content_snapshot_on_later_calls():
+    # speak_repeat and similar call sites grade without a clean native_text
+    # on hand — a later call with blank content must not erase what an
+    # earlier call already captured.
+    _make_user()
+    srs.schedule_review("u1", "greetings.hello", quality=5, target_text="Hola", native_text="Hello", unit_id="A1-0")
+    srs.schedule_review("u1", "greetings.hello", quality=5)
+    with db.cursor() as cur:
+        cur.execute("SELECT target_text, native_text FROM vocab_progress WHERE user_id='u1' AND vocab_key='greetings.hello'")
+        row = cur.fetchone()
+    assert row["target_text"] == "Hola"
+    assert row["native_text"] == "Hello"
+
+
+def test_due_review_items_returns_content_for_due_items_only():
+    _make_user()
+    # Due immediately: a failed review (interval 0.25 days is still in the past by now? no —
+    # it's in the future by 6h). Force due_at into the past directly to simulate time passing.
+    srs.schedule_review("u1", "due.word", quality=5, target_text="Perro", native_text="Dog", unit_id="A1-1")
+    with db.cursor() as cur:
+        cur.execute("UPDATE vocab_progress SET due_at = '2000-01-01T00:00:00+00:00' WHERE vocab_key='due.word'")
+    srs.schedule_review("u1", "not_due.word", quality=5, target_text="Gato", native_text="Cat", unit_id="A1-1")
+
+    items = srs.due_review_items("u1")
+    keys = [i["vocab_key"] for i in items]
+    assert "due.word" in keys
+    assert "not_due.word" not in keys
+    due_item = next(i for i in items if i["vocab_key"] == "due.word")
+    assert due_item["target_text"] == "Perro"
+    assert due_item["native_text"] == "Dog"
+    assert due_item["unit_id"] == "A1-1"
+
+
+def test_due_review_items_skips_rows_with_no_content_snapshot():
+    # A vocab_key graded before this feature existed (or via a call site that
+    # never passes content) has no target_text — nothing to review it with.
+    _make_user()
+    srs.schedule_review("u1", "legacy.word", quality=5)
+    with db.cursor() as cur:
+        cur.execute("UPDATE vocab_progress SET due_at = '2000-01-01T00:00:00+00:00' WHERE vocab_key='legacy.word'")
+    assert srs.due_review_items("u1") == []
+
+
 def test_recent_mistakes_orders_by_mistake_count():
     _make_user()
     srs.schedule_review("u1", "a.word", quality=1)
