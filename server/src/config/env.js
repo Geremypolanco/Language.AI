@@ -20,4 +20,11 @@ export const env = {
   aiProviderBaseUrl: process.env.AI_PROVIDER_BASE_URL || '',
   cookieDomain: process.env.COOKIE_DOMAIN || 'localhost',
   isProduction: (process.env.NODE_ENV || 'development') === 'production',
+
+  // Voice Conversation Engine
+  voiceRateLimitWindowMs: Number(process.env.VOICE_RATE_LIMIT_WINDOW_MS || 60_000),
+  voiceRateLimitMax: Number(process.env.VOICE_RATE_LIMIT_MAX || 30),
+  voiceSessionTtlMs: Number(process.env.VOICE_SESSION_TTL_MS || 30 * 60_000), // 30 min idle expiry
+  voiceSummarizeAfterTurns: Number(process.env.VOICE_SUMMARIZE_AFTER_TURNS || 16),
+  voiceKeepRecentTurns: Number(process.env.VOICE_KEEP_RECENT_TURNS || 6),
 };

@@ -1,0 +1,98 @@
+.voice-call-screen {
+  max-width: 480px;
+  margin: 3rem auto;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+}
+
+.voice-call-screen__title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.voice-call-screen__subtitle {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.voice-call-screen__options {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.voice-call-screen__options label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #4b5563;
+  text-align: left;
+}
+
+.voice-call-screen__options select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 0.9rem;
+}
+
+.voice-call-screen__start-btn {
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 1.1rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.voice-call-screen__start-btn:hover {
+  transform: translateY(-1px);
+}
+
+.voice-call-screen__end-btn {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1.6rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.voice-call-screen__caption {
+  max-width: 90%;
+  min-height: 1.4em;
+  color: #374151;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.voice-call-screen__error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  max-width: 90%;
+}
+
+.voice-call-screen__unsupported {
+  color: #b45309;
+  max-width: 360px;
+  margin: 4rem auto;
+  text-align: center;
+}

@@ -6,6 +6,7 @@ import { optionalAuth } from './middleware/auth.js';
 import { aiRouter } from './routes/ai.routes.js';
 import { feedbackRouter } from './routes/feedback.routes.js';
 import { consentRouter } from './routes/consent.routes.js';
+import { voiceRouter } from './routes/voice.routes.js';
 
 export function createApp() {
   const app = express();
@@ -26,6 +27,7 @@ export function createApp() {
   app.use('/api/consent', consentRouter);
   app.use('/api/ai', aiRouter);
   app.use('/api/feedback', feedbackRouter);
+  app.use('/api/voice', voiceRouter);
 
   // Centralized error handler — never leak stack traces to the client.
   app.use((err, _req, res, _next) => {

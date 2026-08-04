@@ -1,0 +1,21 @@
+.view-switch {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 1.5rem;
+}
+
+.view-switch__btn {
+  background: #f3f4f6;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.view-switch__btn--active {
+  background: #6366f1;
+  color: white;
+}

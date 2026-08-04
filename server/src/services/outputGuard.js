@@ -15,6 +15,10 @@ const OVERCONFIDENCE_PATTERNS = [
   /\bI (am|'m) (absolutely |completely )?certain\b/i,
 ];
 
+export function isOverconfident(text) {
+  return OVERCONFIDENCE_PATTERNS.some((p) => p.test(text));
+}
+
 /**
  * Validates that raw model output conforms to the strict response schema
  * before it is ever sent to the client. Anything that fails to parse is
@@ -27,9 +31,8 @@ export function validateAiOutput(rawOutput) {
     return { ok: false, error: parsed.error.flatten() };
   }
 
-  const overconfident = OVERCONFIDENCE_PATTERNS.some((p) => p.test(parsed.data.reply));
   const result = { ...parsed.data };
-  if (overconfident && result.confidence === 'high') {
+  if (isOverconfident(result.reply) && result.confidence === 'high') {
     result.confidence = 'medium';
     result.flagged = true;
   }
