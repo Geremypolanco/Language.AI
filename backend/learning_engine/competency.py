@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .. import db
+from .. import curriculum, db
 
 MASTERY_THRESHOLD = 0.8
 
@@ -90,6 +90,49 @@ def get_competency(user_id: str, course_id: str) -> dict | None:
 def is_mastered(user_id: str, course_id: str) -> bool:
     comp = get_competency(user_id, course_id)
     return comp is not None and comp["score"] >= MASTERY_THRESHOLD
+
+
+def get_language_competencies(user_id: str) -> list[dict]:
+    """The language-learning equivalent of get_competencies(), reusing
+    unit_mastery (backend/srs.py's record_lesson_result already maintains
+    it — best_score per unit) instead of a second, duplicate scoring table.
+    One row per unit the student has attempted at least once, in skill-
+    tree order, so it reads like a real progress list rather than an
+    unordered dump."""
+    with db.cursor() as cur:
+        cur.execute("SELECT unit_id, best_score, attempts, mastered FROM unit_mastery WHERE user_id=?", (user_id,))
+        by_unit = {r["unit_id"]: r for r in cur.fetchall()}
+
+    results = []
+    for unit in curriculum.all_units():
+        row = by_unit.get(unit.id)
+        if row is None:
+            continue
+        results.append(
+            {
+                "unit_id": unit.id,
+                "topic": unit.topic,
+                "topic_es": curriculum.topic_es(unit.topic),
+                "level": unit.level.value,
+                "score": row["best_score"],
+                "attempts": row["attempts"],
+                "mastered": bool(row["mastered"]),
+            }
+        )
+    return results
+
+
+def get_unified_competencies(user_id: str, field_id: str | None = None) -> dict:
+    """Both domains side by side — deliberately NOT merged into one
+    average score. Academy course scores and language unit scores measure
+    different things (quiz/exam correctness vs. lesson best_score); a
+    single blended number would look precise while actually being
+    meaningless. Presenting both lets the dashboard show real progress in
+    whichever domain(s) the student is actually enrolled in."""
+    return {
+        "academy": get_competencies(user_id, field_id),
+        "language": get_language_competencies(user_id),
+    }
 
 
 def strengths_and_weaknesses(user_id: str, field_id: str, top_n: int = 3) -> dict:

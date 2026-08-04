@@ -1010,3 +1010,139 @@ def test_academy_profile_goal_and_summary(monkeypatch, tmp_path):
         profile_res2 = client.get(f"/api/academy/{user['id']}/profile").json()
         assert profile_res2["career_goal"] == "AI Engineer"
         assert profile_res2["interests"] == ["music"]  # from _onboard's default interests
+
+
+def test_academy_profile_works_without_enrollment(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-profile-noenroll@example.com")
+
+        profile_res = client.get(f"/api/academy/{user['id']}/profile")
+        assert profile_res.status_code == 200
+        body = profile_res.json()
+        assert body["career_goal"] == ""
+        assert body["strengths_and_weaknesses"] == {"strengths": [], "weaknesses": []}
+        assert body["competencies"] == {"academy": [], "language": []}
+        assert body["goals"] == []
+
+
+def test_academy_goals_crud_and_ownership(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-goals1@example.com")
+        other = _onboard(client, email="academy-goals2@example.com")
+        dev_login(client, "academy-goals1@example.com")
+
+        empty = client.get(f"/api/academy/{user['id']}/goals")
+        assert empty.status_code == 200
+        assert empty.json() == []
+
+        add_res = client.post(f"/api/academy/{user['id']}/goals", json={"text": "  Pasar el B2  "})
+        assert add_res.status_code == 200
+        goal = add_res.json()
+        assert goal["text"] == "Pasar el B2"
+        assert goal["completed"] is False
+
+        blank_res = client.post(f"/api/academy/{user['id']}/goals", json={"text": "   "})
+        assert blank_res.status_code == 400
+
+        listed = client.get(f"/api/academy/{user['id']}/goals").json()
+        assert len(listed) == 1
+
+        complete_res = client.patch(f"/api/academy/{user['id']}/goals/{goal['id']}", json={"completed": True})
+        assert complete_res.status_code == 200
+        assert client.get(f"/api/academy/{user['id']}/goals").json()[0]["completed"] is True
+
+        # another user, acting on their own path, can't reach user's goal id
+        dev_login(client, "academy-goals2@example.com")
+        cross_res = client.patch(f"/api/academy/{other['id']}/goals/{goal['id']}", json={"completed": False})
+        assert cross_res.status_code == 404
+        cross_delete = client.delete(f"/api/academy/{other['id']}/goals/{goal['id']}")
+        assert cross_delete.status_code == 404
+
+        dev_login(client, "academy-goals1@example.com")
+        delete_res = client.delete(f"/api/academy/{user['id']}/goals/{goal['id']}")
+        assert delete_res.status_code == 200
+        assert client.get(f"/api/academy/{user['id']}/goals").json() == []
+
+
+def test_unified_competencies_works_without_academy_enrollment(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="unified-competencies1@example.com")
+
+        # No academy enrollment yet — must not 404, just come back empty.
+        res = client.get(f"/api/academy/{user['id']}/competencies/unified")
+        assert res.status_code == 200
+        assert res.json() == {"academy": [], "language": []}
+
+        # Complete a real lesson so unit_mastery has a row to surface.
+        path = client.get(f"/api/lessons/{user['id']}/path").json()
+        unit_id = path[0]["id"]
+        complete_res = client.post(
+            f"/api/lessons/{user['id']}/complete", json={"unit_id": unit_id, "score": 0.8, "elapsed_seconds": 30}
+        )
+        assert complete_res.status_code == 200
+
+        res2 = client.get(f"/api/academy/{user['id']}/competencies/unified").json()
+        assert res2["academy"] == []
+        assert any(c["unit_id"] == unit_id for c in res2["language"])
+
+
+def test_predictions_endpoint_works_without_enrollment_and_estimates_pace_when_enrolled(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE", course_index=0)
+    # _seed_built_course's own curriculum has just 1 course — replace it with
+    # a 3-course one afterward so there's real "remaining courses" to see.
+    store.save_curriculum(
+        "computer-science", "ASSOCIATE", "v1",
+        {"courses": [{"title": f"Curso {i}", "description": "Una descripción real y completa."} for i in range(3)]},
+    )
+    store.set_latest_version("computer-science", "ASSOCIATE", "v1")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="predictions1@example.com")
+
+        # No enrollment yet — forgetting/dropout still real, time_to_mastery null.
+        res = client.get(f"/api/academy/{user['id']}/predictions")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["forgetting_risk"]["risk_level"] == "sin_datos"
+        assert body["dropout_risk"]["risk_level"] == "sin_datos"  # last_active_date starts empty
+        assert body["time_to_mastery"] is None
+
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete", json={"elapsed_seconds": 60})
+
+        res2 = client.get(f"/api/academy/{user['id']}/predictions").json()
+        assert res2["time_to_mastery"]["remaining_courses"] == 2
+
+
+def test_learning_style_and_motivation_endpoints():
+    with TestClient(app) as client:
+        user = _onboard(client, email="style-motivation1@example.com")
+
+        style_res = client.get(f"/api/academy/{user['id']}/learning-style")
+        assert style_res.status_code == 200
+        assert style_res.json()["style"] == "sin_datos"  # brand new user, no activity yet
+
+        motivation_res = client.get(f"/api/academy/{user['id']}/motivation")
+        assert motivation_res.status_code == 200
+        assert motivation_res.json()["signal"] == "sin_datos"
+
+        for score in [0.9, 0.95, 1.0]:
+            client.post(
+                f"/api/lessons/{user['id']}/complete",
+                json={"unit_id": "practice-listen_type-A1", "score": score, "elapsed_seconds": 30},
+            )
+
+        motivation_res2 = client.get(f"/api/academy/{user['id']}/motivation").json()
+        assert motivation_res2["signal"] == "buen_momentum"
+        assert motivation_res2["message"] != ""

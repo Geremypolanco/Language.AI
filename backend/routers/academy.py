@@ -37,9 +37,13 @@ from ..learning_engine import (
     analytics,
     competency,
     concept_review,
+    goals,
     grading,
     knowledge_graph,
+    learning_style,
+    motivation,
     portfolio,
+    predictions,
     recommendations,
     student_profile,
 )
@@ -521,6 +525,75 @@ def get_competencies(user_id: str, session: dict = Depends(auth.require_owner)) 
     }
 
 
+@router.get("/{user_id}/competencies/unified")
+def get_unified_competencies(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Academy + Language competencies side by side (learning_engine/
+    competency.get_unified_competencies) — unlike /competencies above,
+    this never 404s on "not enrolled": a student who's only doing
+    languages (or only Academy) still gets a real, if partial, view."""
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    field_id = row["field_id"] if row else None
+    return competency.get_unified_competencies(user_id, field_id)
+
+
+@router.get("/{user_id}/predictions")
+async def get_predictions(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Transparent, rule-based risk/pace signals — see learning_engine/
+    predictions.py's module docstring for why these are heuristics, not a
+    trained ML model. forgetting_risk and dropout_risk work for every
+    student regardless of enrollment; time_to_mastery is only meaningful
+    for an active Academy enrollment, so it's null without one."""
+    user = get_user_by_id_or_404(user_id)
+    result: dict[str, Any] = {
+        "forgetting_risk": predictions.forgetting_risk(user_id),
+        "dropout_risk": predictions.dropout_risk(user_id),
+        "time_to_mastery": None,
+    }
+
+    row = _get_enrollment_row(user_id)
+    if row:
+        field = academy.get_field(row["field_id"])
+        level = AcademicLevel(row["level"])
+        if field:
+            content_lang = row["content_lang"] or user.native_lang
+            try:
+                curriculum = await _load_curriculum(field, level, content_lang)
+                total_courses = len(curriculum.courses)
+            except Exception:
+                logger.exception("Curriculum load failed for predictions on %s/%s", field.id, level.value)
+                total_courses = level.course_count
+            with db.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS c FROM academy_course_progress WHERE user_id=? AND course_id LIKE ?",
+                    (user_id, f"{field.id}:{level.value}:%"),
+                )
+                completed_count = cur.fetchone()["c"]
+            result["time_to_mastery"] = predictions.time_to_mastery_estimate(
+                row["enrolled_at"], completed_count, total_courses
+            )
+
+    return result
+
+
+@router.get("/{user_id}/learning-style")
+def get_learning_style(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Conversational vs. written/structured practice ratio — inferred
+    from real activity (learning_engine/learning_style.py), never asked
+    at onboarding."""
+    get_user_by_id_or_404(user_id)
+    return learning_style.infer_learning_style(user_id)
+
+
+@router.get("/{user_id}/motivation")
+def get_motivation(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """A specific, non-generic motivation signal from the student's own
+    recent lessons (learning_engine/motivation.py) — "frustracion",
+    "buen_momentum", "estancado", or "neutral"/"sin_datos"."""
+    get_user_by_id_or_404(user_id)
+    return motivation.detect_signal(user_id)
+
+
 @router.get("/{user_id}/recommendation")
 def get_recommendation(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
     """The next course to study, given the student's current competency
@@ -593,17 +666,20 @@ def get_analytics(user_id: str, session: dict = Depends(auth.require_owner)) -> 
 
 @router.get("/{user_id}/profile")
 def get_student_profile(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
-    """The tutor's persistent memory of this student — see
-    learning_engine/student_profile.py for exactly which existing data
-    each field maps back to (nothing here is tracked twice)."""
+    """The unified Learning Intelligence dashboard — see learning_engine/
+    student_profile.py's profile_summary for exactly which existing data
+    each field maps back to (nothing here is tracked twice). No longer
+    404s without an Academy enrollment: goals, learning style, language
+    competencies, and the risk/motivation signals are all real without
+    one — only the Academy-specific fields (strengths/weaknesses,
+    frequent mistakes, learning velocity) go empty instead of populated."""
     user = get_user_by_id_or_404(user_id)
     row = _get_enrollment_row(user_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
-    field = academy.get_field(row["field_id"])
-    if not field:
-        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
-    return student_profile.profile_summary(user_id, field.id, user.interests)
+    field_id = None
+    if row:
+        field = academy.get_field(row["field_id"])
+        field_id = field.id if field else None
+    return student_profile.profile_summary(user_id, field_id, user.interests)
 
 
 class SetCareerGoalRequest(BaseModel):
@@ -618,6 +694,50 @@ def set_career_goal(user_id: str, payload: SetCareerGoalRequest, session: dict =
         raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
     student_profile.set_career_goal(user_id, payload.goal)
     return {"career_goal": student_profile.get_career_goal(user_id)}
+
+
+@router.get("/{user_id}/goals")
+def get_goals(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    """Multiple, ordered learning goals (learning_engine/goals.py) — not
+    tied to any one field, since a student's goals can span the whole
+    platform ("pasar el B2 de inglés", "terminar la especialización en
+    IA"), unlike the single per-enrollment career_goal above."""
+    get_user_by_id_or_404(user_id)
+    return goals.list_goals(user_id)
+
+
+class AddGoalRequest(BaseModel):
+    text: str
+
+
+@router.post("/{user_id}/goals")
+def add_goal(user_id: str, payload: AddGoalRequest, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="El objetivo no puede estar vacío")
+    return goals.add_goal(user_id, payload.text)
+
+
+class UpdateGoalRequest(BaseModel):
+    completed: bool = True
+
+
+@router.patch("/{user_id}/goals/{goal_id}")
+def update_goal(
+    user_id: str, goal_id: int, payload: UpdateGoalRequest, session: dict = Depends(auth.require_owner)
+) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not goals.complete_goal(user_id, goal_id, payload.completed):
+        raise HTTPException(status_code=404, detail="Objetivo no encontrado")
+    return {"id": goal_id, "completed": payload.completed}
+
+
+@router.delete("/{user_id}/goals/{goal_id}")
+def delete_goal(user_id: str, goal_id: int, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not goals.remove_goal(user_id, goal_id):
+        raise HTTPException(status_code=404, detail="Objetivo no encontrado")
+    return {"deleted": True}
 
 
 @router.get("/{user_id}/concepts/review")

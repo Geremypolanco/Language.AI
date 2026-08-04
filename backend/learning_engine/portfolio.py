@@ -15,6 +15,7 @@ active right now.
 from __future__ import annotations
 
 from .. import db
+from . import competency
 
 
 def get_portfolio(user_id: str) -> dict:
@@ -39,6 +40,17 @@ def get_portfolio(user_id: str) -> dict:
             (user_id,),
         )
         completed_courses = [dict(r) for r in cur.fetchall()]
+
+    # Portfolio intelligence: relate each piece of work back to the real
+    # competency score its course earned (learning_engine/competency.py) —
+    # not a separate skill-tagging system, just surfacing the mastery
+    # number that already exists for that course_id next to the evidence
+    # of it, so a reviewer sees "Proyecto final — Estructuras de Datos
+    # (dominio: 0.84)" instead of an unranked list of submissions.
+    for group in (assignments, scenarios, completed_courses):
+        for item in group:
+            comp = competency.get_competency(user_id, item["course_id"])
+            item["competency_score"] = comp["score"] if comp else None
 
     return {
         "assignments": assignments,

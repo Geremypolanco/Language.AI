@@ -1,17 +1,24 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from backend import academy, db
+from backend.curriculum import units_for_level
 from backend.learning_engine import (
     achievements,
     analytics,
     competency,
     concept_review,
+    goals,
     grading,
     knowledge_graph,
+    learning_style,
+    motivation,
     portfolio,
+    predictions,
     recommendations,
     student_profile,
 )
+from backend.models import CEFRLevel
 
 
 def _make_user(user_id="u1"):
@@ -122,6 +129,41 @@ def test_strengths_and_weaknesses():
     result = competency.strengths_and_weaknesses("u1", "f", top_n=1)
     assert result["strengths"][0]["course_id"] == "strong"
     assert result["weaknesses"][0]["course_id"] == "weak"
+
+
+def test_get_language_competencies_reuses_unit_mastery_not_a_new_table():
+    _make_user()
+    unit = units_for_level(CEFRLevel.A1)[1]
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO unit_mastery (user_id, unit_id, best_score, attempts, mastered) VALUES (?, ?, 0.75, 2, 0)",
+            ("u1", unit.id),
+        )
+    result = competency.get_language_competencies("u1")
+    assert len(result) == 1
+    assert result[0]["unit_id"] == unit.id
+    assert result[0]["score"] == 0.75
+    assert result[0]["mastered"] is False
+
+
+def test_get_language_competencies_empty_for_untouched_units():
+    _make_user()
+    assert competency.get_language_competencies("u1") == []
+
+
+def test_get_unified_competencies_presents_both_domains_separately():
+    _make_user()
+    competency.record_result("u1", "f", "f:BACHELOR:0", 0.9)
+    unit = units_for_level(CEFRLevel.A1)[1]
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO unit_mastery (user_id, unit_id, best_score, attempts, mastered) VALUES (?, ?, 0.6, 1, 0)",
+            ("u1", unit.id),
+        )
+    unified = competency.get_unified_competencies("u1", "f")
+    assert unified["academy"][0]["course_id"] == "f:BACHELOR:0"
+    assert unified["language"][0]["unit_id"] == unit.id
+    assert set(unified.keys()) == {"academy", "language"}  # never blended into one number
 
 
 # ── Grading ──────────────────────────────────────────────────────────────
@@ -337,6 +379,22 @@ def test_get_portfolio_aggregates_assignments_scenarios_and_completions():
     assert result["assignments"][0]["response"] == "my response"
     assert result["scenarios"][0]["feedback"] == "nice work"
     assert result["completed_courses"][0]["elapsed_seconds"] == 300
+    # No quiz/exam graded yet for this course — competency_score is honestly None.
+    assert result["assignments"][0]["competency_score"] is None
+
+
+def test_get_portfolio_attaches_real_competency_score_to_each_item():
+    _make_user()
+    now = db.now_iso()
+    competency.record_result("u1", "f", "f:BACHELOR:0", 0.77)
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_assignment_submission (user_id, course_id, assignment_id, response, feedback, grade, submitted_at) "
+            "VALUES ('u1', 'f:BACHELOR:0', 'f:BACHELOR:0:0', 'r', 'f', 'Bien', ?)",
+            (now,),
+        )
+    result = portfolio.get_portfolio("u1")
+    assert result["assignments"][0]["competency_score"] == 0.77
 
 
 def test_get_portfolio_empty_for_new_user():
@@ -414,6 +472,7 @@ def test_profile_summary_combines_everything():
     _make_enrollment()
     student_profile.set_career_goal("u1", "Data Scientist")
     competency.record_result("u1", "f", "f:BACHELOR:0", 0.9)
+    goals.add_goal("u1", "Terminar la carrera")
 
     summary = student_profile.profile_summary("u1", "f", ["music", "chess"])
     assert summary["career_goal"] == "Data Scientist"
@@ -421,3 +480,251 @@ def test_profile_summary_combines_everything():
     assert "strengths_and_weaknesses" in summary
     assert "forgotten_concepts" in summary
     assert "learning_velocity" in summary
+    # Learning Intelligence Engine additions — every sub-engine represented.
+    assert summary["goals"][0]["text"] == "Terminar la carrera"
+    assert summary["competencies"]["academy"][0]["course_id"] == "f:BACHELOR:0"
+    assert summary["forgetting_risk"]["risk_level"] == "sin_datos"
+    assert summary["dropout_risk"]["risk_level"] in ("sin_datos", "bajo")
+    assert summary["learning_style"]["style"] == "sin_datos"
+    assert summary["motivation"]["signal"] == "sin_datos"
+
+
+def test_profile_summary_works_without_academy_enrollment():
+    _make_user()
+    summary = student_profile.profile_summary("u1", None, ["chess"])
+    assert summary["strengths_and_weaknesses"] == {"strengths": [], "weaknesses": []}
+    assert summary["frequent_mistakes"] == []
+    assert summary["learning_velocity"]["relative"] == "sin_datos"
+    assert summary["competencies"] == {"academy": [], "language": []}
+    assert summary["goals"] == []
+
+
+# ── Learning goals (multiple, ordered) ──────────────────────────────────
+
+
+def test_add_goal_and_list_goals_in_order():
+    _make_user()
+    first = goals.add_goal("u1", "  Pasar el B2 de inglés  ")
+    second = goals.add_goal("u1", "Terminar la especialización en IA")
+
+    assert first["text"] == "Pasar el B2 de inglés"  # stripped
+    assert first["sort_order"] == 0
+    assert second["sort_order"] == 1
+    assert first["completed"] is False
+
+    listed = goals.list_goals("u1")
+    assert [g["text"] for g in listed] == ["Pasar el B2 de inglés", "Terminar la especialización en IA"]
+
+
+def test_goals_scoped_per_user():
+    _make_user("u1")
+    _make_user("u2")
+    goals.add_goal("u1", "u1 goal")
+    goals.add_goal("u2", "u2 goal")
+    assert [g["text"] for g in goals.list_goals("u1")] == ["u1 goal"]
+    assert [g["text"] for g in goals.list_goals("u2")] == ["u2 goal"]
+
+
+def test_complete_goal_toggles_and_rejects_other_users_goal():
+    _make_user("u1")
+    _make_user("u2")
+    goal = goals.add_goal("u1", "Practicar todos los días")
+
+    assert goals.complete_goal("u1", goal["id"], True) is True
+    assert goals.list_goals("u1")[0]["completed"] is True
+
+    assert goals.complete_goal("u1", goal["id"], False) is True
+    assert goals.list_goals("u1")[0]["completed"] is False
+
+    # u2 can't complete u1's goal
+    assert goals.complete_goal("u2", goal["id"], True) is False
+
+
+def test_remove_goal_deletes_only_the_owners_row():
+    _make_user("u1")
+    _make_user("u2")
+    goal = goals.add_goal("u1", "Meta temporal")
+
+    assert goals.remove_goal("u2", goal["id"]) is False
+    assert goals.list_goals("u1") != []
+
+    assert goals.remove_goal("u1", goal["id"]) is True
+    assert goals.list_goals("u1") == []
+
+
+# ── Predictions (heuristics, not ML) ─────────────────────────────────────
+
+
+def test_forgetting_risk_no_data():
+    _make_user()
+    result = predictions.forgetting_risk("u1")
+    assert result == {"due_count": 0, "tracked_total": 0, "overdue_days_max": 0, "risk_level": "sin_datos"}
+
+
+def test_forgetting_risk_low_when_nothing_due():
+    _make_user()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO vocab_progress (user_id, vocab_key, due_at) VALUES (?, ?, ?)",
+            ("u1", "greetings.hello", (datetime.now(UTC) + timedelta(days=5)).isoformat()),
+        )
+    result = predictions.forgetting_risk("u1")
+    assert result["due_count"] == 0
+    assert result["risk_level"] == "bajo"
+
+
+def test_forgetting_risk_high_when_many_overdue_items():
+    _make_user()
+    with db.cursor() as cur:
+        for i in range(4):
+            cur.execute(
+                "INSERT INTO vocab_progress (user_id, vocab_key, due_at) VALUES (?, ?, ?)",
+                ("u1", f"word.{i}", (datetime.now(UTC) - timedelta(days=5)).isoformat()),
+            )
+    result = predictions.forgetting_risk("u1")
+    assert result["due_count"] == 4
+    assert result["risk_level"] == "alto"
+    assert result["overdue_days_max"] >= 5
+
+
+def test_dropout_risk_no_data_for_never_active_user():
+    with db.cursor() as cur:
+        cur.execute(
+            """INSERT INTO users
+               (id, display_name, native_lang, target_lang, level, interests, xp, streak_days,
+                gems, streak_freezes, created_at, last_active_date)
+               VALUES ('u1', 'Test', 'en', 'es', 'A1', '[]', 0, 0, 0, 0, ?, '')""",
+            (db.now_iso(),),
+        )
+    result = predictions.dropout_risk("u1")
+    assert result["risk_level"] == "sin_datos"
+
+
+def test_dropout_risk_low_when_active_today():
+    _make_user()  # last_active_date defaults to today
+    with db.cursor() as cur:
+        cur.execute("UPDATE users SET streak_days=5 WHERE id='u1'")
+    result = predictions.dropout_risk("u1")
+    assert result["days_since_last_active"] == 0
+    assert result["risk_level"] == "bajo"
+
+
+def test_dropout_risk_high_after_long_gap_and_broken_streak():
+    _make_user()
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET last_active_date=?, streak_days=0 WHERE id='u1'",
+            ((datetime.fromisoformat(db.today_str()) - timedelta(days=10)).date().isoformat(),),
+        )
+    result = predictions.dropout_risk("u1")
+    assert result["days_since_last_active"] == 10
+    assert result["risk_level"] == "alto"
+
+
+def test_time_to_mastery_no_data_until_first_completion():
+    result = predictions.time_to_mastery_estimate(db.now_iso(), completed_count=0, total_courses=10)
+    assert result["estimated_days_remaining"] is None
+    assert result["remaining_courses"] == 10
+
+
+def test_time_to_mastery_already_done():
+    result = predictions.time_to_mastery_estimate(db.now_iso(), completed_count=10, total_courses=10)
+    assert result == {"remaining_courses": 0, "estimated_days_remaining": 0, "pace_courses_per_day": None}
+
+
+def test_time_to_mastery_extrapolates_from_real_pace():
+    enrolled_at = (datetime.fromisoformat(db.today_str()) - timedelta(days=10)).isoformat()
+    result = predictions.time_to_mastery_estimate(enrolled_at, completed_count=5, total_courses=15)
+    # pace = 5 courses / 10 days = 0.5/day; remaining 10 courses -> 20 days
+    assert result["remaining_courses"] == 10
+    assert result["estimated_days_remaining"] == 20
+    assert result["pace_courses_per_day"] == 0.5
+
+
+# ── Learning style (inferred, never asked) ───────────────────────────────
+
+
+def _log_conversation_turns(user_id: str, n: int):
+    with db.cursor() as cur:
+        for _ in range(n):
+            cur.execute(
+                "INSERT INTO conversation_log (user_id, role, content, created_at) VALUES (?, 'user', 'hola', ?)",
+                (user_id, db.now_iso()),
+            )
+
+
+def _log_lessons(user_id: str, n: int, score: float = 0.9):
+    with db.cursor() as cur:
+        for _ in range(n):
+            cur.execute(
+                "INSERT INTO lesson_history (user_id, unit_id, score, completed_at) VALUES (?, 'u0', ?, ?)",
+                (user_id, score, db.now_iso()),
+            )
+
+
+def test_learning_style_sin_datos_below_activity_floor():
+    _make_user()
+    _log_conversation_turns("u1", 1)
+    result = learning_style.infer_learning_style("u1")
+    assert result["style"] == "sin_datos"
+
+
+def test_learning_style_conversacional_when_chat_dominates():
+    _make_user()
+    _log_conversation_turns("u1", 8)
+    _log_lessons("u1", 1)
+    result = learning_style.infer_learning_style("u1")
+    assert result["style"] == "conversacional"
+
+
+def test_learning_style_estructurado_when_written_dominates():
+    _make_user()
+    _log_conversation_turns("u1", 1)
+    _log_lessons("u1", 8)
+    result = learning_style.infer_learning_style("u1")
+    assert result["style"] == "estructurado"
+
+
+def test_learning_style_equilibrado_when_close():
+    _make_user()
+    _log_conversation_turns("u1", 5)
+    _log_lessons("u1", 5)
+    result = learning_style.infer_learning_style("u1")
+    assert result["style"] == "equilibrado"
+
+
+# ── Motivation signal (specific, non-generic) ────────────────────────────
+
+
+def test_motivation_sin_datos_with_too_few_lessons():
+    _make_user()
+    _log_lessons("u1", 2, score=0.9)
+    result = motivation.detect_signal("u1")
+    assert result["signal"] == "sin_datos"
+    assert result["message"] == ""
+
+
+def test_motivation_detects_frustracion_on_repeated_low_scores():
+    _make_user()
+    for score in [0.2, 0.3, 0.1]:
+        _log_lessons("u1", 1, score=score)
+    result = motivation.detect_signal("u1")
+    assert result["signal"] == "frustracion"
+    assert result["message"] != ""
+
+
+def test_motivation_detects_buen_momentum_on_strong_scores():
+    _make_user()
+    for score in [0.9, 0.95, 1.0]:
+        _log_lessons("u1", 1, score=score)
+    result = motivation.detect_signal("u1")
+    assert result["signal"] == "buen_momentum"
+    assert result["message"] != ""
+
+
+def test_motivation_detects_estancado_on_flat_scores():
+    _make_user()
+    for score in [0.6, 0.65, 0.62, 0.61]:
+        _log_lessons("u1", 1, score=score)
+    result = motivation.detect_signal("u1")
+    assert result["signal"] == "estancado"

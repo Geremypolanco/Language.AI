@@ -203,6 +203,18 @@ CREATE TABLE IF NOT EXISTS academy_scenario_submission (
     feedback TEXT NOT NULL,
     submitted_at TEXT NOT NULL
 );
+
+-- Multiple, ordered learning goals (backend/learning_engine/goals.py) —
+-- richer than academy_enrollment.career_goal's single free-text field,
+-- kept alongside it rather than replacing it (backward compat).
+CREATE TABLE IF NOT EXISTS learning_goal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -368,10 +380,20 @@ CREATE TABLE IF NOT EXISTS academy_scenario_submission (
     submitted_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS learning_goal (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_log_user ON conversation_log(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_academic_concept_course ON academic_concept(course_id);
 CREATE INDEX IF NOT EXISTS idx_concept_relation_from ON academic_concept_relation(from_concept_id);
+CREATE INDEX IF NOT EXISTS idx_learning_goal_user ON learning_goal(user_id, sort_order);
 """
 
 
@@ -405,6 +427,10 @@ class _CursorProxy:
 
     def fetchall(self) -> Any:
         return self._cur.fetchall()
+
+    @property
+    def rowcount(self) -> int:
+        return self._cur.rowcount
 
     def close(self) -> None:
         self._cur.close()

@@ -23,7 +23,7 @@ Field-by-field mapping back to the request's list:
 from __future__ import annotations
 
 from .. import db
-from . import competency, concept_review
+from . import competency, concept_review, goals, learning_style, motivation, predictions
 
 
 def set_career_goal(user_id: str, goal: str) -> None:
@@ -93,12 +93,43 @@ def learning_velocity(user_id: str, field_id: str) -> dict:
     }
 
 
-def profile_summary(user_id: str, field_id: str, interests: list[str]) -> dict:
+def profile_summary(user_id: str, field_id: str | None, interests: list[str]) -> dict:
+    """The unified "Learning Intelligence" dashboard: every engine this
+    student profile evolved into, combined into one call — goals,
+    cross-domain competencies, forgetting/dropout risk, learning style,
+    and motivation, on top of the original tutor-memory fields above.
+    `field_id` is now optional: a student with no Academy enrollment still
+    gets a real (partial) profile instead of an error, since goals,
+    learning style, and language competencies are never Academy-specific.
+
+    time_to_mastery is deliberately NOT included here — estimating it
+    needs an async curriculum load (see routers/academy.py's dedicated
+    /predictions endpoint), which this synchronous, single-call dashboard
+    isn't set up to do without either blocking on AI-cache warmup or
+    duplicating that endpoint's logic."""
+    academy_fields = (
+        {
+            "strengths_and_weaknesses": competency.strengths_and_weaknesses(user_id, field_id),
+            "frequent_mistakes": frequent_mistakes(user_id, field_id),
+            "learning_velocity": learning_velocity(user_id, field_id),
+        }
+        if field_id
+        else {
+            "strengths_and_weaknesses": {"strengths": [], "weaknesses": []},
+            "frequent_mistakes": [],
+            "learning_velocity": {"user_avg_seconds": None, "field_avg_seconds": None, "relative": "sin_datos"},
+        }
+    )
+
     return {
         "career_goal": get_career_goal(user_id),
         "interests": interests,
-        "strengths_and_weaknesses": competency.strengths_and_weaknesses(user_id, field_id),
-        "frequent_mistakes": frequent_mistakes(user_id, field_id),
+        "goals": goals.list_goals(user_id),
         "forgotten_concepts": concept_review.due_concepts(user_id),
-        "learning_velocity": learning_velocity(user_id, field_id),
+        "competencies": competency.get_unified_competencies(user_id, field_id),
+        "forgetting_risk": predictions.forgetting_risk(user_id),
+        "dropout_risk": predictions.dropout_risk(user_id),
+        "learning_style": learning_style.infer_learning_style(user_id),
+        "motivation": motivation.detect_signal(user_id),
+        **academy_fields,
     }
