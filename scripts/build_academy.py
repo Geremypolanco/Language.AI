@@ -23,7 +23,12 @@ Examples:
 Requires HF_TOKEN (or another configured chat provider — see
 backend/hf_client.py's chat()) to actually generate anything; this is meant
 to be run from an environment with real AI credentials and budget, not from
-a CI job or a sandbox with LINGUA_TESTING set.
+a CI job or a sandbox with LINGUA_TESTING set. Also writes to the app's own
+database (LINGUA_DB_PATH or SUPABASE_DB_URL) — run it against the same
+database the deployed app actually uses, since the knowledge graph it
+populates (concepts + prerequisite edges, see backend/learning_engine/
+knowledge_graph.py) is read live by routers/academy.py's recommendation
+and competency endpoints.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from backend.academy_library import build  # noqa: E402
 from backend.academy_library.storage import FileSystemAcademyStore  # noqa: E402
 from backend.config import settings  # noqa: E402
+from backend.learning_engine import knowledge_graph  # noqa: E402
 from backend.models import AcademicLevel  # noqa: E402
 
 logger = logging.getLogger("lingua.build_academy")
@@ -96,6 +102,14 @@ async def main() -> int:
 
     ok = [r for r in reports if r.ok]
     failed = [r for r in reports if not r.ok]
+
+    for report in ok:
+        curriculum = store.load_curriculum(report.field_id, report.level)
+        if not curriculum:
+            continue
+        course_ids = [f"{report.field_id}:{report.level}:{i}" for i in range(len(curriculum["courses"]))]
+        added = knowledge_graph.build_graph_for_field_level(report.field_id, report.level, course_ids, store)
+        logger.info("Knowledge graph: %s/%s contributed concepts from %d course(s).", report.field_id, report.level, added)
 
     logger.info("Done: %d succeeded, %d had failures.", len(ok), len(failed))
     for report in failed:

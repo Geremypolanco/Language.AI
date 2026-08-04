@@ -789,3 +789,119 @@ def test_academy_specialization_composes_base_field_courses(tmp_path, monkeypatc
         # a copy generated under the specialization.
         base_content = client.get(f"/api/academy/{user['id']}/courses/{base_course_id}").json()
         assert base_content["modules"][0]["title"] == "Módulo persistido"
+
+
+def test_academy_quiz_submission_updates_competency_and_recommendation(monkeypatch, tmp_path):
+    async def fake_grade_open_answer(question, rubric_note, student_answer, native_lang):
+        return student_answer == "correct essay", "bien hecho" if student_answer == "correct essay" else "falta detalle"
+
+    monkeypatch.setattr(academy_router.hf_client, "grade_open_answer", fake_grade_open_answer)
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    store.save_course_asset(
+        "computer-science", "ASSOCIATE", "v1", course_id, "quiz",
+        {
+            "questions": [
+                {"type": "multiple_choice", "question": "q1", "options": ["a", "b"], "correct_answer": "a"},
+                {"type": "true_false", "question": "q2", "correct_answer": True},
+                {"type": "open", "question": "q3", "rubric_note": "must explain X"},
+            ]
+        },
+    )
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-learning1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        res = client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit",
+            json={"answers": {"0": "a", "1": "True", "2": "correct essay"}},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["score"] == 1.0
+        assert body["competency_score"] == 1.0
+        assert all(r["correct"] for r in body["results"])
+
+        competencies = client.get(f"/api/academy/{user['id']}/competencies").json()
+        assert competencies["competencies"][0]["course_id"] == course_id
+        assert competencies["competencies"][0]["title"] == "Curso Persistido"
+        assert competencies["competencies"][0]["score"] == 1.0
+
+        recommendation = client.get(f"/api/academy/{user['id']}/recommendation").json()
+        # The only course is now mastered — nothing left to recommend.
+        assert recommendation["all_courses_mastered"] is True
+        assert recommendation["next_course_id"] is None
+
+        achievements_res = client.get(f"/api/academy/{user['id']}/achievements").json()
+        assert any(a["kind"] == "mastery" and a["course_id"] == course_id for a in achievements_res)
+
+
+def test_academy_quiz_submission_missing_answers_score_zero_and_no_mastery(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    store.save_course_asset(
+        "computer-science", "ASSOCIATE", "v1", course_id, "quiz",
+        {"questions": [{"type": "multiple_choice", "question": "q1", "options": ["a", "b"], "correct_answer": "a"}]},
+    )
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-learning2@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        res = client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {}})
+        assert res.status_code == 200
+        assert res.json()["score"] == 0.0
+
+        achievements_res = client.get(f"/api/academy/{user['id']}/achievements").json()
+        assert not any(a["kind"] == "mastery" for a in achievements_res)
+
+
+def test_academy_quiz_submit_404_when_not_built(tmp_path, monkeypatch):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-learning3@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+
+        res = client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {}})
+        assert res.status_code == 404
+
+
+def test_academy_concept_review_end_to_end(tmp_path, monkeypatch):
+    from backend import db
+    from backend.learning_engine import knowledge_graph
+
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    glossary = store.load_course_asset("computer-science", "ASSOCIATE", course_id, "glossary")
+    knowledge_graph.save_concepts(knowledge_graph.concepts_from_glossary("computer-science", course_id, glossary))
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-learning4@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        # Not due yet (a concept only becomes due after a first graded answer).
+        assert client.get(f"/api/academy/{user['id']}/concepts/review").json() == []
+
+        concept_id = knowledge_graph.concept_id(course_id, "t1")
+        vocab_key = f"academic:{concept_id}"
+        ans_res = client.post(
+            f"/api/academy/{user['id']}/concepts/review/answer",
+            json={"vocab_key": vocab_key, "correct": False},
+        )
+        assert ans_res.status_code == 200
+
+        with db.cursor() as cur:
+            cur.execute("UPDATE vocab_progress SET due_at='2000-01-01T00:00:00+00:00' WHERE vocab_key=?", (vocab_key,))
+
+        due = client.get(f"/api/academy/{user['id']}/concepts/review").json()
+        assert len(due) == 1
+        assert due[0]["vocab_key"] == vocab_key
+        assert due[0]["target_text"] == "t1"

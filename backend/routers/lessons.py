@@ -200,7 +200,7 @@ async def get_review_session(user_id: str, session: dict = Depends(auth.require_
     schedule." Returns an empty exercise list (not a 404) when nothing is
     due, so the frontend can show a calm "nothing to review yet" state."""
     user = get_user_by_id_or_404(user_id)
-    items = srs.due_review_items(user_id, limit=10)
+    items = srs.due_review_items(user_id, limit=10, exclude_prefix="academic:")
     exercises = await hf_client.generate_review_exercises(items, user.native_lang, user.target_lang)
     return PracticeResponse(unit_id=f"{PRACTICE_UNIT_PREFIX}-review", exercises=exercises)
 

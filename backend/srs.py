@@ -130,18 +130,37 @@ def schedule_review(
         }
 
 
-def due_review_items(user_id: str, limit: int = 10) -> list[dict]:
+def due_review_items(
+    user_id: str, limit: int = 10, key_prefix: str | None = None, exclude_prefix: str | None = None
+) -> list[dict]:
     """Due vocab items with enough content to actually build a review
     exercise from — see schedule_review's content-snapshot docstring. Items
     with no snapshot yet (blank target_text — e.g. graded before this
-    feature existed) are skipped, since there's nothing to review them with."""
+    feature existed) are skipped, since there's nothing to review them with.
+
+    key_prefix/exclude_prefix exist because this one table now backs two
+    unrelated review flows sharing the same vocab_key namespace: language
+    vocabulary (plain keys like "greetings.hello") and academic concepts
+    (backend/learning_engine/concept_review.py, keyed "academic:<concept
+    id>"). Without this filter, a language Repaso session could surface a
+    computer-science glossary term and vice versa — pass exactly one of
+    these two, never both."""
+    query = (
+        "SELECT vocab_key, target_text, native_text, unit_id FROM vocab_progress "
+        "WHERE user_id=? AND due_at<=? AND target_text != ''"
+    )
+    params: list = [user_id, datetime.now(UTC).isoformat()]
+    if key_prefix is not None:
+        query += " AND vocab_key LIKE ?"
+        params.append(f"{key_prefix}%")
+    if exclude_prefix is not None:
+        query += " AND vocab_key NOT LIKE ?"
+        params.append(f"{exclude_prefix}%")
+    query += " ORDER BY due_at ASC LIMIT ?"
+    params.append(limit)
+
     with db.cursor() as cur:
-        cur.execute(
-            "SELECT vocab_key, target_text, native_text, unit_id FROM vocab_progress "
-            "WHERE user_id=? AND due_at<=? AND target_text != '' "
-            "ORDER BY due_at ASC LIMIT ?",
-            (user_id, datetime.now(UTC).isoformat(), limit),
-        )
+        cur.execute(query, params)
         return [
             {
                 "vocab_key": r["vocab_key"],

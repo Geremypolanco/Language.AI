@@ -141,6 +141,42 @@ CREATE TABLE IF NOT EXISTS user_memories (
     content TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- Knowledge graph + competency tracking (backend/learning_engine/) — see
+-- that package's module docstrings for the full rationale.
+CREATE TABLE IF NOT EXISTS academic_concept (
+    id TEXT PRIMARY KEY,
+    field_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    term TEXT NOT NULL,
+    definition TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academic_concept_relation (
+    from_concept_id TEXT NOT NULL,
+    to_concept_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    PRIMARY KEY (from_concept_id, to_concept_id, relation_type)
+);
+
+CREATE TABLE IF NOT EXISTS academy_competency (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    field_id TEXT NOT NULL,
+    score REAL NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
+);
+
+CREATE TABLE IF NOT EXISTS academy_quiz_submission (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    score REAL NOT NULL,
+    submitted_at TEXT NOT NULL
+);
 """
 
 _SCHEMA_POSTGRES = """
@@ -249,8 +285,44 @@ CREATE TABLE IF NOT EXISTS user_memories (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS academic_concept (
+    id TEXT PRIMARY KEY,
+    field_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    term TEXT NOT NULL,
+    definition TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academic_concept_relation (
+    from_concept_id TEXT NOT NULL,
+    to_concept_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    PRIMARY KEY (from_concept_id, to_concept_id, relation_type)
+);
+
+CREATE TABLE IF NOT EXISTS academy_competency (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    field_id TEXT NOT NULL,
+    score REAL NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, course_id)
+);
+
+CREATE TABLE IF NOT EXISTS academy_quiz_submission (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    score REAL NOT NULL,
+    submitted_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_log_user ON conversation_log(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_academic_concept_course ON academic_concept(course_id);
+CREATE INDEX IF NOT EXISTS idx_concept_relation_from ON academic_concept_relation(from_concept_id);
 """
 
 

@@ -845,6 +845,39 @@ class HFClient:
             logger.exception("AI assignment grading failed")
             return {"grade": "", "feedback": "No se pudo calificar la entrega en este momento — inténtalo de nuevo."}
 
+    async def grade_open_answer(
+        self, question: str, rubric_note: str, student_answer: str, native_lang: str
+    ) -> tuple[bool, str]:
+        """Grades one open/applied_problem quiz or exam question against its
+        rubric_note (see academy_library.build_quiz_prompt/build_exam_prompt
+        — the rubric_note is generated alongside the question but never
+        shown to the student before they answer). Not cached: depends on
+        what the student personally wrote. Fails closed — an AI failure
+        marks the answer wrong with an honest note, never silently correct,
+        since a false "correct" would corrupt the competency score it feeds
+        into (see backend/learning_engine/competency.py)."""
+        prompt = (
+            f"A student was asked: \"{question}\"\n"
+            f"To be correct, their answer should cover: {rubric_note}\n"
+            f"Their answer: \"{student_answer}\"\n"
+            f"Does their answer adequately cover the rubric? Respond with ONLY a JSON object, no other text: "
+            f'{{"passed": true or false, "feedback": "one short sentence in {native_lang} explaining why"}}'
+        )
+        try:
+            raw = await self.chat(
+                [
+                    {"role": "system", "content": "You output only valid JSON, nothing else."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=200,
+            )
+            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+            data = json.loads(cleaned)
+            return bool(data.get("passed")), data.get("feedback", "")
+        except Exception:
+            logger.exception("AI open-answer grading failed")
+            return False, "No se pudo calificar esta respuesta automáticamente en este momento."
+
     # ── Recommendations (books, songs, and other media) ─────────────────
 
     async def generate_recommendations(

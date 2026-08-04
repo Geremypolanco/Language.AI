@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from .. import academy, auth, db
 from ..academy_library.storage import get_default_store
 from ..hf_client import hf_client
+from ..learning_engine import achievements, competency, concept_review, grading, knowledge_graph, recommendations
 from ..models import (
     AcademicField,
     AcademicLevel,
@@ -389,3 +390,143 @@ async def complete_course(user_id: str, course_id: str, session: dict = Depends(
             (user_id, course_id, completed_at),
         )
     return await get_progress(user_id, session)
+
+
+# ── Learning engine: competencies, quiz/exam grading, recommendations,
+# achievements, concept review (backend/learning_engine/) ──────────────────
+
+
+class QuizSubmitRequest(BaseModel):
+    # Question index (as a string, matching how JSON object keys arrive) ->
+    # the student's given answer.
+    answers: dict[str, str]
+
+
+async def _submit_quiz_or_exam(user_id: str, course_id: str, kind: str, payload: "QuizSubmitRequest") -> dict:
+    _user, field, level, _stub, content_lang = await _resolve_course(user_id, course_id)
+    data = get_default_store().load_course_asset(field.id, level.value, course_id, kind)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Esta evaluación aún no está disponible")
+
+    result = await grading.grade_submission(data["questions"], payload.answers, content_lang)
+    submitted_at = datetime.now(UTC).isoformat()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_quiz_submission (user_id, course_id, kind, score, submitted_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, course_id, kind, result["score"], submitted_at),
+        )
+    new_competency = competency.record_result(user_id, field.id, course_id, result["score"])
+    return {"score": result["score"], "results": result["results"], "competency_score": new_competency}
+
+
+@router.post("/{user_id}/courses/{course_id}/quiz/submit")
+async def submit_quiz(user_id: str, course_id: str, payload: QuizSubmitRequest, session: dict = Depends(auth.require_owner)) -> dict:
+    return await _submit_quiz_or_exam(user_id, course_id, "quiz", payload)
+
+
+@router.post("/{user_id}/courses/{course_id}/exam/submit")
+async def submit_exam(user_id: str, course_id: str, payload: QuizSubmitRequest, session: dict = Depends(auth.require_owner)) -> dict:
+    return await _submit_quiz_or_exam(user_id, course_id, "exam", payload)
+
+
+def _course_titles_for(field_id: str, level: AcademicLevel) -> dict[str, str]:
+    persisted = get_default_store().load_curriculum(field_id, level.value)
+    if not persisted:
+        return {}
+    return {
+        _course_id(field_id, level, i): c["title"]
+        for i, c in enumerate(persisted["courses"])
+    }
+
+
+@router.get("/{user_id}/competencies")
+def get_competencies(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Real per-course mastery scores (see learning_engine/competency.py) —
+    replaces "percent of course complete" as the main progress signal.
+    Empty until the student has submitted at least one quiz or exam."""
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    field = academy.get_field(row["field_id"])
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    level = AcademicLevel(row["level"])
+
+    titles = _course_titles_for(field.id, level)
+    scores = competency.get_competencies(user_id, field.id)
+    weak = recommendations.courses_needing_review(user_id, field.id, list(titles.keys()))
+    return {
+        "competencies": [
+            {**c, "title": titles.get(c["course_id"], c["course_id"])} for c in scores
+        ],
+        "strengths_and_weaknesses": competency.strengths_and_weaknesses(user_id, field.id),
+        "courses_needing_review": [{"course_id": cid, "title": titles.get(cid, cid)} for cid in weak],
+    }
+
+
+@router.get("/{user_id}/recommendation")
+def get_recommendation(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """The next course to study, given the student's current competency
+    scores and curriculum order — see learning_engine/recommendations.py
+    for exactly what this does and doesn't account for."""
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    field = academy.get_field(row["field_id"])
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    level = AcademicLevel(row["level"])
+
+    titles = _course_titles_for(field.id, level)
+    course_ids = list(titles.keys())
+    next_course = recommendations.recommend_next_course(user_id, field.id, course_ids)
+    return {
+        "next_course_id": next_course,
+        "next_course_title": titles.get(next_course) if next_course else None,
+        "all_courses_mastered": next_course is None and bool(course_ids),
+    }
+
+
+@router.get("/{user_id}/achievements")
+def get_achievements(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        return []
+    field = academy.get_field(row["field_id"])
+    if not field:
+        return []
+    level = AcademicLevel(row["level"])
+    titles = _course_titles_for(field.id, level)
+    return achievements.achievements_for(user_id, field.id, titles)
+
+
+@router.get("/{user_id}/concepts/review")
+def get_concept_review(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    """Due academic-concept flashcards (term + definition) — see
+    learning_engine/concept_review.py. No AI call: content already exists
+    from when the concept was added to the knowledge graph."""
+    get_user_by_id_or_404(user_id)
+    return concept_review.due_concepts(user_id)
+
+
+class ConceptReviewAnswerRequest(BaseModel):
+    vocab_key: str  # as returned by get_concept_review, e.g. "academic:course-id::term-slug"
+    correct: bool
+
+
+@router.post("/{user_id}/concepts/review/answer")
+def submit_concept_review_answer(
+    user_id: str, payload: ConceptReviewAnswerRequest, session: dict = Depends(auth.require_owner)
+) -> dict:
+    get_user_by_id_or_404(user_id)
+    if not concept_review.is_concept_vocab_key(payload.vocab_key):
+        raise HTTPException(status_code=400, detail="vocab_key inválido")
+    concept_id = concept_review.concept_id_from_vocab_key(payload.vocab_key)
+    concept = knowledge_graph.get_concept(concept_id)
+    if concept is None:
+        raise HTTPException(status_code=404, detail="Concepto no encontrado")
+    schedule = concept_review.record_answer(user_id, concept_id, payload.correct, concept["term"], concept["definition"])
+    return {"srs": schedule}
