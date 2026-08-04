@@ -27,4 +27,18 @@ export const env = {
   voiceSessionTtlMs: Number(process.env.VOICE_SESSION_TTL_MS || 30 * 60_000), // 30 min idle expiry
   voiceSummarizeAfterTurns: Number(process.env.VOICE_SUMMARIZE_AFTER_TURNS || 16),
   voiceKeepRecentTurns: Number(process.env.VOICE_KEEP_RECENT_TURNS || 6),
+
+  // Academic Asset Builder — external providers (all optional; an
+  // unconfigured provider returns no candidates instead of failing the build)
+  assetLibraryRoot: process.env.ASSET_LIBRARY_ROOT || 'academy',
+  wikimediaUserAgent:
+    process.env.ASSET_WIKIMEDIA_USER_AGENT || 'Language.AI-AcademicAssetBuilder/1.0 (educational content pipeline)',
+  oerBaseUrl: process.env.ASSET_OER_BASE_URL || '',
+  oerApiKey: process.env.ASSET_OER_API_KEY || '',
+  googleCseApiKey: process.env.ASSET_GOOGLE_CSE_API_KEY || '',
+  googleCseId: process.env.ASSET_GOOGLE_CSE_ID || '',
+  imageGenApiKey: process.env.ASSET_IMAGE_GEN_API_KEY || '',
+  imageGenBaseUrl: process.env.ASSET_IMAGE_GEN_BASE_URL || '',
+  ttsApiKey: process.env.ASSET_TTS_API_KEY || '',
+  ttsBaseUrl: process.env.ASSET_TTS_BASE_URL || '',
 };

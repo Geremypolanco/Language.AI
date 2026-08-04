@@ -1,0 +1,31 @@
+{
+  "lessonId": "history-french-revolution",
+  "courseId": "world-history-101",
+  "discipline": "Historia Universal",
+  "language": "es",
+  "level": "intermediate",
+  "title": "La Revolución Francesa",
+  "objectives": [
+    "Identificar las causas de la Revolución Francesa",
+    "Describir las etapas principales del proceso revolucionario",
+    "Explicar el impacto de la revolución en Europa"
+  ],
+  "sections": [
+    {
+      "heading": "Causas de la revolución",
+      "body": "Hacia 1789, Francia atravesaba una profunda crisis económica agravada por el gasto excesivo de la corona, malas cosechas y un sistema fiscal injusto que recaía sobre el tercer estado. Las ideas ilustradas de pensadores como Rousseau y Montesquieu habían difundido conceptos de igualdad, libertad y soberanía popular entre la burguesía y sectores populares, alimentando el descontento contra el absolutismo de Luis XVI."
+    },
+    {
+      "heading": "La toma de la Bastilla",
+      "body": "El 14 de julio de 1789, una multitud parisina asaltó la fortaleza de la Bastilla, símbolo del poder absolutista, en busca de armas y pólvora. Este evento marcó el inicio simbólico de la revolución y se convirtió en la fecha nacional de Francia. Poco después, la Asamblea Nacional aprobó la Declaración de los Derechos del Hombre y del Ciudadano."
+    },
+    {
+      "heading": "El Terror",
+      "body": "Entre 1793 y 1794, bajo el liderazgo de Maximilien Robespierre y el Comité de Salvación Pública, Francia vivió el período conocido como el Terror, marcado por ejecuciones masivas de opositores reales y percibidos mediante la guillotina. Este período radical terminó con la caída y ejecución del propio Robespierre en julio de 1794."
+    },
+    {
+      "heading": "El ascenso de Napoleón",
+      "body": "La inestabilidad posterior al Terror permitió el ascenso de Napoleón Bonaparte, quien dio un golpe de estado en 1799 y eventualmente se proclamó emperador en 1804. Aunque consolidó muchos de los cambios legales de la revolución a través del Código Civil, también puso fin a la fase republicana e inició una nueva era de expansión militar francesa por toda Europa."
+    }
+  ]
+}

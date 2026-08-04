@@ -1,0 +1,31 @@
+{
+  "lessonId": "algebra-linear-equations",
+  "courseId": "algebra-101",
+  "discipline": "Álgebra Lineal",
+  "language": "es",
+  "level": "beginner",
+  "title": "Ecuaciones lineales de una variable",
+  "objectives": [
+    "Resolver ecuaciones lineales de una variable",
+    "Despejar la incógnita usando propiedades de igualdad",
+    "Verificar la solución sustituyendo en la ecuación original"
+  ],
+  "sections": [
+    {
+      "heading": "¿Qué es una ecuación lineal?",
+      "body": "Una ecuación lineal de una variable tiene la forma ax + b = c, donde a, b y c son números reales y a es distinto de cero. La incógnita x aparece elevada únicamente a la primera potencia, sin multiplicarse por sí misma ni aparecer dentro de raíces o denominadores. Resolver la ecuación significa encontrar el valor de x que hace verdadera la igualdad."
+    },
+    {
+      "heading": "Propiedades de la igualdad",
+      "body": "Para despejar la incógnita usamos dos propiedades fundamentales: la propiedad de suma, que permite sumar o restar el mismo número en ambos lados de la ecuación, y la propiedad de multiplicación, que permite multiplicar o dividir ambos lados por el mismo número distinto de cero. Aplicar estas propiedades de forma ordenada transforma la ecuación original en otra equivalente donde x queda sola en un lado."
+    },
+    {
+      "heading": "Ejemplo resuelto",
+      "body": "Consideremos la ecuación 3x + 5 = 20. Primero restamos 5 en ambos lados: 3x = 15. Luego dividimos ambos lados entre 3: x = 5. Verificamos sustituyendo: 3(5) + 5 = 15 + 5 = 20, que coincide con el lado derecho original, confirmando que x = 5 es la solución correcta."
+    },
+    {
+      "heading": "Ecuaciones con variables en ambos lados",
+      "body": "Cuando la incógnita aparece en ambos lados de la ecuación, como en 4x + 3 = 2x + 11, primero agrupamos los términos con x en un solo lado restando 2x de ambos lados: 2x + 3 = 11. Luego restamos 3: 2x = 8. Finalmente dividimos entre 2: x = 4."
+    }
+  ]
+}

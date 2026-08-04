@@ -5,3 +5,9 @@ build/
 .env.local
 *.log
 .DS_Store
+
+# Academic Asset Builder's persisted library — a build artifact of running
+# the pipeline against lesson content, not hand-authored source. Regenerate
+# with `npm run assets:build -- <lesson.json>` (see server/README or the
+# asset-builder section of the root README).
+server/academy/

@@ -1,0 +1,31 @@
+{
+  "lessonId": "biology-photosynthesis",
+  "courseId": "biology-101",
+  "discipline": "Biología Celular",
+  "language": "es",
+  "level": "intermediate",
+  "title": "La fotosíntesis",
+  "objectives": [
+    "Explicar el proceso de fotosíntesis en las plantas",
+    "Identificar los reactivos y productos de la fotosíntesis",
+    "Describir el papel de los cloroplastos y la clorofila"
+  ],
+  "sections": [
+    {
+      "heading": "Definición de fotosíntesis",
+      "body": "La fotosíntesis es el proceso mediante el cual las plantas, algas y algunas bacterias convierten la energía luminosa en energía química almacenada en moléculas de glucosa. Este proceso ocurre principalmente en los cloroplastos, organelos que contienen el pigmento verde llamado clorofila, responsable de absorber la luz solar."
+    },
+    {
+      "heading": "Fase luminosa",
+      "body": "En la fase luminosa, que ocurre en las membranas tilacoides del cloroplasto, la clorofila absorbe fotones de luz solar y utiliza esa energía para dividir moléculas de agua en oxígeno, protones y electrones. El oxígeno se libera a la atmósfera como subproducto, mientras que la energía capturada se almacena temporalmente en moléculas de ATP y NADPH."
+    },
+    {
+      "heading": "Ciclo de Calvin",
+      "body": "En el estroma del cloroplasto ocurre el ciclo de Calvin, también llamado fase oscura. Aquí, el dióxido de carbono atmosférico se fija y, utilizando la energía del ATP y NADPH producidos en la fase luminosa, se transforma en moléculas de glucosa. Este ciclo no requiere luz directa, pero depende de los productos generados durante la fase luminosa."
+    },
+    {
+      "heading": "Ecuación general",
+      "body": "La reacción global de la fotosíntesis puede resumirse como: seis moléculas de dióxido de carbono más seis moléculas de agua, en presencia de luz solar, producen una molécula de glucosa y seis moléculas de oxígeno. Este proceso es la base de casi todas las cadenas alimenticias del planeta."
+    }
+  ]
+}

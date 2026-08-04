@@ -1,0 +1,11 @@
+// Minimal function-word lists so keyword extraction surfaces meaningful terms
+// instead of "the/de/que". Not exhaustive — good enough for build-time ranking.
+export const STOPWORDS = new Set([
+  // Spanish
+  'el', 'la', 'los', 'las', 'de', 'del', 'que', 'y', 'en', 'un', 'una', 'unos', 'unas', 'es', 'son', 'por',
+  'para', 'con', 'como', 'su', 'sus', 'se', 'lo', 'al', 'a', 'no', 'sí', 'o', 'pero', 'más', 'este', 'esta',
+  'estos', 'estas', 'ese', 'esa', 'esos', 'esas', 'entre', 'sobre', 'cuando', 'donde', 'cómo', 'qué',
+  // English
+  'the', 'a', 'an', 'of', 'and', 'to', 'in', 'is', 'are', 'for', 'with', 'as', 'on', 'by', 'that', 'this',
+  'these', 'those', 'it', 'its', 'be', 'or', 'but', 'more', 'when', 'where', 'how', 'what', 'from', 'at',
+]);
