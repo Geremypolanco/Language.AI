@@ -1,9 +1,24 @@
-"""University-prep academy: self-paced, accelerated study tracks across ~30
-academic fields. Curriculum outlines and course content are generated once
-per (field, level[, course]) and cached — see hf_client.generate_curriculum
-and generate_course_content. This is explicitly NOT an accredited program;
-every response that reaches the UI is meant to be shown next to a persistent
-disclaimer (enforced in the frontend, not here)."""
+"""University-prep academy: self-paced, accelerated study tracks across ~60
+academic fields. This is explicitly NOT an accredited program; every
+response that reaches the UI is meant to be shown next to a persistent
+disclaimer (enforced in the frontend, not here).
+
+Content is served from the pre-generated, versioned library
+(backend/academy_library/ — built by scripts/build_academy.py) whenever it
+exists, so a student's learning session never waits on an AI call. Any
+(field, level) the build pipeline hasn't covered yet transparently falls
+back to the legacy on-demand-generate-and-cache path (hf_client.generate_
+curriculum/generate_course_content/...) — this fallback is deliberate, not
+a leftover: flipping it off entirely the moment the library module shipped
+would have made every one of the ~60 fields "not available" for every
+learner until someone ran a very large, real-money AI build first. Once a
+field is actually built, it serves instantly from disk and never touches
+Hugging Face again; unbuilt fields keep working exactly as they always
+have until they, too, get built. Brand-new content types this library adds
+(glossary/quiz/exam) have no such legacy path — there's no "how it always
+worked" to preserve for something that didn't exist before, so those
+endpoints are library-only and return 404 until the course is built.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import academy, auth, db
+from ..academy_library.storage import get_default_store
 from ..hf_client import hf_client
 from ..models import (
     AcademicField,
@@ -42,12 +58,35 @@ def _course_id(field_id: str, level: AcademicLevel, order: int) -> str:
     return f"{field_id}:{level.value}:{order}"
 
 
-async def _load_curriculum(field: AcademicField, level: AcademicLevel, content_lang: str) -> Curriculum:
-    raw_courses = await hf_client.generate_curriculum(field, level, content_lang)
-    courses = [
-        CourseStub(id=_course_id(field.id, level, i), order=i, title=c["title"], description=c["description"])
-        for i, c in enumerate(raw_courses)
+def _stubs_from_courses(field_id: str, level: AcademicLevel, courses: list[dict], order_offset: int = 0) -> list[CourseStub]:
+    return [
+        CourseStub(id=_course_id(field_id, level, i), order=order_offset + i, title=c["title"], description=c["description"])
+        for i, c in enumerate(courses)
     ]
+
+
+async def _load_curriculum(field: AcademicField, level: AcademicLevel, content_lang: str) -> Curriculum:
+    store = get_default_store()
+    persisted = store.load_curriculum(field.id, level.value)
+    if persisted is not None:
+        courses = _stubs_from_courses(field.id, level, persisted["courses"])
+        # A specialization's served curriculum prepends its base field's
+        # already-built courses ahead of its own — see academy_library/
+        # build.py's module docstring for why the specialization's own
+        # build never regenerates (or stores a second copy of) them.
+        if field.base_field_id:
+            base_field = academy.get_field(field.base_field_id)
+            base_persisted = store.load_curriculum(field.base_field_id, level.value) if base_field else None
+            if base_field and base_persisted:
+                base_stubs = _stubs_from_courses(base_field.id, level, base_persisted["courses"])
+                courses = base_stubs + courses
+                for i, stub in enumerate(courses):
+                    stub.order = i
+        return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
+
+    # Not built yet — same on-demand generation this app has always used.
+    raw_courses = await hf_client.generate_curriculum(field, level, content_lang)
+    courses = _stubs_from_courses(field.id, level, raw_courses)
     return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
 
 
@@ -182,14 +221,55 @@ async def _resolve_course(user_id: str, course_id: str):
     stub = next((c for c in curriculum.courses if c.id == course_id), None)
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
-    return user, field, level, stub, content_lang
+
+    # A specialization's curriculum can contain course ids owned by its base
+    # field (see _load_curriculum) — course_id's own field_id prefix is
+    # always the TRUE owner of that course's content, so library/legacy
+    # lookups below must use that field, not necessarily the enrolled one.
+    owning_field = academy.get_field(course_id.split(":")[0]) or field
+    return user, owning_field, level, stub, content_lang
 
 
 @router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
 async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
     _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
+    persisted = get_default_store().load_course_asset(field.id, level.value, course_id, "content")
+    if persisted is not None:
+        return CourseContent(id=stub.id, title=stub.title, modules=persisted["modules"])
     modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, content_lang)
     return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
+
+
+@router.get("/{user_id}/courses/{course_id}/glossary")
+async def get_glossary(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Key terms + plain-language definitions for this course. Library-only
+    — a brand-new content type with no legacy on-demand path — so this 404s
+    until the course has actually been built (see backend/academy_library)."""
+    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
+    data = get_default_store().load_course_asset(field.id, level.value, course_id, "glossary")
+    if data is None:
+        raise HTTPException(status_code=404, detail="El glosario de este curso aún no está disponible")
+    return data
+
+
+@router.get("/{user_id}/courses/{course_id}/quiz")
+async def get_quiz(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Library-only, like get_glossary above."""
+    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
+    data = get_default_store().load_course_asset(field.id, level.value, course_id, "quiz")
+    if data is None:
+        raise HTTPException(status_code=404, detail="El quiz de este curso aún no está disponible")
+    return data
+
+
+@router.get("/{user_id}/courses/{course_id}/exam")
+async def get_exam(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Library-only, like get_glossary above."""
+    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
+    data = get_default_store().load_course_asset(field.id, level.value, course_id, "exam")
+    if data is None:
+        raise HTTPException(status_code=404, detail="El examen de este curso aún no está disponible")
+    return data
 
 
 @router.get("/{user_id}/courses/{course_id}/scenario")
@@ -198,7 +278,9 @@ async def get_practice_scenario(user_id: str, course_id: str, session: dict = De
     complement to the theory in get_course, for fields (nursing, engineering,
     business, ...) where reading alone isn't enough."""
     _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, content_lang)
+    scenario = get_default_store().load_course_asset(field.id, level.value, course_id, "scenario")
+    if scenario is None:
+        scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, content_lang)
     return {"scenario": scenario}
 
 
@@ -234,7 +316,9 @@ async def get_assignments(user_id: str, course_id: str, session: dict = Depends(
     a proyecto — on top of the theory in get_course and the ungraded
     practice scenario. Submission status/feedback/grade persist per user."""
     _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
+    raw = get_default_store().load_course_asset(field.id, level.value, course_id, "assignments")
+    if raw is None:
+        raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     submissions = _get_submission_rows(user_id, course_id)
     assignments = []
     for item in raw:
@@ -267,7 +351,9 @@ async def submit_assignment(
     session: dict = Depends(auth.require_owner),
 ) -> dict:
     _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
+    raw = get_default_store().load_course_asset(field.id, level.value, course_id, "assignments")
+    if raw is None:
+        raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     assignment = next((a for a in raw if a["id"] == assignment_id), None)
     if not assignment:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")

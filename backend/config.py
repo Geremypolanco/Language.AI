@@ -136,6 +136,13 @@ class Settings:
 
     db_path: str = field(default_factory=lambda: os.environ.get("LINGUA_DB_PATH", str(_BASE_DIR / "data" / "lingua.db")))
     cache_dir: str = field(default_factory=lambda: os.environ.get("LINGUA_CACHE_DIR", str(_BASE_DIR / "data" / "media_cache")))
+    # Separate from cache_dir on purpose: cache_dir is regenerable, LRU-evicted
+    # scratch space (see cache_gc.py) — the pre-built academy library is the
+    # opposite, permanent published content that must never be silently
+    # deleted just because disk got tight. See backend/academy_library/.
+    academy_library_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_ACADEMY_LIBRARY_DIR", str(_BASE_DIR / "data" / "academy_library"))
+    )
     # Free, code-only disk-space safety valve (see cache_gc.py) instead of
     # paying to grow the Fly volume: a periodic background task deletes the
     # least-recently-accessed cache files whenever cache_dir exceeds this

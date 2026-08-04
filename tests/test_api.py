@@ -1,6 +1,9 @@
 from fastapi.testclient import TestClient
 
+from backend.academy_library.storage import FileSystemAcademyStore
 from backend.main import app
+from backend.models import AcademicField
+from backend.routers import academy as academy_router
 from conftest import dev_login
 
 
@@ -678,3 +681,111 @@ def test_academy_assignments_generate_and_submit_demo_mode():
         submitted = next(a for a in assignments_after if a["id"] == assignment_id)
         assert submitted["submitted"] is True
         assert submitted["response"] == "Mi respuesta a la tarea."
+
+
+def _seed_built_course(store, field_id, level, course_index=0):
+    course_id = f"{field_id}:{level}:{course_index}"
+    store.save_curriculum(field_id, level, "v1", {"courses": [{"title": "Curso Persistido", "description": "Una descripción real y completa."}]})
+    store.set_latest_version(field_id, level, "v1")
+    store.save_course_asset(field_id, level, "v1", course_id, "content", {"modules": [{"title": "Módulo persistido", "content": "contenido " * 20}]})
+    store.save_course_asset(field_id, level, "v1", course_id, "glossary", {"terms": [{"term": "t1", "definition": "d1"}]})
+    store.save_course_asset(field_id, level, "v1", course_id, "quiz", {"questions": [{"type": "open", "question": "q?", "rubric_note": "n"}]})
+    store.save_course_asset(field_id, level, "v1", course_id, "exam", {"questions": [{"type": "open", "question": "q?", "rubric_note": "n"}], "rubric": "criteria"})
+    store.save_course_asset(field_id, level, "v1", course_id, "assignments", [
+        {"id": f"{course_id}:0", "type": "tarea", "title": "T", "instructions": "haz esto"},
+        {"id": f"{course_id}:1", "type": "informe", "title": "I", "instructions": "escribe esto"},
+        {"id": f"{course_id}:2", "type": "proyecto", "title": "P", "instructions": "construye esto"},
+    ])
+    store.save_course_asset(field_id, level, "v1", course_id, "scenario", "Un escenario práctico ya persistido para este curso.")
+    return course_id
+
+
+def test_academy_serves_pre_built_content_from_the_library_without_calling_hf_client(monkeypatch, tmp_path):
+    async def explode(*args, **kwargs):
+        raise AssertionError("hf_client.chat must not be called for a pre-built course")
+
+    monkeypatch.setattr(academy_router.hf_client, "chat", explode)
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-library1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        curriculum = client.get(f"/api/academy/{user['id']}/curriculum").json()
+        assert curriculum["courses"][0]["id"] == course_id
+        assert curriculum["courses"][0]["title"] == "Curso Persistido"
+
+        course = client.get(f"/api/academy/{user['id']}/courses/{course_id}").json()
+        assert course["modules"][0]["title"] == "Módulo persistido"
+
+        glossary = client.get(f"/api/academy/{user['id']}/courses/{course_id}/glossary")
+        assert glossary.status_code == 200
+        assert glossary.json()["terms"][0]["term"] == "t1"
+
+        quiz = client.get(f"/api/academy/{user['id']}/courses/{course_id}/quiz")
+        assert quiz.status_code == 200
+        assert quiz.json()["questions"]
+
+        exam = client.get(f"/api/academy/{user['id']}/courses/{course_id}/exam")
+        assert exam.status_code == 200
+        assert exam.json()["rubric"] == "criteria"
+
+        assignments = client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments").json()
+        assert [a["type"] for a in assignments] == ["tarea", "informe", "proyecto"]
+
+        scenario = client.get(f"/api/academy/{user['id']}/courses/{course_id}/scenario").json()
+        assert scenario["scenario"] == "Un escenario práctico ya persistido para este curso."
+
+
+def test_academy_glossary_quiz_exam_404_when_course_not_yet_built(tmp_path, monkeypatch):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-library2@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/glossary").status_code == 404
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/quiz").status_code == 404
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/exam").status_code == 404
+        # Legacy content types still work via on-demand fallback — unaffected by not being pre-built.
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}").status_code == 200
+
+
+def test_academy_specialization_composes_base_field_courses(tmp_path, monkeypatch):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    specialization = AcademicField(
+        id="ai-specialization", name="Especialización en IA", category="Tecnología", icon="sparkle",
+        description="Temas avanzados de inteligencia artificial.", tutor_name="Nova",
+        base_field_id="computer-science",
+    )
+    real_get_field = academy_router.academy.get_field
+    monkeypatch.setattr(
+        academy_router.academy, "get_field",
+        lambda fid: specialization if fid == "ai-specialization" else real_get_field(fid),
+    )
+
+    base_course_id = _seed_built_course(store, "computer-science", "BACHELOR")
+    spec_course_id = _seed_built_course(store, "ai-specialization", "BACHELOR")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-library3@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "ai-specialization", "level": "BACHELOR"})
+
+        curriculum = client.get(f"/api/academy/{user['id']}/curriculum").json()
+        course_ids = [c["id"] for c in curriculum["courses"]]
+        # Base field's course comes first, then the specialization's own —
+        # never duplicated, never regenerated under a different id.
+        assert course_ids == [base_course_id, spec_course_id]
+        assert [c["order"] for c in curriculum["courses"]] == [0, 1]
+
+        # The base field's course serves its OWN content (owning field), not
+        # a copy generated under the specialization.
+        base_content = client.get(f"/api/academy/{user['id']}/courses/{base_course_id}").json()
+        assert base_content["modules"][0]["title"] == "Módulo persistido"

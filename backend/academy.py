@@ -232,3 +232,53 @@ def build_assignments_prompt(
         f"Respond with ONLY a JSON array of exactly 3 items, no other text, each shaped like: "
         f'{{"type": "tarea|informe|proyecto", "title": "short title", "instructions": "what the student must do and submit"}}'
     )
+
+
+def build_glossary_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    term_count: int = 10,
+) -> str:
+    return (
+        f"List the {term_count} most important technical terms a student must know after completing "
+        f"the course \"{course_title}\" ({course_description}), part of a {field.name} curriculum at a "
+        f"{level_label} depth. For each term, give a clear definition in {native_lang} a curious 7-year-old "
+        f"could follow, while keeping the term itself in its correct, real technical/professional form — "
+        f"simplify the explanation, never the vocabulary. "
+        f"Respond with ONLY a JSON object, no other text: "
+        f'{{"terms": [{{"term": "...", "definition": "..."}}]}}'
+    )
+
+
+def build_quiz_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    question_count: int = 6,
+) -> str:
+    return (
+        f"Write a {question_count}-question quiz in {native_lang} covering the course \"{course_title}\" "
+        f"({course_description}), part of a {field.name} curriculum at a {level_label} depth. Mix "
+        f"multiple_choice, true_false, and open question types, at least one of each. For multiple_choice "
+        f"give 3-4 options and which one is correct; for true_false give the correct boolean; for open "
+        f"questions give a short rubric_note describing what a correct answer should include, used only to "
+        f"grade the answer later — never shown to the student before they answer. "
+        f"Respond with ONLY a JSON object, no other text: "
+        f'{{"questions": [{{"type": "multiple_choice|true_false|open", "question": "...", '
+        f'"options": ["..."], "correct_answer": "...", "rubric_note": "..."}}]}}'
+    )
+
+
+def build_exam_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    exam_kind: str = "final", question_count: int = 12,
+) -> str:
+    scope = "everything covered across the whole course" if exam_kind == "final" else "roughly the first half of the course"
+    return (
+        f"Write a {exam_kind} exam in {native_lang} ({question_count} questions) for the course "
+        f"\"{course_title}\" ({course_description}), part of a {field.name} curriculum at a {level_label} "
+        f"depth, covering {scope}. Include a mix of multiple_choice, true_false, open, and at least 2 "
+        f"applied_problem questions (a realistic problem to work through, graded like an open question "
+        f"against a rubric_note). Also write one overall grading rubric describing what separates an "
+        f"excellent, a passing, and a failing exam. "
+        f"Respond with ONLY a JSON object, no other text: "
+        f'{{"questions": [{{"type": "multiple_choice|true_false|open|applied_problem", "question": "...", '
+        f'"options": ["..."], "correct_answer": "...", "rubric_note": "..."}}], "rubric": "..."}}'
+    )

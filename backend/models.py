@@ -224,6 +224,13 @@ class AcademicField(BaseModel):
     icon: str
     description: str
     tutor_name: str
+    # A specialization builds on a base career instead of duplicating its
+    # foundational courses — e.g. "Artificial Intelligence" specializing on
+    # "computer-science". None for an ordinary, standalone field. See
+    # backend/academy_library/build.py: a specialization's own build only
+    # generates its extra advanced courses; the served curriculum then
+    # prepends the base field's already-built courses ahead of them.
+    base_field_id: str | None = None
 
 
 class CourseStub(BaseModel):
