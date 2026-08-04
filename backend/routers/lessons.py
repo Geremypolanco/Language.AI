@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from .. import auth, db, srs
 from ..curriculum import ALPHABET_TOPIC, LessonRequest, Unit, all_units, get_unit, topic_es, units_for_level
 from ..hf_client import hf_client
+from ..language_library.storage import get_default_store, language_pair_key
 from ..models import CEFRLevel, Exercise, ExerciseType
 from .users import get_user_by_id_or_404
 
@@ -90,10 +91,29 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
 async def get_lesson_exercises(
     user_id: str, unit_id: str, session: dict = Depends(auth.require_owner)
 ) -> list[Exercise]:
+    """The fixed unit curriculum — served from the pre-generated,
+    versioned library (backend/language_library/, built by scripts/
+    build_languages.py) whenever that (target_lang, native_lang, unit) has
+    been built, so it never waits on an AI call. Falls back to the
+    existing on-demand generation for any pair/unit not yet built —
+    deliberate, not a leftover, same reasoning as routers/academy.py's
+    fallback: cutting it off immediately would make every language pair
+    "unavailable" until someone ran a large, real-cost AI build first.
+
+    Free-form practice (get_practice_exercises below) is NOT wired to the
+    library on purpose — it personalizes on the learner's own
+    recent_mistakes and lets them pick modality live, which is exactly the
+    kind of per-user adaptation the pre-generated library deliberately
+    excludes (see language_library/__init__.py)."""
     user = get_user_by_id_or_404(user_id)
     unit = get_unit(unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
+
+    pair_key = language_pair_key(user.target_lang, user.native_lang)
+    persisted = get_default_store().load_course_asset(pair_key, unit.level.value, unit.id, "content")
+    if persisted is not None:
+        return [Exercise(**item) for item in persisted]
 
     req = LessonRequest(
         unit=unit,

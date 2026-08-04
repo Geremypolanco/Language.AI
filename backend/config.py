@@ -143,6 +143,14 @@ class Settings:
     academy_library_dir: str = field(
         default_factory=lambda: os.environ.get("LINGUA_ACADEMY_LIBRARY_DIR", str(_BASE_DIR / "data" / "academy_library"))
     )
+    # Same permanent-content rationale as academy_library_dir, for the
+    # language curriculum's pre-generated exercises/flashcards (see
+    # backend/language_library/). A separate directory, not a shared one:
+    # two independent content domains that happen to reuse the same
+    # storage engine, not one system pretending to be two.
+    language_library_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_LANGUAGE_LIBRARY_DIR", str(_BASE_DIR / "data" / "language_library"))
+    )
     # Free, code-only disk-space safety valve (see cache_gc.py) instead of
     # paying to grow the Fly volume: a periodic background task deletes the
     # least-recently-accessed cache files whenever cache_dir exceeds this

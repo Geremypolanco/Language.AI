@@ -115,6 +115,62 @@ def test_completing_the_last_unit_does_not_prefetch_anything(monkeypatch):
     assert seen_units == []
 
 
+def test_get_lesson_exercises_serves_pre_built_content_without_calling_hf_client(monkeypatch):
+    from backend.academy_library.storage import FileSystemAcademyStore
+    from backend.language_library.storage import language_pair_key
+
+    async def explode(*args, **kwargs):
+        raise AssertionError("hf_client.generate_exercises must not run for a pre-built unit")
+
+    monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", explode)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="prefetch-library@example.com")
+        unit = units_for_level(CEFRLevel.A1)[1]
+        pair_key = language_pair_key(user["target_lang"], user["native_lang"])
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = FileSystemAcademyStore(tmp_dir)
+            store.save_course_asset(
+                pair_key, unit.level.value, "v1", unit.id, "content",
+                [
+                    {
+                        "id": "ex-0", "type": "translate_to_target", "prompt": "p", "target_text": "hola",
+                        "native_text": "hello", "options": [], "correct_answer": "hola", "image_prompt": "",
+                        "audio_text": "hola", "vocab_key": "greetings.hello",
+                    }
+                ],
+            )
+            store.set_latest_version(pair_key, unit.level.value, "v1")
+            monkeypatch.setattr(lessons_router, "get_default_store", lambda: store)
+
+            res = client.get(f"/api/lessons/{user['id']}/unit/{unit.id}")
+            assert res.status_code == 200
+            exercises = res.json()
+            assert len(exercises) == 1
+            assert exercises[0]["vocab_key"] == "greetings.hello"
+
+
+def test_get_lesson_exercises_falls_back_when_unit_not_built(monkeypatch):
+    from backend.academy_library.storage import FileSystemAcademyStore
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="prefetch-library-fallback@example.com")
+        unit = units_for_level(CEFRLevel.A1)[1]
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = FileSystemAcademyStore(tmp_dir)  # empty — nothing built
+            monkeypatch.setattr(lessons_router, "get_default_store", lambda: store)
+
+            res = client.get(f"/api/lessons/{user['id']}/unit/{unit.id}")
+            assert res.status_code == 200
+            assert len(res.json()) > 0  # existing on-demand path still works
+
+
 def test_enrolling_in_academy_prefetches_curriculum_and_first_course(monkeypatch):
     from backend.routers import academy as academy_router
 

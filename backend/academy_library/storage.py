@@ -68,6 +68,10 @@ _KIND_SUFFIX = {
     "exam": ".exam",
     "assignments": ".assignments",
     "scenario": ".scenario",
+    # Added for backend/language_library/'s reuse of this same store for
+    # language-lesson content — a word/phrase flashcard set per unit,
+    # derived from that unit's own generated exercises.
+    "flashcards": ".flashcards",
 }
 
 
