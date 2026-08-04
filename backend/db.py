@@ -105,7 +105,8 @@ CREATE TABLE IF NOT EXISTS academy_enrollment (
     field_id TEXT NOT NULL,
     level TEXT NOT NULL,
     enrolled_at TEXT NOT NULL,
-    content_lang TEXT NOT NULL DEFAULT ''
+    content_lang TEXT NOT NULL DEFAULT '',
+    career_goal TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS academy_course_progress (
@@ -273,7 +274,8 @@ CREATE TABLE IF NOT EXISTS academy_enrollment (
     field_id TEXT NOT NULL,
     level TEXT NOT NULL,
     enrolled_at TEXT NOT NULL,
-    content_lang TEXT NOT NULL DEFAULT ''
+    content_lang TEXT NOT NULL DEFAULT '',
+    career_goal TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS academy_course_progress (
@@ -447,6 +449,8 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
     enrollment_cols = {row[1] for row in conn.execute("PRAGMA table_info(academy_enrollment)").fetchall()}
     if "content_lang" not in enrollment_cols:
         conn.execute("ALTER TABLE academy_enrollment ADD COLUMN content_lang TEXT NOT NULL DEFAULT ''")
+    if "career_goal" not in enrollment_cols:
+        conn.execute("ALTER TABLE academy_enrollment ADD COLUMN career_goal TEXT NOT NULL DEFAULT ''")
 
     vocab_cols = {row[1] for row in conn.execute("PRAGMA table_info(vocab_progress)").fetchall()}
     if "target_text" not in vocab_cols:
@@ -474,6 +478,9 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE lesson_history ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0")
         cur.execute(
             "ALTER TABLE academy_enrollment ADD COLUMN IF NOT EXISTS content_lang TEXT NOT NULL DEFAULT ''"
+        )
+        cur.execute(
+            "ALTER TABLE academy_enrollment ADD COLUMN IF NOT EXISTS career_goal TEXT NOT NULL DEFAULT ''"
         )
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS target_text TEXT NOT NULL DEFAULT ''")
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS native_text TEXT NOT NULL DEFAULT ''")

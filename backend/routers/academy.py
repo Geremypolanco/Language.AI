@@ -32,7 +32,17 @@ from pydantic import BaseModel
 from .. import academy, auth, db
 from ..academy_library.storage import get_default_store
 from ..hf_client import hf_client
-from ..learning_engine import achievements, analytics, competency, concept_review, grading, knowledge_graph, portfolio, recommendations
+from ..learning_engine import (
+    achievements,
+    analytics,
+    competency,
+    concept_review,
+    grading,
+    knowledge_graph,
+    portfolio,
+    recommendations,
+    student_profile,
+)
 from ..models import (
     AcademicField,
     AcademicLevel,
@@ -528,10 +538,15 @@ def get_recommendation(user_id: str, session: dict = Depends(auth.require_owner)
     titles = _course_titles_for(field.id, level)
     course_ids = list(titles.keys())
     next_course = recommendations.recommend_next_course(user_id, field.id, course_ids)
+    specializations = recommendations.suggest_specializations(field.id)
     return {
         "next_course_id": next_course,
         "next_course_title": titles.get(next_course) if next_course else None,
         "all_courses_mastered": next_course is None and bool(course_ids),
+        "difficulty_signal": recommendations.difficulty_signal(user_id, next_course) if next_course else None,
+        "suggested_specializations": [
+            {"id": f.id, "name": f.name, "description": f.description} for f in specializations
+        ],
     }
 
 
@@ -574,6 +589,35 @@ def get_analytics(user_id: str, session: dict = Depends(auth.require_owner)) -> 
     level = AcademicLevel(row["level"])
     titles = _course_titles_for(field.id, level)
     return analytics.student_summary(user_id, field.id, list(titles.keys()), titles)
+
+
+@router.get("/{user_id}/profile")
+def get_student_profile(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """The tutor's persistent memory of this student — see
+    learning_engine/student_profile.py for exactly which existing data
+    each field maps back to (nothing here is tracked twice)."""
+    user = get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    field = academy.get_field(row["field_id"])
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    return student_profile.profile_summary(user_id, field.id, user.interests)
+
+
+class SetCareerGoalRequest(BaseModel):
+    goal: str
+
+
+@router.patch("/{user_id}/profile/goal")
+def set_career_goal(user_id: str, payload: SetCareerGoalRequest, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    student_profile.set_career_goal(user_id, payload.goal)
+    return {"career_goal": student_profile.get_career_goal(user_id)}
 
 
 @router.get("/{user_id}/concepts/review")

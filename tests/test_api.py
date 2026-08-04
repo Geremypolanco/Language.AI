@@ -962,3 +962,51 @@ def test_academy_portfolio_aggregates_real_submitted_work(monkeypatch, tmp_path)
         assert body["assignments"][0]["course_title"] == "Curso Persistido"
         assert body["scenarios"][0]["response"] == "mi análisis del caso"
         assert body["completed_courses"][0]["elapsed_seconds"] == 90
+
+
+def test_academy_recommendation_includes_specializations_and_difficulty(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "BACHELOR")
+    store.save_course_asset(
+        "computer-science", "BACHELOR", "v1", course_id, "quiz",
+        {"questions": [{"type": "multiple_choice", "question": "q1", "options": ["a", "b"], "correct_answer": "a"}]},
+    )
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-reco1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "BACHELOR"})
+
+        res = client.get(f"/api/academy/{user['id']}/recommendation")
+        assert res.status_code == 200
+        body = res.json()
+        specialization_ids = {s["id"] for s in body["suggested_specializations"]}
+        assert "artificial-intelligence" in specialization_ids
+        assert body["difficulty_signal"] == "constante"  # never attempted yet
+
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {"0": "a"}})
+        res2 = client.get(f"/api/academy/{user['id']}/recommendation").json()
+        assert res2["all_courses_mastered"] is True
+        assert res2["difficulty_signal"] is None  # nothing left to recommend a signal for
+
+
+def test_academy_profile_goal_and_summary(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-profile1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        profile_res = client.get(f"/api/academy/{user['id']}/profile")
+        assert profile_res.status_code == 200
+        assert profile_res.json()["career_goal"] == ""
+
+        goal_res = client.patch(f"/api/academy/{user['id']}/profile/goal", json={"goal": "AI Engineer"})
+        assert goal_res.status_code == 200
+        assert goal_res.json()["career_goal"] == "AI Engineer"
+
+        profile_res2 = client.get(f"/api/academy/{user['id']}/profile").json()
+        assert profile_res2["career_goal"] == "AI Engineer"
+        assert profile_res2["interests"] == ["music"]  # from _onboard's default interests

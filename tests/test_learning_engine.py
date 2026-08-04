@@ -1,6 +1,6 @@
 import asyncio
 
-from backend import db
+from backend import academy, db
 from backend.learning_engine import (
     achievements,
     analytics,
@@ -10,6 +10,7 @@ from backend.learning_engine import (
     knowledge_graph,
     portfolio,
     recommendations,
+    student_profile,
 )
 
 
@@ -181,6 +182,28 @@ def test_courses_needing_review_only_lists_weak_attempted_courses():
     assert result == ["weak"]
 
 
+def test_suggest_specializations_uses_real_activated_fields():
+    specializations = recommendations.suggest_specializations("computer-science")
+    ids = {f.id for f in specializations}
+    assert {"artificial-intelligence", "cybersecurity", "cryptography", "quantum-computing", "robotics"} <= ids
+    assert recommendations.suggest_specializations("does-not-exist") == []
+    # Every field claiming to specialize on computer-science must be a real,
+    # resolvable field, not a dangling reference.
+    for f in specializations:
+        assert academy.get_field(f.id) is not None
+
+
+def test_difficulty_signal_bands():
+    _make_user()
+    competency.record_result("u1", "f", "weak", 0.3)
+    competency.record_result("u1", "f", "strong", 0.9)
+    competency.record_result("u1", "f", "steady", 0.65)
+    assert recommendations.difficulty_signal("u1", "weak") == "reforzar"
+    assert recommendations.difficulty_signal("u1", "strong") == "avanzar"
+    assert recommendations.difficulty_signal("u1", "steady") == "constante"
+    assert recommendations.difficulty_signal("u1", "never-attempted") == "constante"
+
+
 # ── Achievements ─────────────────────────────────────────────────────────
 
 
@@ -320,3 +343,81 @@ def test_get_portfolio_empty_for_new_user():
     _make_user()
     result = portfolio.get_portfolio("u1")
     assert result == {"assignments": [], "scenarios": [], "completed_courses": []}
+
+
+# ── Student profile (tutor memory) ───────────────────────────────────────
+
+
+def _make_enrollment(user_id="u1", field_id="f", level="BACHELOR"):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_enrollment (user_id, field_id, level, enrolled_at, content_lang) VALUES (?, ?, ?, ?, 'es')",
+            (user_id, field_id, level, db.now_iso()),
+        )
+
+
+def test_set_and_get_career_goal():
+    _make_user()
+    _make_enrollment()
+    assert student_profile.get_career_goal("u1") == ""
+    student_profile.set_career_goal("u1", "  AI Engineer  ")
+    assert student_profile.get_career_goal("u1") == "AI Engineer"
+
+
+def test_frequent_mistakes_scoped_to_user_and_field():
+    _make_user("u1")
+    _make_user("u2")
+    with db.cursor() as cur:
+        for _ in range(3):
+            cur.execute(
+                "INSERT INTO academy_question_attempt (user_id, course_id, kind, question_index, question_text, correct, submitted_at) "
+                "VALUES ('u1', 'f:BACHELOR:0', 'quiz', 0, 'q missed a lot', 0, ?)",
+                (db.now_iso(),),
+            )
+        cur.execute(
+            "INSERT INTO academy_question_attempt (user_id, course_id, kind, question_index, question_text, correct, submitted_at) "
+            "VALUES ('u2', 'f:BACHELOR:0', 'quiz', 0, 'q missed a lot', 0, ?)",
+            (db.now_iso(),),
+        )
+        cur.execute(
+            "INSERT INTO academy_question_attempt (user_id, course_id, kind, question_index, question_text, correct, submitted_at) "
+            "VALUES ('u1', 'other-field:BACHELOR:0', 'quiz', 0, 'unrelated field question', 0, ?)",
+            (db.now_iso(),),
+        )
+    result = student_profile.frequent_mistakes("u1", "f")
+    assert len(result) == 1
+    assert result[0]["question_text"] == "q missed a lot"
+    assert result[0]["times_missed"] == 3  # only u1's own attempts, not u2's
+
+
+def test_learning_velocity_relative_bands():
+    _make_user("u1")
+    _make_user("u2")
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES ('u1', 'f:BACHELOR:0', ?, 60)",
+            (db.now_iso(),),
+        )
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES ('u2', 'f:BACHELOR:0', ?, 600)",
+            (db.now_iso(),),
+        )
+    result = student_profile.learning_velocity("u1", "f")
+    assert result["relative"] == "más_rápido"  # far below the (60+600)/2=330 field average
+
+    result_none = student_profile.learning_velocity("u1", "no-data-field")
+    assert result_none["relative"] == "sin_datos"
+
+
+def test_profile_summary_combines_everything():
+    _make_user()
+    _make_enrollment()
+    student_profile.set_career_goal("u1", "Data Scientist")
+    competency.record_result("u1", "f", "f:BACHELOR:0", 0.9)
+
+    summary = student_profile.profile_summary("u1", "f", ["music", "chess"])
+    assert summary["career_goal"] == "Data Scientist"
+    assert summary["interests"] == ["music", "chess"]
+    assert "strengths_and_weaknesses" in summary
+    assert "forgotten_concepts" in summary
+    assert "learning_velocity" in summary
