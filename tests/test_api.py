@@ -905,3 +905,60 @@ def test_academy_concept_review_end_to_end(tmp_path, monkeypatch):
         assert len(due) == 1
         assert due[0]["vocab_key"] == vocab_key
         assert due[0]["target_text"] == "t1"
+
+
+def test_academy_analytics_reflects_time_and_competency(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    store.save_course_asset(
+        "computer-science", "ASSOCIATE", "v1", course_id, "quiz",
+        {"questions": [{"type": "multiple_choice", "question": "q1", "options": ["a", "b"], "correct_answer": "a"}]},
+    )
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-analytics1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {"0": "a"}})
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete", json={"elapsed_seconds": 180})
+
+        analytics_res = client.get(f"/api/academy/{user['id']}/analytics")
+        assert analytics_res.status_code == 200
+        body = analytics_res.json()
+        assert body["courses_completed"] == 1
+        assert body["total_time_minutes"] == 3
+        assert body["competencies"][0]["course_id"] == course_id
+        assert body["competencies"][0]["score"] == 1.0
+        assert body["next_course_id"] is None  # only course, now mastered
+
+
+def test_academy_portfolio_aggregates_real_submitted_work(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-portfolio1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+
+        assignments = client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments").json()
+        assignment_id = assignments[0]["id"]
+        client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/assignments/{assignment_id}/submit",
+            json={"response": "mi respuesta"},
+        )
+
+        scenario = client.get(f"/api/academy/{user['id']}/courses/{course_id}/scenario").json()["scenario"]
+        client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/scenario/feedback",
+            json={"scenario": scenario, "response": "mi análisis del caso"},
+        )
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete", json={"elapsed_seconds": 90})
+
+        portfolio_res = client.get(f"/api/academy/{user['id']}/portfolio")
+        assert portfolio_res.status_code == 200
+        body = portfolio_res.json()
+        assert body["assignments"][0]["response"] == "mi respuesta"
+        assert body["assignments"][0]["course_title"] == "Curso Persistido"
+        assert body["scenarios"][0]["response"] == "mi análisis del caso"
+        assert body["completed_courses"][0]["elapsed_seconds"] == 90

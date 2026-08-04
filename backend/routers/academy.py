@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from .. import academy, auth, db
 from ..academy_library.storage import get_default_store
 from ..hf_client import hf_client
-from ..learning_engine import achievements, competency, concept_review, grading, knowledge_graph, recommendations
+from ..learning_engine import achievements, analytics, competency, concept_review, grading, knowledge_graph, portfolio, recommendations
 from ..models import (
     AcademicField,
     AcademicLevel,
@@ -298,6 +298,15 @@ async def get_scenario_feedback(
     row = _get_enrollment_row(user_id)
     content_lang = (row["content_lang"] if row else "") or user.native_lang
     feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, content_lang)
+    # Persisted so it can appear in the student's portfolio (see
+    # learning_engine/portfolio.py) — previously this feedback was shown
+    # once and then lost, even though it's real evidence of applied work.
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_scenario_submission (user_id, course_id, scenario, response, feedback, submitted_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, course_id, payload.scenario, payload.response, feedback, datetime.now(UTC).isoformat()),
+        )
     return {"feedback": feedback}
 
 
@@ -375,8 +384,15 @@ async def submit_assignment(
     return {"grade": result["grade"], "feedback": result["feedback"]}
 
 
+class CompleteCourseRequest(BaseModel):
+    elapsed_seconds: int = 0
+
+
 @router.post("/{user_id}/courses/{course_id}/complete", response_model=AcademyProgress)
-async def complete_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> AcademyProgress:
+async def complete_course(
+    user_id: str, course_id: str, payload: CompleteCourseRequest = CompleteCourseRequest(),
+    session: dict = Depends(auth.require_owner),
+) -> AcademyProgress:
     get_user_by_id_or_404(user_id)
     row = _get_enrollment_row(user_id)
     if not row:
@@ -385,9 +401,9 @@ async def complete_course(user_id: str, course_id: str, session: dict = Depends(
     completed_at = datetime.now(UTC).isoformat()
     with db.cursor() as cur:
         cur.execute(
-            "INSERT INTO academy_course_progress (user_id, course_id, completed_at) VALUES (?, ?, ?) "
-            "ON CONFLICT (user_id, course_id) DO NOTHING",
-            (user_id, course_id, completed_at),
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (user_id, course_id) DO UPDATE SET elapsed_seconds=academy_course_progress.elapsed_seconds + excluded.elapsed_seconds",
+            (user_id, course_id, completed_at, max(0, payload.elapsed_seconds)),
         )
     return await get_progress(user_id, session)
 
@@ -415,6 +431,16 @@ async def _submit_quiz_or_exam(user_id: str, course_id: str, kind: str, payload:
             "INSERT INTO academy_quiz_submission (user_id, course_id, kind, score, submitted_at) VALUES (?, ?, ?, ?, ?)",
             (user_id, course_id, kind, result["score"], submitted_at),
         )
+        # Per-question detail — academy_quiz_submission's aggregate score
+        # alone can't answer "which questions do students actually fail?"
+        # (see learning_engine/analytics.py's admin-facing summary).
+        for i, (question, res) in enumerate(zip(data["questions"], result["results"])):
+            cur.execute(
+                "INSERT INTO academy_question_attempt "
+                "(user_id, course_id, kind, question_index, question_text, correct, submitted_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, course_id, kind, i, question.get("question", ""), int(res["correct"]), submitted_at),
+            )
     new_competency = competency.record_result(user_id, field.id, course_id, result["score"])
     return {"score": result["score"], "results": result["results"], "competency_score": new_competency}
 
@@ -437,6 +463,26 @@ def _course_titles_for(field_id: str, level: AcademicLevel) -> dict[str, str]:
         _course_id(field_id, level, i): c["title"]
         for i, c in enumerate(persisted["courses"])
     }
+
+
+def _resolve_titles_for_course_ids(course_ids: list[str]) -> dict[str, str]:
+    """Like _course_titles_for, but for an arbitrary set of course ids that
+    may span several (field, level) pairs — e.g. a portfolio covering every
+    field a student has ever studied, not just their current enrollment."""
+    field_levels: set[tuple[str, str]] = set()
+    for cid in course_ids:
+        parts = cid.split(":")
+        if len(parts) == 3:
+            field_levels.add((parts[0], parts[1]))
+
+    titles: dict[str, str] = {}
+    for field_id, level_str in field_levels:
+        try:
+            level = AcademicLevel(level_str)
+        except ValueError:
+            continue
+        titles.update(_course_titles_for(field_id, level))
+    return titles
 
 
 @router.get("/{user_id}/competencies")
@@ -503,6 +549,33 @@ def get_achievements(user_id: str, session: dict = Depends(auth.require_owner)) 
     return achievements.achievements_for(user_id, field.id, titles)
 
 
+@router.get("/{user_id}/analytics")
+def get_analytics(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """The student-facing half of learning_engine/analytics.py: progress,
+    time spent, competencies, strengths/weaknesses, and a recommendation —
+    gated by require_owner like every other per-user endpoint here.
+
+    The admin-facing half (analytics.field_summary — most-failed questions,
+    aggregate competency/completion stats across every student in a field)
+    is deliberately NOT exposed as an HTTP endpoint: this app has no admin-
+    role concept anywhere (see backend/auth.py — only require_owner, a
+    per-resource ownership check), so an open route for it would leak every
+    student's aggregate performance data to anyone who could reach the URL.
+    The function itself is real, tested, and ready to wire up the moment
+    real admin authentication exists — shipping it behind no access control
+    just to check a box would be a security hole, not a feature."""
+    get_user_by_id_or_404(user_id)
+    row = _get_enrollment_row(user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Aún no te has inscrito en una carrera")
+    field = academy.get_field(row["field_id"])
+    if not field:
+        raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
+    level = AcademicLevel(row["level"])
+    titles = _course_titles_for(field.id, level)
+    return analytics.student_summary(user_id, field.id, list(titles.keys()), titles)
+
+
 @router.get("/{user_id}/concepts/review")
 def get_concept_review(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
     """Due academic-concept flashcards (term + definition) — see
@@ -530,3 +603,22 @@ def submit_concept_review_answer(
         raise HTTPException(status_code=404, detail="Concepto no encontrado")
     schedule = concept_review.record_answer(user_id, concept_id, payload.correct, concept["term"], concept["definition"])
     return {"srs": schedule}
+
+
+@router.get("/{user_id}/portfolio")
+def get_portfolio(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """Automatic professional portfolio — every submitted assignment,
+    resolved practice scenario, and completed course across every field
+    the student has ever studied (see learning_engine/portfolio.py)."""
+    get_user_by_id_or_404(user_id)
+    data = portfolio.get_portfolio(user_id)
+    all_course_ids = (
+        [a["course_id"] for a in data["assignments"]]
+        + [s["course_id"] for s in data["scenarios"]]
+        + [c["course_id"] for c in data["completed_courses"]]
+    )
+    titles = _resolve_titles_for_course_ids(all_course_ids)
+    for group in ("assignments", "scenarios", "completed_courses"):
+        for item in data[group]:
+            item["course_title"] = titles.get(item["course_id"], item["course_id"])
+    return data

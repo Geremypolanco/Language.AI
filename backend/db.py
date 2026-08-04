@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     user_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, course_id)
 );
 
@@ -175,6 +176,30 @@ CREATE TABLE IF NOT EXISTS academy_quiz_submission (
     course_id TEXT NOT NULL,
     kind TEXT NOT NULL,
     score REAL NOT NULL,
+    submitted_at TEXT NOT NULL
+);
+
+-- One row per graded quiz/exam question — the detail academy_quiz_
+-- submission's aggregate score alone can't answer ("which questions do
+-- students actually fail?"), see backend/learning_engine/analytics.py.
+CREATE TABLE IF NOT EXISTS academy_question_attempt (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    question_index INTEGER NOT NULL,
+    question_text TEXT NOT NULL,
+    correct INTEGER NOT NULL,
+    submitted_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_scenario_submission (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    scenario TEXT NOT NULL,
+    response TEXT NOT NULL,
+    feedback TEXT NOT NULL,
     submitted_at TEXT NOT NULL
 );
 """
@@ -255,6 +280,7 @@ CREATE TABLE IF NOT EXISTS academy_course_progress (
     user_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     completed_at TEXT NOT NULL,
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, course_id)
 );
 
@@ -316,6 +342,27 @@ CREATE TABLE IF NOT EXISTS academy_quiz_submission (
     course_id TEXT NOT NULL,
     kind TEXT NOT NULL,
     score REAL NOT NULL,
+    submitted_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_question_attempt (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    question_index INTEGER NOT NULL,
+    question_text TEXT NOT NULL,
+    correct INTEGER NOT NULL,
+    submitted_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS academy_scenario_submission (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    scenario TEXT NOT NULL,
+    response TEXT NOT NULL,
+    feedback TEXT NOT NULL,
     submitted_at TEXT NOT NULL
 );
 
@@ -408,6 +455,10 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE vocab_progress ADD COLUMN native_text TEXT NOT NULL DEFAULT ''")
     if "unit_id" not in vocab_cols:
         conn.execute("ALTER TABLE vocab_progress ADD COLUMN unit_id TEXT NOT NULL DEFAULT ''")
+
+    course_progress_cols = {row[1] for row in conn.execute("PRAGMA table_info(academy_course_progress)").fetchall()}
+    if "elapsed_seconds" not in course_progress_cols:
+        conn.execute("ALTER TABLE academy_course_progress ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
@@ -427,6 +478,9 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS target_text TEXT NOT NULL DEFAULT ''")
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS native_text TEXT NOT NULL DEFAULT ''")
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS unit_id TEXT NOT NULL DEFAULT ''")
+        cur.execute(
+            "ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0"
+        )
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()
 

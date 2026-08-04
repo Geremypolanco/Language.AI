@@ -3,10 +3,12 @@ import asyncio
 from backend import db
 from backend.learning_engine import (
     achievements,
+    analytics,
     competency,
     concept_review,
     grading,
     knowledge_graph,
+    portfolio,
     recommendations,
 )
 
@@ -239,3 +241,82 @@ def test_is_concept_vocab_key_and_strip():
     assert concept_review.is_concept_vocab_key(key)
     assert not concept_review.is_concept_vocab_key("greetings.hello")
     assert concept_review.concept_id_from_vocab_key(key) == "cs:0::recursion"
+
+
+# ── Analytics ────────────────────────────────────────────────────────────
+
+
+def test_student_summary_combines_competency_time_and_recommendation():
+    _make_user()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES (?, ?, ?, ?)",
+            ("u1", "f:BACHELOR:0", db.now_iso(), 120),
+        )
+    competency.record_result("u1", "f", "f:BACHELOR:0", 0.95)
+
+    summary = analytics.student_summary("u1", "f", ["f:BACHELOR:0", "f:BACHELOR:1"], {"f:BACHELOR:0": "Curso A", "f:BACHELOR:1": "Curso B"})
+    assert summary["courses_completed"] == 1
+    assert summary["total_time_minutes"] == 2
+    assert summary["competencies"][0]["title"] == "Curso A"
+    assert summary["next_course_id"] == "f:BACHELOR:1"  # not yet mastered
+    assert summary["next_course_title"] == "Curso B"
+
+
+def test_field_summary_surfaces_most_failed_questions_and_aggregate_scores():
+    _make_user("u1")
+    _make_user("u2")
+    competency.record_result("u1", "f", "f:BACHELOR:0", 0.8)
+    competency.record_result("u2", "f", "f:BACHELOR:0", 0.4)
+    with db.cursor() as cur:
+        for user_id, correct in [("u1", 1), ("u2", 0)]:
+            cur.execute(
+                "INSERT INTO academy_question_attempt (user_id, course_id, kind, question_index, question_text, correct, submitted_at) "
+                "VALUES (?, 'f:BACHELOR:0', 'quiz', 0, 'q0?', ?, ?)",
+                (user_id, correct, db.now_iso()),
+            )
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES ('u1', 'f:BACHELOR:0', ?, 60)",
+            (db.now_iso(),),
+        )
+
+    summary = analytics.field_summary("f")
+    assert summary["most_failed_questions"][0]["question_text"] == "q0?"
+    assert summary["most_failed_questions"][0]["failures"] == 1
+    scores = {row["course_id"]: row["avg_score"] for row in summary["avg_competency_by_course"]}
+    assert abs(scores["f:BACHELOR:0"] - 0.6) < 1e-9
+    assert summary["completions_by_course"][0]["completions"] == 1
+
+
+# ── Portfolio ────────────────────────────────────────────────────────────
+
+
+def test_get_portfolio_aggregates_assignments_scenarios_and_completions():
+    _make_user()
+    now = db.now_iso()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_assignment_submission (user_id, course_id, assignment_id, response, feedback, grade, submitted_at) "
+            "VALUES ('u1', 'f:BACHELOR:0', 'f:BACHELOR:0:0', 'my response', 'good job', 'Bien', ?)",
+            (now,),
+        )
+        cur.execute(
+            "INSERT INTO academy_scenario_submission (user_id, course_id, scenario, response, feedback, submitted_at) "
+            "VALUES ('u1', 'f:BACHELOR:0', 'a scenario', 'my answer', 'nice work', ?)",
+            (now,),
+        )
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES ('u1', 'f:BACHELOR:0', ?, 300)",
+            (now,),
+        )
+
+    result = portfolio.get_portfolio("u1")
+    assert result["assignments"][0]["response"] == "my response"
+    assert result["scenarios"][0]["feedback"] == "nice work"
+    assert result["completed_courses"][0]["elapsed_seconds"] == 300
+
+
+def test_get_portfolio_empty_for_new_user():
+    _make_user()
+    result = portfolio.get_portfolio("u1")
+    assert result == {"assignments": [], "scenarios": [], "completed_courses": []}
