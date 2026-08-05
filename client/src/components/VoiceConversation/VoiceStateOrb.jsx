@@ -19,11 +19,7 @@ export default function VoiceStateOrb({ state, volume = 0 }) {
 
   return (
     <div className="voice-orb-wrapper">
-      <div
-        className={`voice-orb voice-orb--${state}`}
-        style={{ transform: `scale(${scale})` }}
-        aria-hidden="true"
-      >
+      <div className={`voice-orb voice-orb--${state}`} style={{ transform: `scale(${scale})` }} aria-hidden="true">
         <div className="voice-orb__core" />
         <div className="voice-orb__ring voice-orb__ring--1" />
         <div className="voice-orb__ring voice-orb__ring--2" />

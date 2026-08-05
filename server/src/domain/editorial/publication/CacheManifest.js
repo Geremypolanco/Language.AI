@@ -12,7 +12,10 @@ import { DomainEntity } from '../../shared/DomainEntity.js';
 export class CacheManifest extends DomainEntity {
   static schema = z.object({
     scope: z.string().default('build-batch'),
-    createdAt: z.string().datetime().default(() => new Date().toISOString()),
+    createdAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     checksums: z.array(z.string()).default([]),
   });
 

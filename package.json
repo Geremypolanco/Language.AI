@@ -1,0 +1,16 @@
+{
+  "name": "language-ai-repo-tooling",
+  "private": true,
+  "description": "Root anchor for repo-wide static analysis tooling (Knip, jscpd, madge). server/ and client/ remain independent packages with their own dependency trees and lockfiles — this is not an npm workspace.",
+  "scripts": {
+    "knip": "knip",
+    "duplicates": "jscpd .",
+    "circular:server": "madge --circular --extensions js server/src",
+    "circular:client": "madge --circular --extensions js,jsx client/src"
+  },
+  "devDependencies": {
+    "jscpd": "^4.2.5",
+    "knip": "^6.31.0",
+    "madge": "^8.0.0"
+  }
+}

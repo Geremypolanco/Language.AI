@@ -27,11 +27,7 @@ const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
  * server on every request to decide what to render/serve.
  */
 export function setConsentCookie(res, preferences) {
-  res.cookie(
-    CONSENT_COOKIE_NAME,
-    JSON.stringify(preferences),
-    secureCookieOptions(ONE_YEAR_MS)
-  );
+  res.cookie(CONSENT_COOKIE_NAME, JSON.stringify(preferences), secureCookieOptions(ONE_YEAR_MS));
 }
 
 export function clearConsentCookie(res) {

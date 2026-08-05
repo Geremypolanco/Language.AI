@@ -10,7 +10,10 @@ export class BuildJob extends DomainEntity {
     id: z.string().min(1),
     targetType: z.enum(TARGET_TYPES),
     targetId: z.string().min(1),
-    requestedAt: z.string().datetime().default(() => new Date().toISOString()),
+    requestedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     requestedBy: z.string().optional(),
     status: z.instanceof(BuildStatus).default(() => new BuildStatus(BuildStatus.PENDING)),
     startedAt: z.string().datetime().optional(),
@@ -19,11 +22,19 @@ export class BuildJob extends DomainEntity {
   });
 
   start() {
-    return new BuildJob({ ...this, status: this.status.transitionTo(BuildStatus.RUNNING), startedAt: new Date().toISOString() });
+    return new BuildJob({
+      ...this,
+      status: this.status.transitionTo(BuildStatus.RUNNING),
+      startedAt: new Date().toISOString(),
+    });
   }
 
   succeed() {
-    return new BuildJob({ ...this, status: this.status.transitionTo(BuildStatus.SUCCEEDED), finishedAt: new Date().toISOString() });
+    return new BuildJob({
+      ...this,
+      status: this.status.transitionTo(BuildStatus.SUCCEEDED),
+      finishedAt: new Date().toISOString(),
+    });
   }
 
   fail(errorMessage) {
@@ -36,7 +47,11 @@ export class BuildJob extends DomainEntity {
   }
 
   cancel() {
-    return new BuildJob({ ...this, status: this.status.transitionTo(BuildStatus.CANCELLED), finishedAt: new Date().toISOString() });
+    return new BuildJob({
+      ...this,
+      status: this.status.transitionTo(BuildStatus.CANCELLED),
+      finishedAt: new Date().toISOString(),
+    });
   }
 
   durationMs() {

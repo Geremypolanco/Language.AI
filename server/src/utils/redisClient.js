@@ -19,3 +19,18 @@ export async function getRedisClient() {
   await connecting;
   return client;
 }
+
+/**
+ * Closes the shared connection. The client otherwise lives for the process
+ * lifetime (by design, for connection reuse) — callers that boot their own
+ * short-lived process around getRedisClient() (e.g. the test suite spinning
+ * up a server per file) must call this or the open socket keeps the event
+ * loop alive and the process never exits.
+ */
+export async function closeRedisClient() {
+  if (!client) return;
+  const closing = client;
+  client = undefined;
+  connecting = undefined;
+  await closing.quit();
+}

@@ -9,7 +9,10 @@ export class Curriculum extends DomainEntity {
     learnerId: z.string().min(1),
     curriculumPackageId: z.string().min(1),
     courseContents: z.array(z.instanceof(CourseContent)).default([]),
-    enrolledAt: z.string().datetime().default(() => new Date().toISOString()),
+    enrolledAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
   });
 
   overallProgress() {

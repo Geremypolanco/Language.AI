@@ -13,9 +13,9 @@ export default function CookieConsentBanner() {
     <div className="cookie-banner" role="dialog" aria-live="polite" aria-label="Preferencias de cookies">
       <div className="cookie-banner__content">
         <p className="cookie-banner__text">
-          Usamos cookies esenciales para el funcionamiento del sitio. Con tu permiso, también usamos cookies
-          analíticas y de marketing para mejorar tu experiencia. Ninguna cookie no esencial se activa hasta que
-          eliges "Aceptar todo". Consulta nuestra política de privacidad para más detalles.
+          Usamos cookies esenciales para el funcionamiento del sitio. Con tu permiso, también usamos cookies analíticas
+          y de marketing para mejorar tu experiencia. Ninguna cookie no esencial se activa hasta que eliges
+          &ldquo;Aceptar todo&rdquo;. Consulta nuestra política de privacidad para más detalles.
         </p>
 
         {showCustomize && (
@@ -45,15 +45,27 @@ export default function CookieConsentBanner() {
 
         <div className="cookie-banner__actions">
           {!showCustomize && (
-            <button type="button" className="cookie-banner__btn cookie-banner__btn--ghost" onClick={() => setShowCustomize(true)}>
+            <button
+              type="button"
+              className="cookie-banner__btn cookie-banner__btn--ghost"
+              onClick={() => setShowCustomize(true)}
+            >
               Personalizar
             </button>
           )}
-          <button type="button" className="cookie-banner__btn cookie-banner__btn--secondary" onClick={rejectNonEssential}>
+          <button
+            type="button"
+            className="cookie-banner__btn cookie-banner__btn--secondary"
+            onClick={rejectNonEssential}
+          >
             Rechazar no esenciales
           </button>
           {showCustomize ? (
-            <button type="button" className="cookie-banner__btn cookie-banner__btn--primary" onClick={() => savePreferences(draft)}>
+            <button
+              type="button"
+              className="cookie-banner__btn cookie-banner__btn--primary"
+              onClick={() => savePreferences(draft)}
+            >
               Guardar preferencias
             </button>
           ) : (

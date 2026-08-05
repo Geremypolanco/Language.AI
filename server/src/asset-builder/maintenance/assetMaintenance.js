@@ -2,7 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { libraryRoot } from '../persistence/paths.js';
 import { getCurrentVersion, readCurrentLesson, replaceAssetInVersion } from '../persistence/AssetLibrary.js';
-import { getAllEntries, upsertLessonEntries, queryIndex, isDuplicateChecksumExcluding } from '../persistence/libraryIndex.js';
+import {
+  getAllEntries,
+  upsertLessonEntries,
+  queryIndex,
+  isDuplicateChecksumExcluding,
+} from '../persistence/libraryIndex.js';
 import { createDefaultProviderChain } from '../providers/index.js';
 import { createAssetValidator } from '../validation/AssetValidator.js';
 import { analyzeLesson } from '../analyzer/AssetAnalyzer.js';
@@ -64,7 +69,9 @@ export async function runMaintenance({ timeoutMs = 8000 } = {}) {
     if (await isReachable(entry, timeoutMs)) continue;
 
     report.broken.push(entry.id);
-    console.warn(`[asset-maintenance] broken asset detected: ${entry.id} (${entry.resource_type}, lesson ${entry.lesson_id})`);
+    console.warn(
+      `[asset-maintenance] broken asset detected: ${entry.id} (${entry.resource_type}, lesson ${entry.lesson_id})`
+    );
 
     const { disciplineSlug, courseSlug, lessonSlug } = pathSegmentsFromEntry(entry);
 
@@ -103,7 +110,14 @@ export async function runMaintenance({ timeoutMs = 8000 } = {}) {
       continue;
     }
 
-    const { allAssets } = await replaceAssetInVersion(disciplineSlug, courseSlug, lessonSlug, version, entry.id, accepted[0]);
+    const { allAssets } = await replaceAssetInVersion(
+      disciplineSlug,
+      courseSlug,
+      lessonSlug,
+      version,
+      entry.id,
+      accepted[0]
+    );
     await upsertLessonEntries(entry.lesson_id, allAssets);
     report.replaced.push(entry.id);
     console.warn(`[asset-maintenance] replaced ${entry.id} via ${accepted[0].candidate.provider}`);

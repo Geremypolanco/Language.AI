@@ -37,9 +37,7 @@ export function buildSystemPrompt({ mode = 'general', language = 'es', personali
   const languageInstruction = `Respond in ${language} unless the user switches language, in which case switch with them.`;
   const personalityInstruction = personality ? `Personality/tone to maintain throughout the call: ${personality}.` : '';
 
-  return [SPOKEN_STYLE_RULES, modePrompt, languageInstruction, personalityInstruction]
-    .filter(Boolean)
-    .join('\n');
+  return [SPOKEN_STYLE_RULES, modePrompt, languageInstruction, personalityInstruction].filter(Boolean).join('\n');
 }
 
 export const SUPPORTED_MODES = Object.keys(MODE_PROMPTS);

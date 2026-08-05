@@ -28,17 +28,23 @@ async function main() {
   console.log(`\nBuilt version v${result.version} at ${result.directory}`);
   console.log(`Persisted ${result.assets.length} asset(s):`);
   for (const asset of result.assets) {
-    console.log(`  - [${asset.resource_type}] ${asset.file_path} (provider: ${asset.provider}, quality: ${asset.quality_score.toFixed(2)})`);
+    console.log(
+      `  - [${asset.resource_type}] ${asset.file_path} (provider: ${asset.provider}, quality: ${asset.quality_score.toFixed(2)})`
+    );
   }
 
   if (result.unresolved.length) {
     console.warn(`\n${result.unresolved.length} plan item(s) could not be fully resolved:`);
     for (const u of result.unresolved) {
-      console.warn(`  - ${u.planItem.resourceType} (${u.priority ?? u.planItem.priority}): missing ${u.missing}/${u.planItem.quantity}`);
+      console.warn(
+        `  - ${u.planItem.resourceType} (${u.priority ?? u.planItem.priority}): missing ${u.missing}/${u.planItem.quantity}`
+      );
     }
   }
 
-  console.log(result.published ? '\nPublished — students will now be served this version.' : '\nNot published (--no-publish).');
+  console.log(
+    result.published ? '\nPublished — students will now be served this version.' : '\nNot published (--no-publish).'
+  );
 
   const { metrics } = result.builderResult;
   console.log(

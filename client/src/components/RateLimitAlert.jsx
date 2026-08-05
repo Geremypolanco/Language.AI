@@ -8,8 +8,8 @@ export default function RateLimitAlert({ secondsRemaining }) {
       <span className="rate-limit-alert__icon" aria-hidden="true">
         ⏳
       </span>
-      Has alcanzado el límite de solicitudes a la IA. Podrás volver a intentarlo en{' '}
-      <strong>{secondsRemaining}s</strong>.
+      Has alcanzado el límite de solicitudes a la IA. Podrás volver a intentarlo en <strong>{secondsRemaining}s</strong>
+      .
     </div>
   );
 }

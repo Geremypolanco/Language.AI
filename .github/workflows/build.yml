@@ -1,0 +1,77 @@
+name: Build
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-boot-smoke-test:
+    name: Server boots and serves /api/health
+    runs-on: ubuntu-latest
+    # There's no bundler on the server side (plain Node/ESM) — the
+    # meaningful "build" check for it is that the real production entrypoint
+    # actually starts and serves traffic, not a compile step.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - name: Start the server and wait for it to become healthy
+        working-directory: server
+        env:
+          REDIS_URL: redis://localhost:6379
+          PORT: '4000'
+        run: |
+          node src/index.js &
+          echo $! > /tmp/server.pid
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4000/api/health > /dev/null; then
+              echo "Server healthy after ${i}00ms"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "::error::Server did not become healthy within 10s"
+          exit 1
+      - name: Stop the server
+        if: always()
+        run: kill "$(cat /tmp/server.pid)" 2>/dev/null || true
+
+  client-build:
+    name: Client production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run build
+        working-directory: client
+      - name: Upload production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+          retention-days: 14

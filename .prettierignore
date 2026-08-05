@@ -1,0 +1,7 @@
+node_modules/
+dist/
+academy/
+coverage/
+test/tmp/
+package-lock.json
+*.md

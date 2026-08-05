@@ -7,7 +7,10 @@ export class ValidationReport extends DomainEntity {
   static schema = z.object({
     targetId: z.string().min(1),
     targetType: z.string().default('asset'),
-    generatedAt: z.string().datetime().default(() => new Date().toISOString()),
+    generatedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     results: z.array(z.instanceof(ValidationResult)).default([]),
   });
 

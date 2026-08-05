@@ -18,7 +18,10 @@ export class Progress extends DomainEntity {
     masteryScore: z.number().min(0).max(1).optional(),
     startedAt: z.string().datetime().optional(),
     completedAt: z.string().datetime().optional(),
-    updatedAt: z.string().datetime().default(() => new Date().toISOString()),
+    updatedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
   });
 
   recordCompletion(ratio) {

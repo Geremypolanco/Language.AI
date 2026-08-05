@@ -1,9 +1,11 @@
 node_modules/
 dist/
 build/
+coverage/
 .env
 .env.local
 *.log
+*.rdb
 .DS_Store
 
 # Academic Asset Builder's persisted library — a build artifact of running
@@ -11,3 +13,7 @@ build/
 # with `npm run assets:build -- <lesson.json>` (see server/README or the
 # asset-builder section of the root README).
 server/academy/
+
+# Disposable library root used by integration tests (test:integration sets
+# ASSET_LIBRARY_ROOT so they never touch server/academy/).
+server/test/tmp/

@@ -1,0 +1,95 @@
+name: Quality
+
+# Called by ci.yml on every push/PR; also runnable directly for local
+# iteration on the checks themselves via workflow_dispatch.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+# A second push to the same PR should cancel the still-running check for the
+# first — no reason to finish grading a commit nobody will look at.
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-lint-format:
+    name: Server — lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # ESLint ≈ Ruff (flat-config rules, no-unused-vars, react-hooks correctness).
+      - run: npm run lint
+        working-directory: server
+      # Prettier ≈ Black — formatting is a merge gate, not a suggestion.
+      - run: npm run format:check
+        working-directory: server
+      # node --check ≈ py_compile: every file must at least parse.
+      - name: Syntax-check every server source file
+        working-directory: server
+        run: find src scripts -name '*.js' -print0 | xargs -0 -n1 node --check
+
+  client-lint-format:
+    name: Client — lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run lint
+        working-directory: client
+      - run: npm run format:check
+        working-directory: client
+
+  architecture-static-analysis:
+    name: Architecture — circular imports, duplication, dead code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      # Knip/jscpd/madge need real dependency graphs to tell "unused" from
+      # "external package", so all three package trees are installed even
+      # though this job's own tooling lives only in the root package.json.
+      - run: npm ci
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: client
+
+      # madge ≈ circular-import detection. A cycle in a request-scoped Node
+      # server is a real bug risk (partial-init exports); this blocks.
+      - name: Circular imports — server
+        run: npm run circular:server
+      - name: Circular imports — client
+        run: npm run circular:client
+
+      # jscpd ≈ duplicate-code detection. Threshold calibrated against this
+      # repo's measured baseline (~0.5% duplication) with a little headroom —
+      # see .jscpd.json. Blocking: a jump here usually means a copy-paste
+      # that should have been a shared helper.
+      - name: Duplicate code
+        run: npm run duplicates
+
+      # Knip ≈ dead-code/unused-export/unused-dependency detection. Kept
+      # advisory: several "unused" hits are intentional barrel re-exports or
+      # runtime-domain scaffolding (see server/src/domain/runtime) staged
+      # ahead of the routes that will consume it. Read the summary, don't
+      # gate merges on it.
+      - name: Unused files/exports/dependencies (advisory)
+        run: npm run knip || echo "::warning::Knip found candidates for removal — see the log above. Non-blocking by design (see workflow comments)."

@@ -1,0 +1,81 @@
+name: Security
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm-audit:
+    name: Vulnerable dependencies (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [server, client]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.package }}
+
+      # Blocking gate: production dependencies only. A high/critical
+      # vulnerability in something that actually ships to users is not
+      # optional to fix.
+      - name: Production dependency audit (blocking, high+)
+        working-directory: ${{ matrix.package }}
+        run: npm audit --omit=dev --audit-level=high
+
+      # Informational: dev-only tooling (Vite/Vitest/eslint's transitive
+      # deps, etc.) never ships to a user's browser or the server process,
+      # so a vulnerability there doesn't block merges — but it's still
+      # worth surfacing so it gets triaged instead of silently ignored.
+      - name: Full audit including devDependencies (informational)
+        if: always()
+        working-directory: ${{ matrix.package }}
+        run: npm audit || echo "::warning::Full audit (incl. devDependencies) found findings — see log above. Non-blocking; the blocking gate is the production-only audit."
+
+  secret-scan:
+    name: Exposed secrets/credentials/tokens/keys
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs full history to scan past commits, not just the working tree
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  license-compliance:
+    name: License compliance (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [server, client]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.package }}
+      # Production deps only — a copyleft devDependency (build tooling that
+      # never ships) doesn't create the same distribution obligations a
+      # shipped dependency would.
+      - name: Check production dependency licenses against the allow-list
+        working-directory: ${{ matrix.package }}
+        run: |
+          npx --yes license-checker-rseidelsohn --production \
+            --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;CC0-1.0;Unlicense;0BSD;UNLICENSED" \
+            --excludePackages "$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version")"

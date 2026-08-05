@@ -17,7 +17,10 @@ export class CourseContent extends DomainEntity {
     totalLessons: z.number().int().min(0).default(0),
     lessonOrder: z.array(z.string()).default([]),
     lessonProgress: z.array(z.instanceof(Progress)).default([]),
-    enrolledAt: z.string().datetime().default(() => new Date().toISOString()),
+    enrolledAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
   });
 
   completionPercentage() {

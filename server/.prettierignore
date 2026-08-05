@@ -1,0 +1,5 @@
+node_modules/
+coverage/
+academy/
+test/tmp/
+package-lock.json

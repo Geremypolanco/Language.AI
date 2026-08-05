@@ -38,7 +38,11 @@ export class ExercisePackage extends DomainEntity {
       return [...correctIds].sort().join(',') === [...response].sort().join(',');
     }
     if (this.correctAnswer != null) {
-      return String(response ?? '').trim().toLowerCase() === this.correctAnswer.trim().toLowerCase();
+      return (
+        String(response ?? '')
+          .trim()
+          .toLowerCase() === this.correctAnswer.trim().toLowerCase()
+      );
     }
     return null;
   }

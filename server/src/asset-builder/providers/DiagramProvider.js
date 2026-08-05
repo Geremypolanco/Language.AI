@@ -23,7 +23,8 @@ export class DiagramProvider extends AssetProvider {
     // instead of being silently swapped for a generic concept map.
     const diagramFormats = ['svg', 'mermaid', 'timeline-svg'];
     const claimsDiagram = planItem.resourceType === 'diagram';
-    const claimsIllustration = planItem.resourceType === 'illustration' && diagramFormats.includes(planItem.preferredFormat);
+    const claimsIllustration =
+      planItem.resourceType === 'illustration' && diagramFormats.includes(planItem.preferredFormat);
     if (!claimsDiagram && !claimsIllustration) return [];
 
     const format = planItem.preferredFormat || 'mermaid';

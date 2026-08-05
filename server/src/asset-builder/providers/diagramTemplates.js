@@ -11,11 +11,7 @@ function sanitizeMermaidLabel(text) {
 }
 
 function escapeXml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /** Star-topology concept map: main topic in the center, subtopics/concepts as branches. */

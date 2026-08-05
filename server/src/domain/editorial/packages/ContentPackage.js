@@ -8,7 +8,10 @@ export class ContentPackage extends DomainEntity {
     id: z.string().min(1),
     title: z.string().min(1),
     curricula: z.array(z.instanceof(CurriculumPackage)).default([]),
-    createdAt: z.string().datetime().default(() => new Date().toISOString()),
+    createdAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     createdBy: z.string().optional(),
   });
 

@@ -89,7 +89,10 @@ export async function persistLessonVersion({ lesson, resolvedAssets, version }) 
       const sourcePath = path.join(libraryRoot(), candidate.filePath);
       await fs.copyFile(sourcePath, absoluteFilePath);
       if (!checksum) {
-        checksum = crypto.createHash('sha256').update(await fs.readFile(absoluteFilePath)).digest('hex');
+        checksum = crypto
+          .createHash('sha256')
+          .update(await fs.readFile(absoluteFilePath))
+          .digest('hex');
       }
     } else {
       continue; // validator requires bytes or filePath — this shouldn't happen
@@ -128,7 +131,15 @@ export async function persistLessonVersion({ lesson, resolvedAssets, version }) 
     assetMetadataList.push(metadata);
   }
 
-  const manifest = new AssetManifest({ lessonId, courseId, discipline, language, version, builtAt: now, assets: assetMetadataList });
+  const manifest = new AssetManifest({
+    lessonId,
+    courseId,
+    discipline,
+    language,
+    version,
+    builtAt: now,
+    assets: assetMetadataList,
+  });
 
   await fs.writeFile(path.join(dir, 'content.json'), JSON.stringify(lesson, null, 2), 'utf8');
   await fs.writeFile(path.join(dir, 'metadata.json'), JSON.stringify(manifest, null, 2), 'utf8');
@@ -168,7 +179,14 @@ export async function readCurrentLesson(discipline, courseId, lessonId) {
  * targeted repair the maintenance job uses so fixing a broken link touches
  * exactly one asset, not the lesson's other resources or its version history.
  */
-export async function replaceAssetInVersion(discipline, courseId, lessonId, version, assetId, { candidate, validation }) {
+export async function replaceAssetInVersion(
+  discipline,
+  courseId,
+  lessonId,
+  version,
+  assetId,
+  { candidate, validation }
+) {
   const dir = versionDir(discipline, courseId, lessonId, version);
   const metaPath = path.join(dir, 'metadata.json');
   const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));

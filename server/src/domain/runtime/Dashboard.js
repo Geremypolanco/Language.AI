@@ -17,7 +17,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export class Dashboard extends DomainEntity {
   static schema = z.object({
     learnerId: z.string().min(1),
-    generatedAt: z.string().datetime().default(() => new Date().toISOString()),
+    generatedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     courseContents: z.array(z.instanceof(CourseContent)).default([]),
     assignments: z.array(z.instanceof(Assignment)).default([]),
     progressRecords: z.array(z.instanceof(Progress)).default([]),

@@ -35,7 +35,9 @@ function tokenize(text) {
 
 function computeRelevance(candidate, planItem, analysis) {
   const targetTerms = new Set(
-    tokenize([...(planItem.searchTerms.length ? planItem.searchTerms : analysis.keywords), analysis.mainTopic].join(' '))
+    tokenize(
+      [...(planItem.searchTerms.length ? planItem.searchTerms : analysis.keywords), analysis.mainTopic].join(' ')
+    )
   );
   if (targetTerms.size === 0) return 0.5; // nothing to compare against — neutral score, don't punish
 
@@ -89,7 +91,11 @@ export function createAssetValidator({ isDuplicateChecksum, minRelevance = 0.12,
       'candidate has no content (empty bytes) and no reusable file path'
     );
 
-    check('license-allowlist', LICENSE_ALLOWLIST.includes(candidate.license), `license "${candidate.license}" is not on the allow-list`);
+    check(
+      'license-allowlist',
+      LICENSE_ALLOWLIST.includes(candidate.license),
+      `license "${candidate.license}" is not on the allow-list`
+    );
 
     let dimensions = null;
     if (candidate.bytes && RASTER_FORMATS.has(candidate.format)) {
@@ -120,7 +126,11 @@ export function createAssetValidator({ isDuplicateChecksum, minRelevance = 0.12,
     );
 
     const qualityScore = computeQuality(candidate, dimensions);
-    check('quality', qualityScore >= minQuality, `quality score ${qualityScore.toFixed(2)} below minimum ${minQuality}`);
+    check(
+      'quality',
+      qualityScore >= minQuality,
+      `quality score ${qualityScore.toFixed(2)} below minimum ${minQuality}`
+    );
 
     const licenseBonus = LICENSE_BONUS[candidate.license] ?? 0.7;
     const educationalScore = Math.max(0, Math.min(1, 0.5 * relevanceScore + 0.3 * qualityScore + 0.2 * licenseBonus));

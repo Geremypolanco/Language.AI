@@ -30,7 +30,9 @@ voiceRouter.post('/session', (req, res) => {
 voiceRouter.get('/session/:id', (req, res) => {
   const session = getSession(req.params.id);
   if (!session) {
-    return res.status(404).json({ error: 'session_not_found', message: 'Session expired or does not exist. Start a new one.' });
+    return res
+      .status(404)
+      .json({ error: 'session_not_found', message: 'Session expired or does not exist. Start a new one.' });
   }
   res.json(toClientView(session));
 });
@@ -55,7 +57,9 @@ voiceRouter.post('/converse', voiceRateLimiter, async (req, res) => {
 
   const session = getSession(sessionId);
   if (!session) {
-    return res.status(404).json({ error: 'session_not_found', message: 'Session expired or does not exist. Start a new one.' });
+    return res
+      .status(404)
+      .json({ error: 'session_not_found', message: 'Session expired or does not exist. Start a new one.' });
   }
 
   const injectionCheck = scanForInjection(message);
@@ -74,7 +78,10 @@ voiceRouter.post('/converse', voiceRateLimiter, async (req, res) => {
   if (session.summary) {
     systemPrompt += `\n\nSummary of the conversation so far: ${session.summary}`;
   }
-  const messages = [...session.history.map(({ role, content }) => ({ role, content })), { role: 'user', content: message }];
+  const messages = [
+    ...session.history.map(({ role, content }) => ({ role, content })),
+    { role: 'user', content: message },
+  ];
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -107,7 +114,9 @@ voiceRouter.post('/converse', voiceRateLimiter, async (req, res) => {
     } else {
       console.error('[voice.routes] stream failed', err);
       if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ type: 'error', message: 'The AI service is temporarily unavailable.' })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: 'error', message: 'The AI service is temporarily unavailable.' })}\n\n`
+        );
       }
     }
   }
@@ -116,7 +125,11 @@ voiceRouter.post('/converse', voiceRateLimiter, async (req, res) => {
 
   await appendTurn(session, 'user', message);
   if (fullReply.trim()) {
-    await appendTurn(session, 'assistant', interrupted ? `${fullReply.trim()} [interrupted by user]` : fullReply.trim());
+    await appendTurn(
+      session,
+      'assistant',
+      interrupted ? `${fullReply.trim()} [interrupted by user]` : fullReply.trim()
+    );
   }
 
   res.write(

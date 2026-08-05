@@ -33,7 +33,10 @@ export class TextResourceProvider extends AssetProvider {
   #glossary(analysis) {
     const terms = Object.entries(analysis.excerpts || {});
     if (terms.length === 0) return [];
-    const content = { lessonTopic: analysis.mainTopic, terms: terms.map(([term, excerpt]) => ({ term, definition: excerpt })) };
+    const content = {
+      lessonTopic: analysis.mainTopic,
+      terms: terms.map(([term, excerpt]) => ({ term, definition: excerpt })),
+    };
     return [this.#jsonCandidate('glossary', `${analysis.mainTopic} — glosario`, content, analysis.keywords)];
   }
 
@@ -54,7 +57,9 @@ export class TextResourceProvider extends AssetProvider {
     if (!analysis.workedExamples?.length) return [];
     return analysis.workedExamples
       .slice(0, planItem.quantity)
-      .map((ex) => this.#jsonCandidate('example', ex.heading, { heading: ex.heading, body: ex.body }, analysis.keywords));
+      .map((ex) =>
+        this.#jsonCandidate('example', ex.heading, { heading: ex.heading, body: ex.body }, analysis.keywords)
+      );
   }
 
   #referenceTable(analysis) {

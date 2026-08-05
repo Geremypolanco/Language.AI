@@ -65,6 +65,10 @@ export class CurriculumPackage extends DomainEntity {
   }
 
   isReadyForPublication() {
-    return this.courses.length > 0 && !this.hasCyclicCourseDependencies() && this.courses.every((c) => c.isReadyForPublication());
+    return (
+      this.courses.length > 0 &&
+      !this.hasCyclicCourseDependencies() &&
+      this.courses.every((c) => c.isReadyForPublication())
+    );
   }
 }

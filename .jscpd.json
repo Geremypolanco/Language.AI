@@ -1,0 +1,8 @@
+{
+  "threshold": 2,
+  "reporters": ["console"],
+  "ignore": ["**/node_modules/**", "**/dist/**", "**/academy/**", "**/*.test.js", "**/package-lock.json"],
+  "absolute": true,
+  "gitignore": true,
+  "format": ["javascript", "jsx"]
+}

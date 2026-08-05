@@ -1,0 +1,42 @@
+version: 2
+updates:
+  # Three independent dependency trees (root tooling, server, client — see
+  # the root package.json's description; this is not an npm workspace), each
+  # tracked separately since Dependabot resolves one manifest per entry.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      root-tooling:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+    groups:
+      server-dependencies:
+        dependency-type: production
+      server-dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    groups:
+      client-dependencies:
+        dependency-type: production
+      client-dev-dependencies:
+        dependency-type: development
+
+  # Keeps the actions pinned in the workflows above (checkout, setup-node,
+  # upload-artifact, gitleaks-action, action-gh-release, ...) current too —
+  # a stale/vulnerable Action is as real a supply-chain risk as a stale npm
+  # package.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

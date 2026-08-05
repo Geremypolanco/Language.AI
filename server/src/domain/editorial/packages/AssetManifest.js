@@ -13,7 +13,10 @@ export class AssetManifest extends DomainEntity {
     discipline: z.string().min(1),
     language: z.string().min(2).max(10),
     version: z.number().int().positive(),
-    builtAt: z.string().datetime().default(() => new Date().toISOString()),
+    builtAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     assets: z.array(z.instanceof(AssetMetadata)).default([]),
   });
 

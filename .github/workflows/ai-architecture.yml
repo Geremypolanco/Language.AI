@@ -1,0 +1,60 @@
+name: AI Architecture
+
+# There is no Hugging Face SDK, AI Orchestrator, or embeddings service in
+# this codebase — the real "AI architecture" is the Academic Asset Builder's
+# provider priority chain, the domain models, and the voice streaming path.
+# Every check below runs against mocks/local fixtures: no real AI provider
+# call, no network I/O, no large model load. That's deliberate — this job
+# validates structure and wiring on every push, so it has to stay fast.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ai-architecture-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-ai-architecture:
+    name: Provider chain, domain models, voice stream, app boot
+    runs-on: ubuntu-latest
+    services:
+      # The app boot check imports the real route modules, which create
+      # their Redis-backed rate limiters at import time — see
+      # server/src/routes/ai.routes.js and voice.routes.js.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+
+      # Runs server/scripts/verify-ai-architecture.js — see that file for
+      # what each check does and why it's network-free:
+      #  1. domain models instantiate and validate correctly
+      #  2. the asset provider priority chain registers every provider,
+      #     in the exact order the spec requires (local library -> ...
+      #     -> AI generation)
+      #  3. the asset-builder pipeline builds + persists a real lesson
+      #     end-to-end via only network-free providers, and every asset it
+      #     reports actually exists on disk where claimed (consistency)
+      #  4. the voice reply stream initializes and produces output via the
+      #     dev-mock fallback (no AI_PROVIDER_API_KEY — no real model call)
+      #  5. the Express app boots and every route module resolves
+      - name: Verify AI architecture
+        working-directory: server
+        run: npm run verify:ai-architecture
+        env:
+          REDIS_URL: redis://localhost:6379

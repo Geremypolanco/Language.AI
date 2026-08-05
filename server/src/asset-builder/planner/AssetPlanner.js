@@ -11,7 +11,5 @@ export function planLessonAssets(analysis) {
   const ruleFn = RULES_BY_FAMILY[analysis.disciplineFamily] || RULES_BY_FAMILY.generic;
   const rawItems = ruleFn(analysis);
 
-  return rawItems
-    .filter((item) => item.quantity > 0)
-    .map((item) => assetPlanItemSchema.parse(item));
+  return rawItems.filter((item) => item.quantity > 0).map((item) => assetPlanItemSchema.parse(item));
 }

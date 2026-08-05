@@ -54,7 +54,12 @@ export class ResourcePriorityChain {
         if (!passed) continue;
 
         if (batchCache.has(result.checksum)) {
-          attempts.push({ provider: provider.name, title: candidate.title, passed: false, reasons: ['duplicate within this batch'] });
+          attempts.push({
+            provider: provider.name,
+            title: candidate.title,
+            passed: false,
+            reasons: ['duplicate within this batch'],
+          });
           continue;
         }
 
@@ -79,7 +84,9 @@ export class ResourcePriorityChain {
         await fs.access(path.join(libraryRoot(), candidate.filePath));
         return candidate;
       } catch {
-        console.warn(`[priority-chain] local-library candidate references a missing file, skipping: ${candidate.filePath}`);
+        console.warn(
+          `[priority-chain] local-library candidate references a missing file, skipping: ${candidate.filePath}`
+        );
         return null;
       }
     }

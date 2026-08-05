@@ -16,14 +16,22 @@ export class RateLimitError extends Error {
  */
 export async function apiFetch(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
+    // Spread options first: credentials/headers below must win, otherwise a
+    // caller-supplied `options.headers` (e.g. one extra header) would
+    // replace the whole merged headers object and silently drop
+    // Content-Type instead of adding to it.
+    ...options,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
   });
 
   if (response.status === 429) {
     const body = await response.json().catch(() => ({}));
-    const retryAfterHeader = Number(response.headers.get('Retry-After'));
+    const retryAfterHeaderRaw = response.headers.get('Retry-After');
+    // Number(null) is 0, not NaN — without the null check, a 429 with no
+    // Retry-After header would compute a "retry in 0s" instead of falling
+    // back to a sane default, inviting an immediate hammer-retry loop.
+    const retryAfterHeader = retryAfterHeaderRaw === null ? NaN : Number(retryAfterHeaderRaw);
     const retryAfterSeconds = body.retryAfterSeconds ?? (Number.isFinite(retryAfterHeader) ? retryAfterHeader : 60);
     throw new RateLimitError(retryAfterSeconds, body.message || 'Too many requests.');
   }

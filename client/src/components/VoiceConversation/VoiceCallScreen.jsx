@@ -99,9 +99,7 @@ export default function VoiceCallScreen() {
         </p>
       )}
 
-      {rateLimitInfo && (
-        <RateLimitAlert secondsRemaining={rateLimitInfo.retryAfterSeconds} />
-      )}
+      {rateLimitInfo && <RateLimitAlert secondsRemaining={rateLimitInfo.retryAfterSeconds} />}
 
       <button type="button" className="voice-call-screen__end-btn" onClick={stop}>
         Finalizar llamada

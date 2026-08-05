@@ -85,7 +85,8 @@ export const RULES_BY_FAMILY = {
         quantity: Math.max(2, analysis.concepts.length),
         priority: 'required',
         preferredFormat: 'scientific-illustration',
-        rationale: 'Scientific illustrations (labeled diagrams of structures/processes) teach mechanism better than photos.',
+        rationale:
+          'Scientific illustrations (labeled diagrams of structures/processes) teach mechanism better than photos.',
         searchTerms: analysis.concepts,
       },
       {

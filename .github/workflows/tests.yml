@@ -1,0 +1,118 @@
+name: Tests
+
+# Called by ci.yml on every push/PR; also runnable directly via
+# workflow_dispatch when iterating on the test matrix itself.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-unit-and-regression:
+    name: Server unit + regression (node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines.node in server/package.json is ">=18" — the two active
+        # LTS lines plus current stable cover what's actually supported.
+        node-version: ['18.x', '20.x', '22.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # Domain models, Academic Asset Builder pure logic, voice prompt/stream
+      # helpers, and the encoded regressions — no network, no Redis needed.
+      - run: npm test
+        working-directory: server
+
+  server-coverage:
+    name: Server coverage (fails under threshold)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # Thresholds live in server/package.json's "c8" block (lines/statements
+      # 80%, functions 55%, branches 75% — the measured baseline, so this
+      # actually fails on a real regression instead of being decorative).
+      - run: npm run test:coverage
+        working-directory: server
+      - name: Upload server coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage
+          path: server/coverage/
+          retention-days: 14
+
+  server-integration:
+    name: Server integration (real Express app + Redis)
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      # API tests (routes over real HTTP), "database"-equivalent tests (real
+      # Redis-backed rate limiter + consent cookie store), and router tests
+      # (every mounted route: health, consent, ai, voice, academy) all live
+      # here — this is the layer that needs a live server + Redis, unlike
+      # the unit/regression job above.
+      - run: npm run test:integration
+        working-directory: server
+        env:
+          REDIS_URL: redis://localhost:6379
+
+  client-tests:
+    name: Client tests + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      # Coverage thresholds are scoped to the pure-logic modules under test
+      # (see client/vite.config.js) — React components and the browser-API
+      # voice engine (mic/VAD/STT/TTS) need jsdom+Testing Library or manual
+      # verification instead, not a blanket coverage gate.
+      - run: npm run test:coverage
+        working-directory: client
+      - name: Upload client coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-coverage
+          path: client/coverage/
+          retention-days: 14

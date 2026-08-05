@@ -8,7 +8,10 @@ export class Assignment extends DomainEntity {
     learnerId: z.string().min(1),
     targetType: z.enum(['exercise', 'assessment', 'lesson']),
     targetId: z.string().min(1),
-    assignedAt: z.string().datetime().default(() => new Date().toISOString()),
+    assignedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     dueDate: z.string().datetime().optional(),
     status: z.enum(['assigned', 'in-progress', 'submitted', 'graded']).default('assigned'),
     score: z.number().min(0).max(1).optional(),

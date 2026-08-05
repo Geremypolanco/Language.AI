@@ -60,7 +60,10 @@ export function ConsentProvider({ children }) {
   }, []);
 
   const acceptAll = useCallback(() => savePreferences({ analytics: true, marketing: true }), [savePreferences]);
-  const rejectNonEssential = useCallback(() => savePreferences({ analytics: false, marketing: false }), [savePreferences]);
+  const rejectNonEssential = useCallback(
+    () => savePreferences({ analytics: false, marketing: false }),
+    [savePreferences]
+  );
 
   return (
     <ConsentContext.Provider

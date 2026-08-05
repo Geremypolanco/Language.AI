@@ -10,7 +10,10 @@ import { PublicationStatus } from '../enums.js';
 export class PublicationVersion extends DomainEntity {
   static schema = z.object({
     versionNumber: z.number().int().positive(),
-    createdAt: z.string().datetime().default(() => new Date().toISOString()),
+    createdAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     publishedAt: z.string().datetime().optional(),
     status: z.instanceof(PublicationStatus).default(() => new PublicationStatus(PublicationStatus.DRAFT)),
     compatibleSchemaVersion: z.string().default('1.x'),

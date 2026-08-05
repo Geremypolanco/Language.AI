@@ -8,7 +8,10 @@ export const consentRouter = Router();
 // ever touching document.cookie, since the cookie is HttpOnly).
 consentRouter.get('/', (req, res) => {
   const prefs = readConsentCookie(req);
-  res.json({ hasConsented: prefs !== null, preferences: prefs ?? { essential: true, analytics: false, marketing: false } });
+  res.json({
+    hasConsented: prefs !== null,
+    preferences: prefs ?? { essential: true, analytics: false, marketing: false },
+  });
 });
 
 // Persist the user's consent choice as a secure, HttpOnly cookie.

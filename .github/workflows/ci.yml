@@ -1,0 +1,60 @@
+name: CI
+
+# The single entry point triggered by pushes/PRs. Everything else
+# (quality.yml, tests.yml, security.yml, ai-architecture.yml, build.yml) is a
+# reusable workflow (`on: workflow_call`) invoked as a job below — this file
+# fans out to them and is what branch protection should require, instead of
+# five separate required checks that all have to be re-added whenever a
+# workflow is renamed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality
+    uses: ./.github/workflows/quality.yml
+
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+
+  security:
+    name: Security
+    uses: ./.github/workflows/security.yml
+
+  ai-architecture:
+    name: AI Architecture
+    uses: ./.github/workflows/ai-architecture.yml
+
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+
+  # Single required status check for branch protection: green iff every
+  # fanned-out workflow above is green. Add a new specialized workflow to
+  # this file's `jobs:` and to `needs:` below and branch protection picks it
+  # up automatically without touching repo settings.
+  ci-summary:
+    name: CI summary
+    if: always()
+    needs: [quality, tests, security, ai-architecture, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required workflow failed
+        run: |
+          echo "quality:        ${{ needs.quality.result }}"
+          echo "tests:          ${{ needs.tests.result }}"
+          echo "security:       ${{ needs.security.result }}"
+          echo "ai-architecture: ${{ needs.ai-architecture.result }}"
+          echo "build:          ${{ needs.build.result }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::One or more required workflows failed."
+            exit 1
+          fi

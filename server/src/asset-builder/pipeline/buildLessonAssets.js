@@ -53,7 +53,10 @@ export async function buildLessonAssets(rawLesson, { publish = true } = {}) {
   if (unresolved.length) {
     console.warn(
       `[asset-builder] lesson "${lesson.lessonId}" v${version} has ${unresolved.length} unresolved plan item(s):`,
-      unresolved.map((u) => `${u.planItem.resourceType} (missing ${u.missing}/${u.planItem.quantity}, priority: ${u.planItem.priority})`)
+      unresolved.map(
+        (u) =>
+          `${u.planItem.resourceType} (missing ${u.missing}/${u.planItem.quantity}, priority: ${u.planItem.priority})`
+      )
     );
   }
 
@@ -86,7 +89,12 @@ function buildBuilderResult({ lesson, resolvedAssets, unresolved }) {
   return new BuilderResult({
     success: !hasRequiredGaps,
     targetId: lesson.lessonId,
-    metrics: new BuilderMetrics({ assetsBuilt, assetsReused, assetsUnresolved, providersInvoked: invokedProviders.size }),
+    metrics: new BuilderMetrics({
+      assetsBuilt,
+      assetsReused,
+      assetsUnresolved,
+      providersInvoked: invokedProviders.size,
+    }),
     logs: unresolved.map(
       (u) =>
         new BuildLog({

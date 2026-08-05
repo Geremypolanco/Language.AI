@@ -23,7 +23,10 @@ export class AIGenerationProvider extends AssetProvider {
     if (!['image', 'illustration'].includes(planItem.resourceType)) return [];
 
     const subject = (planItem.searchTerms.length ? planItem.searchTerms : analysis.keywords).slice(0, 3).join(', ');
-    const style = planItem.preferredFormat === 'scientific-illustration' ? 'labeled scientific illustration' : 'clear educational illustration';
+    const style =
+      planItem.preferredFormat === 'scientific-illustration'
+        ? 'labeled scientific illustration'
+        : 'clear educational illustration';
     const prompt = `${style} of: ${subject}. Context: ${analysis.mainTopic}. Plain background, no text overlays.`;
 
     try {

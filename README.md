@@ -183,6 +183,21 @@ npm install
 npm run dev             # http://localhost:5173 (proxy a /api -> localhost:4000)
 ```
 
+## CI/CD (`.github/workflows/`)
+
+`ci.yml` es el único workflow disparado por push/PR a `main`; reparte el trabajo en workflows especializados reutilizables (`workflow_call`), cada uno independiente y ejecutable también a mano (`workflow_dispatch`):
+
+| Workflow | Qué valida |
+|---|---|
+| `quality.yml` | ESLint + Prettier (server y client), `node --check` de todo el código fuente, imports circulares (madge), código duplicado (jscpd, bloqueante), exports/dependencias sin usar (knip, informativo) |
+| `tests.yml` | Unit + regresión (matriz Node 18/20/22), cobertura con umbral que falla el build (`server/package.json` → `c8`, `client/vite.config.js` → `coverage.thresholds`), integración con Redis real (API, rutas, "DB"), tests del cliente (Vitest) |
+| `security.yml` | `npm audit` bloqueante en producción (`--omit=dev --audit-level=high`) + informativo en dev, secretos expuestos (Gitleaks), licencias de dependencias de producción contra una allow-list |
+| `ai-architecture.yml` | Cadena de proveedores del Academic Asset Builder, modelos de dominio, pipeline completo con proveedores sin red, streaming de voz vía el *dev-mock* (sin credenciales), arranque completo de la app — todo con mocks/fixtures, sin llamadas reales a un proveedor de IA (`server/scripts/verify-ai-architecture.js`) |
+| `build.yml` | El servidor arranca y responde `/api/health`; build de producción del cliente (Vite), publicado como artifact |
+| `release.yml` | Al pushear un tag `vX.Y.Z`: reejecuta `tests.yml` + `build.yml` y publica el build del cliente como GitHub Release |
+
+`dependabot.yml` mantiene al día las tres dependency trees (raíz, `server/`, `client/` — no son un workspace de npm) y las Actions usadas en los workflows.
+
 ## Verificación manual realizada
 
 - `GET /api/health` → `200`

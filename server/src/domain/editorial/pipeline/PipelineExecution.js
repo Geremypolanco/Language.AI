@@ -8,7 +8,10 @@ export class PipelineExecution extends DomainEntity {
   static schema = z.object({
     id: z.string().min(1),
     targetId: z.string().min(1),
-    startedAt: z.string().datetime().default(() => new Date().toISOString()),
+    startedAt: z
+      .string()
+      .datetime()
+      .default(() => new Date().toISOString()),
     finishedAt: z.string().datetime().optional(),
     logs: z.array(z.instanceof(BuildLog)).default([]),
     stageResults: z.array(z.instanceof(BuilderResult)).default([]),

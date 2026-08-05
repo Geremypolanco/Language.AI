@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "server": {
+      "entry": ["scripts/*.js"],
+      "project": ["src/**/*.js", "scripts/**/*.js"]
+    },
+    "client": {
+      "project": ["src/**/*.{js,jsx}"]
+    }
+  }
+}

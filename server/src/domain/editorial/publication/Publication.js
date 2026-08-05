@@ -21,7 +21,10 @@ export class Publication extends DomainEntity {
   });
 
   publish(version) {
-    if (this.currentVersion) this.versionHistory.push(this.currentVersion);
+    // The version being superseded must move to 'deprecated', not stay
+    // flagged 'published' while sitting in history — otherwise a later
+    // rollbackTo() would attempt an illegal published -> published transition.
+    if (this.currentVersion) this.versionHistory.push(this.currentVersion.deprecate());
     this.currentVersion = version.status.isLive() ? version : version.publish();
     return this;
   }

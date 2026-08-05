@@ -6,10 +6,7 @@ import { z } from 'zod';
  * reaches the sanitizer/guardrail layer.
  */
 export const aiChatRequestSchema = z.object({
-  message: z
-    .string()
-    .min(1, 'message cannot be empty')
-    .max(4000, 'message exceeds maximum length of 4000 characters'),
+  message: z.string().min(1, 'message cannot be empty').max(4000, 'message exceeds maximum length of 4000 characters'),
   conversationId: z.string().uuid().optional(),
 });
 
@@ -27,11 +24,13 @@ export const aiChatResponseSchema = z.object({
   flagged: z.boolean().default(false),
 });
 
-export const feedbackSchema = z.object({
-  conversationId: z.string().uuid().optional(),
-  messageId: z.string().min(1).max(200),
-  rating: z.enum(['up', 'down']).optional(),
-  reportReason: z.string().max(1000).optional(),
-}).refine((data) => data.rating || data.reportReason, {
-  message: 'Either rating or reportReason must be provided',
-});
+export const feedbackSchema = z
+  .object({
+    conversationId: z.string().uuid().optional(),
+    messageId: z.string().min(1).max(200),
+    rating: z.enum(['up', 'down']).optional(),
+    reportReason: z.string().max(1000).optional(),
+  })
+  .refine((data) => data.rating || data.reportReason, {
+    message: 'Either rating or reportReason must be provided',
+  });
