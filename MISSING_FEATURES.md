@@ -1,5 +1,15 @@
 # Language.AI - Funcionalidades Faltantes
 
+> **Nota (auditoría de dependencias, 2026-08):** este documento describe un
+> estado muy temprano del prototipo. Ya no es exacto: la app actual sí tiene
+> OAuth de Google real (`backend/routers/auth.py`), persistencia real
+> (`backend/db.py`, SQLite local o Supabase Postgres), endpoints reales (no
+> mock), grabación/transcripción de audio funcional (`backend/routers/
+> conversation.py`) y generación de contenido con IA vía Groq/Pollinations/
+> Hugging Face (`backend/hf_client.py`), con 302 tests pasando en CI. Se deja
+> el documento como referencia histórica de planificación, no como estado
+> actual.
+
 ## 🔴 CRÍTICAS (Bloquean uso)
 
 ### 1. **Autenticación Real No Funciona**

@@ -1,5 +1,14 @@
 # Language.AI - AI Integration Architecture
 
+> **Nota (auditoría de dependencias, 2026-08):** este documento es un plan de
+> arquitectura temprano y **no refleja la implementación actual**. El backend
+> real (`backend/hf_client.py`, `backend/piper_tts.py`, `backend/rag.py`) usa
+> un stack basado en APIs (Groq, Pollinations.ai, Hugging Face Inference API,
+> ElevenLabs opcional) más Piper TTS autoalojado — deliberadamente sin Ollama,
+> sin Whisper/Stable Diffusion/spaCy locales ni `torch`, para mantener la
+> imagen Docker ligera (`python:3.12-slim`) y el costo en $0. Ver
+> `requirements.txt` para las dependencias realmente instaladas.
+
 ## Overview
 Integrar múltiples AIs open source en toda la aplicación para que cada rincón esté vivo con inteligencia artificial.
 

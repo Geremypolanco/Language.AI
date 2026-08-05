@@ -44,7 +44,7 @@ Lingua is a high-performance, mobile-first language learning application that le
 ## 🏁 Getting Started
 
 1. **Clone**: `gh repo clone Geremypolanco/Language.AI`
-2. **Install**: `pip install -r requirements.txt`
+2. **Install**: `pip install -r requirements.txt` (add `-r requirements-dev.txt` too if you plan to run the test suite).
 3. **Configure**: Set `GOOGLE_CSE_API_KEY` for enhanced image search (optional).
 4. **Launch**: `python -m backend.main`
 
