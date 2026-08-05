@@ -69,6 +69,15 @@ class Settings:
     tts_model_prefix: str = field(
         default_factory=lambda: os.environ.get("LINGUA_TTS_MODEL_PREFIX", "facebook/mms-tts")
     )
+    # BAAI/bge-m3: the current best open, genuinely multilingual (100+
+    # languages) sentence-embedding model with a live HF Inference Provider
+    # (confirmed directly against the Hub while designing backend/ai/ — see
+    # backend/ai/registry.py's AITask.EMBEDDING entry) — powers semantic
+    # library search (routers/library.py) via the same router.huggingface.co
+    # endpoint/HFGuard budget every other HF call in this file already uses.
+    hf_embedding_model: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_HF_EMBEDDING_MODEL", "BAAI/bge-m3")
+    )
     # Text-to-video has much narrower serverless Inference API support than
     # text/image/audio — this is the model most commonly available there.
     # Best-effort by design: a slow or unavailable model degrades to "video
@@ -150,6 +159,18 @@ class Settings:
     # storage engine, not one system pretending to be two.
     language_library_dir: str = field(
         default_factory=lambda: os.environ.get("LINGUA_LANGUAGE_LIBRARY_DIR", str(_BASE_DIR / "data" / "language_library"))
+    )
+    # Permanent, servable home for the Offline Voice Builder pipeline (see
+    # backend/ai/routers/speech.py's synthesize_asset) — pre-generated
+    # narration/pronunciation audio for academy glossaries and language
+    # flashcards, mounted at /audio-assets in main.py. Deliberately its own
+    # directory rather than living under cache_dir: this is the same
+    # "regenerable scratch space vs. permanent published content" split
+    # academy_library_dir/language_library_dir already draw, so cache_gc's
+    # LRU eviction (which only ever scans cache_dir) can never delete audio a
+    # course actually links to.
+    audio_assets_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_AUDIO_ASSETS_DIR", str(_BASE_DIR / "data" / "audio_assets"))
     )
     # Free, code-only disk-space safety valve (see cache_gc.py) instead of
     # paying to grow the Fly volume: a periodic background task deletes the

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from .. import auth, image_search, youtube_search
+from ..ai import ai_orchestrator
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Recommendation
@@ -28,7 +29,7 @@ class TTSRequest(BaseModel):
 
 @router.post("/tts")
 async def text_to_speech(payload: TTSRequest) -> Response:
-    result = await hf_client.text_to_speech(payload.text, payload.target_lang)
+    result = await ai_orchestrator.speech.synthesize(payload.text, payload.target_lang)
     if result is None:
         raise HTTPException(status_code=503, detail="Audio no disponible en este momento — inténtalo de nuevo")
     audio, media_type = result
@@ -53,18 +54,10 @@ class ImageRequest(BaseModel):
 
 @router.post("/image")
 async def generate_image(payload: ImageRequest) -> Response:
-    image = None
-    if not payload.skip_photo_search:
-        # Real free photos first (cheaper and often clearer for a
-        # general vocabulary flashcard than an AI illustration): Google
-        # Image Search if configured (best relevance), then Wikimedia
-        # Commons (needs no setup at all, so every install gets real
-        # photos even without configuring Google CSE).
-        image = await image_search.search_image(payload.prompt)
-        if image is None:
-            image = await image_search.search_wikimedia_commons(payload.prompt)
-    if image is None:
-        image = await hf_client.generate_image(payload.prompt)
+    # Real free photos first (cheaper and often clearer for a general
+    # vocabulary flashcard than an AI illustration), AI generation as the
+    # fallback — see backend/ai/routers/vision.py's illustrate().
+    image = await ai_orchestrator.vision.illustrate(payload.prompt, skip_photo_search=payload.skip_photo_search)
     if image is None:
         raise HTTPException(status_code=503, detail="Imagen no disponible en este momento — inténtalo de nuevo")
     return Response(content=image, media_type="image/jpeg")
@@ -76,7 +69,7 @@ class VideoRequest(BaseModel):
 
 @router.post("/video")
 async def generate_video(payload: VideoRequest) -> Response:
-    video = await hf_client.generate_video(payload.prompt)
+    video = await ai_orchestrator.vision.generate_video(payload.prompt)
     if video is None:
         raise HTTPException(status_code=503, detail="Video no disponible en este momento — inténtalo de nuevo más tarde")
     return Response(content=video, media_type="video/mp4")
@@ -122,7 +115,7 @@ async def get_gallery_item(query: str, index: int = 0, limit: int = 4) -> Respon
         return Response(content=images[index], media_type="image/jpeg")
     # Fewer real results than gallery slots requested — fill the rest with
     # AI generation rather than leaving a broken <img>.
-    image = await hf_client.generate_image(query)
+    image = await ai_orchestrator.vision.generate_image(query)
     if image is None:
         raise HTTPException(status_code=503, detail="Imagen no disponible en este momento — inténtalo de nuevo")
     return Response(content=image, media_type="image/jpeg")
@@ -134,7 +127,7 @@ async def speech_to_text(request: Request) -> dict:
     recorded audio bytes and gets back a transcript to self-check against."""
     audio_bytes = await request.body()
     content_type = request.headers.get("content-type", "audio/webm")
-    text = await hf_client.speech_to_text(audio_bytes, content_type)
+    text = await ai_orchestrator.speech.transcribe(audio_bytes, content_type)
     return {"text": text}
 
 
@@ -160,7 +153,7 @@ async def tutor_reply(payload: TutorReplyRequest) -> dict:
         {"role": "assistant", "content": payload.prompt},
         {"role": "user", "content": payload.user_answer},
     ]
-    reply = await hf_client.conversation_reply(system_prompt, history)
+    reply = await ai_orchestrator.llm.conversation_reply(system_prompt, history)
     return {"reply": reply}
 
 
@@ -200,7 +193,7 @@ Format: Return ONLY a JSON array of objects: [{{"title": "...", "content": "..."
     try:
         import json
         import re
-        news_raw = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=800)
+        news_raw = await ai_orchestrator.llm.chat([{"role": "user", "content": prompt}], max_tokens=800)
         cleaned = re.sub(r"^```(json)?|```$", "", news_raw.strip(), flags=re.MULTILINE).strip()
         news = json.loads(cleaned)
         return {"news": news}
@@ -223,5 +216,5 @@ Provide:
 3. A brief grammatical note if applicable.
 Respond in {payload.native_lang} with a professional, encouraging tone."""
     
-    explanation = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=500)
+    explanation = await ai_orchestrator.llm.chat([{"role": "user", "content": prompt}], max_tokens=500)
     return {"explanation": explanation}

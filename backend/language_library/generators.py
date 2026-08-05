@@ -18,7 +18,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .. import curriculum
-from ..hf_client import _parse_exercises, _with_teaching_intros, hf_client
+from ..ai import ai_orchestrator
+from ..hf_client import _parse_exercises, _with_teaching_intros
 from ..models import Exercise
 from . import validators
 
@@ -44,7 +45,7 @@ async def generate_unit_exercises(unit: "Unit", target_lang: str, native_lang: s
     last_problems: list[str] = ["no attempt made"]
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            raw = await hf_client.chat(
+            raw = await ai_orchestrator.llm.chat(
                 [
                     {"role": "system", "content": "You output only valid JSON, nothing else."},
                     {"role": "user", "content": prompt},

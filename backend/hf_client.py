@@ -1169,6 +1169,55 @@ class HFClient:
             if result is not None:
                 yield sentence, result[0], result[1]
 
+    # ── Text embeddings (semantic search / similarity ranking) ──────────
+
+    async def embed_text(self, text: str) -> list[float] | None:
+        """Real sentence embeddings via BAAI/bge-m3 (settings.hf_embedding_model)
+        — see backend/ai/registry.py's AITask.EMBEDDING entry for why that
+        model specifically. Called through the same HF Inference Providers
+        router and shared _HFGuard budget every other HF call in this file
+        uses (see _HFGuard's docstring: one shared budget, not a second
+        independent one per feature). Disk-cached forever, like every other
+        AI-generated asset here — an embedding for a given text never
+        changes. Returns None (never raises) if HF isn't configured, the
+        guard is closed, or the call itself fails — callers fall back to
+        plain keyword matching, same graceful-degrade shape as everything
+        else in this client."""
+        cache_path = self._cache_path("embed", f"{settings.hf_embedding_model}:{text}", "json")
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                return json.load(f)
+        if not settings.hf_configured or settings.testing or not self._hf_guard.allowed():
+            return None
+        try:
+            resp = await self._post_with_retry(
+                f"{settings.hf_models_endpoint}/{settings.hf_embedding_model}",
+                headers=self._hf_headers(),
+                json={"inputs": text},
+            )
+            if resp.status_code == 200:
+                vector = resp.json()
+                # feature-extraction responses vary by model/provider between a
+                # flat pooled-sentence vector ([...]) and a nested per-token/
+                # per-sequence wrapper ([[...]] or [[[...]]]); bge-m3 is a
+                # pooled sentence-embedding model so a flat list is expected,
+                # but this unwraps one level of nesting defensively either way.
+                while vector and isinstance(vector[0], list):
+                    vector = vector[0]
+                if not vector or not isinstance(vector[0], (int, float)):
+                    logger.warning("HF embedding returned an unexpected shape for model %s", settings.hf_embedding_model)
+                    return None
+                self._hf_guard.record_usage(len(text) // 4)
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(vector, f)
+                return vector
+            if resp.status_code in (402, 429):
+                self._hf_guard.record_rate_limited()
+            logger.warning("HF embedding HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception:
+            logger.exception("HF embedding failed")
+        return None
+
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:

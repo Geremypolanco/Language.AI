@@ -33,6 +33,7 @@ import logging
 from dataclasses import dataclass, field as dataclass_field
 
 from .. import curriculum
+from ..ai import asset_pipeline
 from ..models import CEFRLevel
 from . import generators
 from .generators import GenerationError
@@ -79,6 +80,12 @@ async def build_language_level(
             pair_key, level.value, version, unit.id, "content", [e.model_dump() for e in final_exercises]
         )
         flashcards = generators.build_flashcards(raw_exercises)
+        # Offline Voice Builder: pronounce every flashcard once, at build
+        # time, and store the audio permanently alongside it — see
+        # backend/ai/asset_pipeline.py.
+        flashcards = await asset_pipeline.add_flashcard_audio(
+            f"flashcards:{pair_key}:{level.value}:{unit.id}", target_lang, flashcards
+        )
         store.save_course_asset(pair_key, level.value, version, unit.id, "flashcards", flashcards)
         report.units_built += 1
 

@@ -155,11 +155,16 @@ def test_wrap_with_teaching_intros_delegates():
 
 def test_build_language_level_persists_content_and_flashcards_and_sets_version(tmp_path, monkeypatch):
     from backend import hf_client as hf_client_module
+    from backend.ai import ai_orchestrator
 
     async def fake_chat(messages, max_tokens=1000, temperature=0.7):
         return _VALID_EXERCISE_JSON
 
+    async def fake_synthesize_asset(namespace, key, text, target_lang, **kwargs):
+        return f"/audio-assets/{namespace}/{key}.wav"
+
     monkeypatch.setattr(hf_client_module.hf_client, "chat", fake_chat)
+    monkeypatch.setattr(ai_orchestrator.speech, "synthesize_asset", fake_synthesize_asset)
     # Limit scope to one unit so the test doesn't need one response per unit.
     monkeypatch.setattr(
         "backend.language_library.build.curriculum.units_for_level",
@@ -178,6 +183,9 @@ def test_build_language_level_persists_content_and_flashcards_and_sets_version(t
     assert content[1]["vocab_key"] == "greetings.hello"
     flashcards = store.load_course_asset("English:Spanish", "A1", unit_id, "flashcards")
     assert flashcards[0]["vocab_key"] == "greetings.hello"
+    # Offline Voice Builder: every flashcard is pre-pronounced and the
+    # permanent audio URL is persisted right alongside it.
+    assert flashcards[0]["audio_url"].startswith("/audio-assets/flashcards:English:Spanish:A1:")
 
 
 def test_build_language_level_is_resumable(tmp_path, monkeypatch):

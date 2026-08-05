@@ -3,7 +3,8 @@
 A WebSocket carries either recorded audio (base64) or typed text from the
 learner; the server transcribes (if audio), generates a level-appropriate
 tutor reply via the chat model, then synthesizes and streams its speech
-back sentence-by-sentence (hf_client.stream_speech) so the frontend can
+back sentence-by-sentence (ai_orchestrator.speech.stream — the Real-Time
+Voice pipeline, see AI_ARCHITECTURE.md) so the frontend can
 start playing the first clause while the rest is still being synthesized,
 instead of waiting on one TTS call sized to the whole reply — the practical,
 buildable version of "talk normally like in a video call" without needing
@@ -18,8 +19,8 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import auth, db, personas, srs, telemetry
+from ..ai import ai_orchestrator
 from ..curriculum import build_conversation_system_prompt
-from ..hf_client import hf_client
 from ..mentor_engine import adaptive_mentor, conversation_memory_adapter
 from .users import get_user_by_id_or_404
 
@@ -156,7 +157,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             if msg_type == "audio":
                 audio_bytes = base64.b64decode(msg.get("data", ""))
                 content_type = msg.get("content_type", "audio/webm")
-                transcript = await hf_client.speech_to_text(audio_bytes, content_type)
+                transcript = await ai_orchestrator.speech.transcribe(audio_bytes, content_type)
                 if not transcript:
                     await websocket.send_json(
                         {"type": "error", "message": "No se pudo transcribir el audio — intenta de nuevo o escribe en su lugar."}
@@ -190,7 +191,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             try:
                 with telemetry.timed(chat_timing):
                     messages = [{"role": "system", "content": system_prompt}, *history]
-                    async for chunk in hf_client.stream_chat(messages, temperature=teacher.sampling_temperature):
+                    async for chunk in ai_orchestrator.llm.stream_chat(messages, temperature=teacher.sampling_temperature):
                         reply_text += chunk
                         await websocket.send_json({"type": "reply_chunk", "text": chunk})
             except Exception:
@@ -215,7 +216,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             sentence_count = 0
             try:
                 with telemetry.timed(tts_timing):
-                    async for sentence, audio, media_type in hf_client.stream_speech(
+                    async for sentence, audio, media_type in ai_orchestrator.speech.stream(
                         reply_text, user.target_lang, teacher.voice_description, teacher.id
                     ):
                         sentence_count += 1
@@ -262,7 +263,7 @@ updated long-term memory of this learner (their progress, mistakes, interests, a
 Old Memory: {old_memory}
 History: {history_str}
 New Memory (max 200 words):"""
-        new_memory = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=300)
+        new_memory = await ai_orchestrator.llm.chat([{"role": "user", "content": prompt}], max_tokens=300)
         _update_user_memory(user_id, new_memory)
     except Exception:
         pass

@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from .. import academy, auth, db
 from ..academy_library.storage import get_default_store
+from ..ai import ai_orchestrator
 from ..hf_client import hf_client
 from ..learning_engine import (
     achievements,
@@ -316,7 +317,7 @@ async def get_scenario_feedback(
     user = get_user_by_id_or_404(user_id)
     row = _get_enrollment_row(user_id)
     content_lang = (row["content_lang"] if row else "") or user.native_lang
-    feedback = await hf_client.grade_practice_response(payload.scenario, payload.response, content_lang)
+    feedback = await ai_orchestrator.evaluation.grade_practice_response(payload.scenario, payload.response, content_lang)
     # Persisted so it can appear in the student's portfolio (see
     # learning_engine/portfolio.py) — previously this feedback was shown
     # once and then lost, even though it's real evidence of applied work.
@@ -387,7 +388,7 @@ async def submit_assignment(
     if not assignment:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    result = await hf_client.grade_assignment_submission(
+    result = await ai_orchestrator.evaluation.grade_assignment_submission(
         assignment["title"], assignment["instructions"], payload.response, content_lang
     )
     submitted_at = datetime.now(UTC).isoformat()

@@ -165,6 +165,12 @@ def _one_course_responses() -> list[str]:
 
 
 def test_build_field_level_persists_every_asset_and_sets_latest_version(tmp_path, monkeypatch):
+    from backend.ai import ai_orchestrator
+
+    async def fake_synthesize_asset(namespace, key, text, target_lang, **kwargs):
+        return f"/audio-assets/{namespace}/{key}.wav"
+
+    monkeypatch.setattr(ai_orchestrator.speech, "synthesize_asset", fake_synthesize_asset)
     # A real BACHELOR field needs 24 courses (validators require at least
     # half of them) — pin the pipeline's course_count to 1 so a single-
     # course fixture is enough to exercise the full asset pipeline cleanly.
@@ -180,7 +186,11 @@ def test_build_field_level_persists_every_asset_and_sets_latest_version(tmp_path
     assert store.get_latest_version("computer-science", "BACHELOR") == "v1"
     course_id = "computer-science:BACHELOR:0"
     assert store.load_course_asset("computer-science", "BACHELOR", course_id, "content")["modules"][0]["title"] == "M1"
-    assert store.load_course_asset("computer-science", "BACHELOR", course_id, "glossary")["terms"]
+    glossary = store.load_course_asset("computer-science", "BACHELOR", course_id, "glossary")
+    assert glossary["terms"]
+    # Offline Voice Builder: every glossary term is pre-pronounced and the
+    # permanent audio URL is persisted right alongside it.
+    assert glossary["terms"][0]["audio_url"].startswith("/audio-assets/glossary:computer-science:BACHELOR/")
     assert store.load_course_asset("computer-science", "BACHELOR", course_id, "quiz")["questions"]
     assert store.load_course_asset("computer-science", "BACHELOR", course_id, "exam")["rubric"] == "criteria"
     assignments = store.load_course_asset("computer-science", "BACHELOR", course_id, "assignments")

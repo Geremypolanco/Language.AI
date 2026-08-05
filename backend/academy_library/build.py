@@ -46,6 +46,7 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING
 
 from .. import academy
+from ..ai import asset_pipeline
 from ..models import AcademicLevel
 from . import generators
 from .generators import GenerationError
@@ -123,6 +124,12 @@ async def build_field_level(
                     data = await generators.generate_course_content(field, level, title, description, native_lang)
                 elif kind == "glossary":
                     data = await generators.generate_glossary(field, level, title, description, native_lang)
+                    # Offline Voice Builder: pronounce every glossary term once,
+                    # at build time, and store the audio permanently alongside
+                    # the term itself — see backend/ai/asset_pipeline.py.
+                    data = await asset_pipeline.add_glossary_audio(
+                        f"glossary:{field.id}:{level.value}", native_lang, data
+                    )
                 elif kind == "quiz":
                     data = await generators.generate_quiz(field, level, title, description, native_lang)
                 elif kind == "exam":

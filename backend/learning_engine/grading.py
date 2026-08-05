@@ -1,13 +1,14 @@
 """Grades one quiz/exam submission: multiple_choice/true_false are graded
 deterministically (the stored correct_answer), open/applied_problem
-questions are graded by the AI against their rubric_note (hf_client.
-grade_open_answer). Rolls everything into one 0..1 score, which the caller
-(routers/academy.py) feeds into competency.record_result.
+questions are graded by the Evaluation Router against their rubric_note
+(ai_orchestrator.evaluation.grade_open_answer). Rolls everything into one
+0..1 score, which the caller (routers/academy.py) feeds into
+competency.record_result.
 """
 
 from __future__ import annotations
 
-from ..hf_client import hf_client
+from ..ai import ai_orchestrator
 
 
 def _normalize(value: object) -> str:
@@ -27,7 +28,7 @@ async def grade_submission(questions: list[dict], answers: dict[str, str], nativ
             correct = _normalize(given) == _normalize(q.get("correct_answer"))
             results.append({"correct": correct, "feedback": ""})
         else:  # open, applied_problem
-            passed, feedback = await hf_client.grade_open_answer(
+            passed, feedback = await ai_orchestrator.evaluation.grade_open_answer(
                 q.get("question", ""), q.get("rubric_note", ""), given, native_lang
             )
             results.append({"correct": passed, "feedback": feedback})

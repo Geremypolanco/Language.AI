@@ -22,7 +22,7 @@ import re
 from typing import TYPE_CHECKING, Any, Callable
 
 from .. import academy
-from ..hf_client import hf_client
+from ..ai import ai_orchestrator
 from . import validators
 
 if TYPE_CHECKING:
@@ -55,7 +55,7 @@ async def _generate_validated(
     last_problems: list[str] = ["no attempt made"]
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            raw = await hf_client.chat(
+            raw = await ai_orchestrator.llm.chat(
                 [
                     {"role": "system", "content": "You output only valid JSON, nothing else."},
                     {"role": "user", "content": prompt},

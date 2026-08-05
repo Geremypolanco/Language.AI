@@ -1235,3 +1235,43 @@ def test_goal_milestones_404_for_unknown_goal():
         assert res.status_code == 404
         res2 = client.patch(f"/api/academy/{user['id']}/goals/999999/milestones/advance")
         assert res2.status_code == 404
+
+
+def test_library_search_falls_back_to_keyword_matching_without_embeddings():
+    # settings.testing (see conftest.py) makes hf_client.embed_text a no-op,
+    # so search_catalog's semantic_rank returns [] and it falls back to
+    # plain substring matching over title/blurb — still real results.
+    with TestClient(app) as client:
+        user = _onboard(client, email="library-search1@example.com")
+        res = client.get(f"/api/library/{user['id']}/search", params={"q": "tesoro", "limit": 5})
+        assert res.status_code == 200
+        results = res.json()
+        assert results  # "tesoro" (treasure) matches several adventure titles
+        assert all("tesoro" in b["title"].lower() for b in results)
+
+
+def test_library_search_respects_level_filter():
+    with TestClient(app) as client:
+        user = _onboard(client, email="library-search2@example.com")
+        res = client.get(f"/api/library/{user['id']}/search", params={"q": "misterio", "level": "A1", "limit": 20})
+        assert res.status_code == 200
+        assert all(b["level"] == "A1" for b in res.json())
+
+
+def test_persona_voice_profile_endpoint():
+    with TestClient(app) as client:
+        _onboard(client, email="persona-voice1@example.com")
+        res = client.get("/api/personas/core-elena/voice")
+        assert res.status_code == 200
+        profile = res.json()
+        assert profile["persona_id"] == "core-elena"
+        assert profile["rate"] in ("slow", "moderate", "fast")
+        assert profile["pitch"] in ("low", "moderate", "high")
+        assert isinstance(profile["style_tags"], list)
+
+
+def test_persona_voice_profile_404_for_unknown_persona():
+    with TestClient(app) as client:
+        _onboard(client, email="persona-voice2@example.com")
+        res = client.get("/api/personas/does-not-exist/voice")
+        assert res.status_code == 404

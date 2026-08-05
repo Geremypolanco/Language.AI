@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -110,6 +111,15 @@ def health() -> dict:
         "google_configured": settings.google_configured,
     }
 
+
+# Offline Voice Builder output (backend/ai/routers/speech.py's
+# synthesize_asset) — pre-generated, permanent narration/pronunciation audio
+# for academy glossaries and language flashcards. Created eagerly (unlike
+# _PUBLIC_DIR/_FRONTEND_DIST, which are build artifacts that may legitimately
+# be absent in CI) since it's this app's own writable data directory, same
+# as cache_dir/academy_library_dir/language_library_dir.
+os.makedirs(settings.audio_assets_dir, exist_ok=True)
+app.mount("/audio-assets", StaticFiles(directory=settings.audio_assets_dir), name="audio-assets")
 
 # Static asset mounting
 if _PUBLIC_DIR.exists():

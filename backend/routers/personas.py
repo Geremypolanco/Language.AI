@@ -11,7 +11,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from .. import auth, personas
-from ..hf_client import hf_client
+from ..ai import ai_orchestrator
+from ..ai.voices import VoiceProfile, voice_profile_for_persona
 from ..models import PersonaInfo
 
 router = APIRouter(prefix="/api/personas", tags=["personas"], dependencies=[Depends(auth.require_session)])
@@ -22,12 +23,25 @@ def list_core_teachers() -> list[PersonaInfo]:
     return [personas.to_persona_info(p) for p in personas.all_core_teachers()]
 
 
+@router.get("/{persona_id}/voice")
+def get_voice_profile(persona_id: str) -> VoiceProfile:
+    """Structured voice identity (rate/pitch/style — see backend/ai/voices.py)
+    for any persona, core or departmental faculty."""
+    persona = personas.get_persona(persona_id)
+    if persona is None:
+        raise HTTPException(status_code=404, detail="Maestro no encontrado")
+    return voice_profile_for_persona(persona)
+
+
 @router.get("/{persona_id}/portrait")
 async def get_portrait(persona_id: str) -> Response:
     persona = personas.get_persona(persona_id)
     if persona is None:
         raise HTTPException(status_code=404, detail="Maestro no encontrado")
-    image = await hf_client.generate_image(persona.portrait_prompt)
+    # Always AI-generated, never a real-photo search — see
+    # backend/ai/routers/vision.py's illustrate() docstring for why a
+    # crafted portrait prompt skips the photo-search tier entirely.
+    image = await ai_orchestrator.vision.illustrate(persona.portrait_prompt, skip_photo_search=True)
     if image is None:
         raise HTTPException(status_code=503, detail="Retrato no disponible en este momento — inténtalo de nuevo")
     return Response(content=image, media_type="image/jpeg")
