@@ -77,3 +77,16 @@ def weak_concepts(user_id: str, field_id: str) -> list[dict]:
     """Concepts still "unknown" or "learning" — the ones a Daily Plan or
     Mentor Insight would actually want to call out by name."""
     return [c for c in get_knowledge_profile(user_id, field_id) if c["status"] in ("unknown", "learning")]
+
+
+def get_concept_status(user_id: str, concept_id: str) -> str:
+    """Single-concept lookup — used by mentor_engine/concept_graph.py's
+    concept-level blocker detection, which needs one prerequisite
+    concept's status at a time rather than a whole field's profile."""
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT repetitions, mistake_count, ease_factor FROM vocab_progress WHERE user_id=? AND vocab_key=?",
+            (user_id, f"{_ACADEMIC_PREFIX}{concept_id}"),
+        )
+        row = cur.fetchone()
+    return _status_from_row(dict(row) if row else None)

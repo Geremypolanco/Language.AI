@@ -115,6 +115,93 @@ def test_validate_scenario():
     assert validators.validate_scenario("too short") != []
 
 
+def test_validate_concept_relations():
+    new_ids = {"c1::functions", "c1::recursion"}
+    known_ids = new_ids | {"c0::variables"}
+
+    # An empty list is a valid, honest result — not a validation failure.
+    assert validators.validate_concept_relations([], new_ids, known_ids) == []
+
+    good = [
+        {"concept": "c1::functions", "requires": "c0::variables"},
+        {"concept": "c1::recursion", "requires": "c1::functions"},
+    ]
+    assert validators.validate_concept_relations(good, new_ids, known_ids) == []
+
+    assert validators.validate_concept_relations(
+        [{"concept": "c0::variables", "requires": "c1::functions"}], new_ids, known_ids
+    ) != []  # "concept" must be one of this course's new concepts
+    assert validators.validate_concept_relations(
+        [{"concept": "c1::functions", "requires": "made-up-id"}], new_ids, known_ids
+    ) != []  # "requires" must be a real known id
+    assert validators.validate_concept_relations(
+        [{"concept": "c1::functions", "requires": "c1::functions"}], new_ids, known_ids
+    ) != []  # can't depend on itself
+    assert validators.validate_concept_relations(good + good[:1], new_ids, known_ids) != []  # duplicate
+
+
+# ── Concept relation generation (fine-grained concept graph) ─────────────
+
+
+def test_generate_concept_relations_success(monkeypatch):
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        return json.dumps([{"concept": "c1::recursion", "requires": "c0::functions"}])
+
+    monkeypatch.setattr(generators.hf_client, "chat", fake_chat)
+    result = asyncio.run(
+        generators.generate_concept_relations(
+            "Estructuras de Datos",
+            available_concepts=[{"id": "c0::functions", "term": "Functions", "definition": "d"}],
+            new_concepts=[{"id": "c1::recursion", "term": "Recursion", "definition": "d"}],
+        )
+    )
+    assert result == [{"concept": "c1::recursion", "requires": "c0::functions"}]
+
+
+def test_generate_concept_relations_accepts_empty_result_without_retrying(monkeypatch):
+    calls = []
+
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        calls.append(1)
+        return "[]"
+
+    monkeypatch.setattr(generators.hf_client, "chat", fake_chat)
+    result = asyncio.run(
+        generators.generate_concept_relations(
+            "Curso", available_concepts=[], new_concepts=[{"id": "c0::x", "term": "X", "definition": "d"}]
+        )
+    )
+    assert result == []
+    assert len(calls) == 1  # an honest "nothing depends on anything" isn't a validation failure
+
+
+def test_generate_concept_relations_retries_on_invalid_id_then_succeeds(monkeypatch):
+    responses = iter(
+        [
+            json.dumps([{"concept": "made-up-id", "requires": "c0::x"}]),
+            json.dumps([{"concept": "c1::y", "requires": "c0::x"}]),
+        ]
+    )
+
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        return next(responses)
+
+    monkeypatch.setattr(generators.hf_client, "chat", fake_chat)
+    result = asyncio.run(
+        generators.generate_concept_relations(
+            "Curso",
+            available_concepts=[{"id": "c0::x", "term": "X", "definition": "d"}],
+            new_concepts=[{"id": "c1::y", "term": "Y", "definition": "d"}],
+        )
+    )
+    assert result == [{"concept": "c1::y", "requires": "c0::x"}]
+
+
+def test_generate_concept_relations_skips_the_ai_call_with_no_new_concepts():
+    result = asyncio.run(generators.generate_concept_relations("Curso", available_concepts=[], new_concepts=[]))
+    assert result == []
+
+
 # ── Build pipeline ───────────────────────────────────────────────────────
 
 

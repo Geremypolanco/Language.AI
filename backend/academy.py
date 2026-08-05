@@ -282,3 +282,36 @@ def build_exam_prompt(
         f'{{"questions": [{{"type": "multiple_choice|true_false|open|applied_problem", "question": "...", '
         f'"options": ["..."], "correct_answer": "...", "rubric_note": "..."}}], "rubric": "..."}}'
     )
+
+
+def build_concept_relations_prompt(
+    course_title: str, available_concepts: list[dict], new_concepts: list[dict]
+) -> str:
+    """Asks the model for genuine concept-to-concept prerequisite links —
+    the fine-grained graph (e.g. "Recursion requires Functions") that sits
+    below the course-level "prerequisite_of" chain knowledge_graph.py
+    already builds from curriculum order alone. `available_concepts` are
+    terms already introduced (this course's own earlier terms plus the
+    previous course's), `new_concepts` are this course's glossary terms —
+    both as [{"id": ..., "term": ..., "definition": ...}, ...]. Only
+    `new_concepts` may be the dependent side of a relation: this pass
+    never retroactively rewrites an already-processed concept's edges."""
+    available_lines = "\n".join(f'- id="{c["id"]}": {c["term"]} — {c["definition"]}' for c in available_concepts)
+    new_lines = "\n".join(f'- id="{c["id"]}": {c["term"]} — {c["definition"]}' for c in new_concepts)
+    return f"""You are mapping real prerequisite relationships between technical concepts taught in the course "{course_title}".
+
+Concepts already introduced earlier (a student should already know these):
+{available_lines or "(none — this is the first course)"}
+
+New concepts introduced in this course:
+{new_lines}
+
+For each NEW concept that genuinely requires understanding one of the concepts above (either an
+earlier one, or another NEW concept) before it makes sense, output one entry. Only include a
+real, meaningful prerequisite relationship — do not invent a link just to have one, and do not
+link a new concept to itself.
+
+Respond with ONLY a JSON array, no other text, using the exact "id" values given above:
+[{{"concept": "<id of the new concept that depends on something>", "requires": "<id of the concept it depends on>"}}]
+If no new concept genuinely depends on anything above, respond with an empty array: []
+"""

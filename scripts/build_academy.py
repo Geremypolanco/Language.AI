@@ -20,15 +20,24 @@ Examples:
     # that field gets a new version; nothing else in the library is touched.
     python scripts/build_academy.py --fields computer-science --force
 
+After the content pipeline, this also builds the knowledge graph: course-
+level "prerequisite_of" edges from curriculum order (zero extra AI cost —
+see knowledge_graph.build_graph_for_field_level), and then, unless
+--skip-concept-relations is passed, a fine-grained concept-to-concept
+"depends_on" graph (one extra AI call per course beyond the first in each
+field/level — see academy_library.generators.generate_concept_relations)
+that the mentor engine's concept_graph.py uses to point at the *specific*
+concept a struggling student likely needs to revisit, not just "the course
+before this one."
+
 Requires HF_TOKEN (or another configured chat provider — see
 backend/hf_client.py's chat()) to actually generate anything; this is meant
 to be run from an environment with real AI credentials and budget, not from
 a CI job or a sandbox with LINGUA_TESTING set. Also writes to the app's own
 database (LINGUA_DB_PATH or SUPABASE_DB_URL) — run it against the same
 database the deployed app actually uses, since the knowledge graph it
-populates (concepts + prerequisite edges, see backend/learning_engine/
-knowledge_graph.py) is read live by routers/academy.py's recommendation
-and competency endpoints.
+populates is read live by routers/academy.py's recommendation, competency,
+and mentor endpoints.
 """
 
 from __future__ import annotations
@@ -41,7 +50,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend.academy_library import build  # noqa: E402
+from backend.academy_library import build, generators  # noqa: E402
+from backend.academy_library.generators import GenerationError  # noqa: E402
 from backend.academy_library.storage import FileSystemAcademyStore  # noqa: E402
 from backend.config import settings  # noqa: E402
 from backend.learning_engine import knowledge_graph  # noqa: E402
@@ -79,7 +89,44 @@ def parse_args() -> argparse.Namespace:
         help="Override settings.academy_library_dir (default: LINGUA_ACADEMY_LIBRARY_DIR env var, or "
         "data/academy_library).",
     )
+    parser.add_argument(
+        "--skip-concept-relations", action="store_true",
+        help="Skip the fine-grained, concept-to-concept dependency extraction pass (one extra AI call per "
+        "course beyond the first in each field/level) — leaves the knowledge graph with only the "
+        "course-level prerequisite_of chain, no per-concept depends_on edges.",
+    )
     return parser.parse_args()
+
+
+async def _build_concept_relations(
+    field_id: str, level: str, course_ids: list[str], curriculum: dict
+) -> tuple[int, int]:
+    """Fine-grained, concept-to-concept "depends_on" edges — the layer
+    below build_graph_for_field_level's course-level "prerequisite_of"
+    chain. For each course after the first, compares its own glossary
+    concepts against the immediately preceding course's (the same
+    "adjacent in curriculum order" assumption the course-level chain
+    already makes) and asks the model for genuine dependencies — see
+    academy_library.generators.generate_concept_relations. Returns
+    (courses_processed, relations_added); a course whose (or its
+    predecessor's) glossary isn't built yet is skipped, not an error."""
+    processed = 0
+    added = 0
+    for i in range(1, len(course_ids)):
+        new_concepts = knowledge_graph.concepts_for_course(course_ids[i])
+        available_concepts = knowledge_graph.concepts_for_course(course_ids[i - 1])
+        if not new_concepts or not available_concepts:
+            continue
+        course_title = curriculum["courses"][i]["title"]
+        try:
+            relations = await generators.generate_concept_relations(course_title, available_concepts, new_concepts)
+        except GenerationError as exc:
+            logger.warning("Concept relation extraction failed for %s/%s course %d: %s", field_id, level, i, exc)
+            continue
+        knowledge_graph.record_concept_relations(relations)
+        processed += 1
+        added += len(relations)
+    return processed, added
 
 
 async def main() -> int:
@@ -110,6 +157,15 @@ async def main() -> int:
         course_ids = [f"{report.field_id}:{report.level}:{i}" for i in range(len(curriculum["courses"]))]
         added = knowledge_graph.build_graph_for_field_level(report.field_id, report.level, course_ids, store)
         logger.info("Knowledge graph: %s/%s contributed concepts from %d course(s).", report.field_id, report.level, added)
+
+        if not args.skip_concept_relations:
+            processed, relations_added = await _build_concept_relations(
+                report.field_id, report.level, course_ids, curriculum
+            )
+            logger.info(
+                "Concept graph: %s/%s extracted %d depends_on edge(s) across %d course(s).",
+                report.field_id, report.level, relations_added, processed,
+            )
 
     logger.info("Done: %d succeeded, %d had failures.", len(ok), len(failed))
     for report in failed:

@@ -142,6 +142,32 @@ def prerequisite_courses(course_id: str) -> list[str]:
         return [row["from_concept_id"] for row in cur.fetchall()]
 
 
+def prerequisite_concepts(concept_id: str) -> list[str]:
+    """The fine-grained, concept-level counterpart to prerequisite_courses
+    — real concepts (from academy_library's build-time AI extraction pass,
+    see academy_library.generators.generate_concept_relations) that this
+    concept genuinely depends on, not just "the course before it." Uses
+    "depends_on" specifically so concept-level edges never mix with the
+    course-level "prerequisite_of" chain sharing the same table."""
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT from_concept_id FROM academic_concept_relation "
+            "WHERE to_concept_id=? AND relation_type='depends_on'",
+            (concept_id,),
+        )
+        return [row["from_concept_id"] for row in cur.fetchall()]
+
+
+def record_concept_relations(relations: list[dict]) -> None:
+    """Persists a batch of {"concept": ..., "requires": ...} pairs (the
+    shape academy_library.generators.generate_concept_relations returns)
+    as "depends_on" edges — `requires` is the prerequisite, `concept` is
+    the dependent, matching record_relation's (from, to) = (prerequisite,
+    dependent) convention."""
+    for r in relations:
+        record_relation(r["requires"], r["concept"], "depends_on")
+
+
 def get_concept(concept_id: str) -> dict | None:
     with db.cursor() as cur:
         cur.execute(

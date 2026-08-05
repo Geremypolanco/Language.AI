@@ -177,3 +177,24 @@ async def generate_scenario(
         return raw, validators.validate_scenario(raw)
 
     return await _generate_validated(prompt, parse_and_validate, max_tokens=500, temperature=0.8)
+
+
+async def generate_concept_relations(
+    course_title: str, available_concepts: list[dict], new_concepts: list[dict]
+) -> list[dict]:
+    """The fine-grained, concept-to-concept counterpart to knowledge_graph.
+    build_graph_for_field_level's course-level "prerequisite_of" chain —
+    see academy.build_concept_relations_prompt for exactly what's asked
+    and why an empty result is a valid, non-retried success. Returns a
+    list of {"concept": <new concept id>, "requires": <concept id>}."""
+    if not new_concepts:
+        return []
+    prompt = academy.build_concept_relations_prompt(course_title, available_concepts, new_concepts)
+    new_ids = {c["id"] for c in new_concepts}
+    known_ids = new_ids | {c["id"] for c in available_concepts}
+
+    def parse_and_validate(raw: str) -> tuple[list[dict], list[str]]:
+        data = _clean_json(raw)
+        return data, validators.validate_concept_relations(data, new_ids, known_ids)
+
+    return await _generate_validated(prompt, parse_and_validate, max_tokens=600, temperature=0.3)

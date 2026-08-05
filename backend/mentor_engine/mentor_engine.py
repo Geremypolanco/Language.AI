@@ -7,8 +7,11 @@ combines, and prioritizes.
 Modules (see each one's own docstring for what it does and doesn't do):
 - knowledge_profile.py — per-concept mastery map (Unknown/Learning/
   Practicing/Mastered/Expert), from real SM-2 review state.
-- concept_graph.py — course-level prerequisite "blocker" detection,
-  reusing learning_engine.knowledge_graph's real edges.
+- concept_graph.py — blocker detection at both course level (curriculum-
+  order edges, zero AI cost) and concept level (real "depends_on" edges
+  academy_library.generators.generate_concept_relations extracts per
+  course at build time — scripts/build_academy.py), reusing learning_
+  engine.knowledge_graph's edges either way.
 - recommendation_engine.py — 9 action types (review/advance/exercises/
   retake_exam/lab/read_material/simulation/tutor_conversation/rest),
   each with a reason + evidence — nothing opaque, ever.
@@ -31,25 +34,24 @@ package adds decision-making and orchestration on top, not new state.
 Scalability: every function here takes plain data in and returns plain
 dicts/lists out — no module holds a reference to another's internals.
 That's deliberate: swapping knowledge_profile's rule-based status buckets
-for embeddings-based similarity, concept_graph's course-level edges for a
-vector-similarity knowledge graph, recommendation_engine's rule-based
-scoring for a learned ranking model, or adding a multi-agent reasoning
-layer that calls several of these modules and arbitrates between their
-outputs — none of that requires changing this module's public functions'
-signatures, only what happens inside the module being upgraded.
+for embeddings-based similarity, concept_graph's extracted depends_on
+edges for a vector-similarity knowledge graph, recommendation_engine's
+rule-based scoring for a learned ranking model, or adding a multi-agent
+reasoning layer that calls several of these modules and arbitrates
+between their outputs — none of that requires changing this module's
+public functions' signatures, only what happens inside the module being
+upgraded.
 
 Deliberately NOT built yet (see each submodule's own docstring for the
 specific reasoning): embeddings/vector similarity anywhere in this
-package, a fine-grained (non-course-level) concept prerequisite graph, a
-trained recommendation-ranking model, curriculum-aware goal milestones
-for a goal that happens to match the student's enrollment, and a
-multi-agent reasoning layer. All five are explicitly designed-for
+package, a trained recommendation-ranking model, curriculum-aware goal
+milestones for a goal that happens to match the student's enrollment,
+and a multi-agent reasoning layer. All four are explicitly designed-for
 extension points (see "Scalability" above), not missing pieces bolted on
-as an afterthought — and none of them can be validated as real today
-without either labeled outcome data (a ranking/prediction model), a
-curated relation set (a finer concept graph), or an explicit goal-to-
-field link the student hasn't been asked to provide (curriculum-aware
-milestones).
+as an afterthought — none of them can be validated as real today without
+either labeled outcome data (a ranking/prediction model) or an explicit
+goal-to-field link the student hasn't been asked to provide (curriculum-
+aware milestones).
 """
 
 from __future__ import annotations

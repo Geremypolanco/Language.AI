@@ -91,6 +91,23 @@ def test_record_relation_rejects_unknown_type():
         pass
 
 
+def test_prerequisite_concepts_reads_depends_on_edges_only():
+    knowledge_graph.record_relation("c0::functions", "c1::recursion", "depends_on")
+    knowledge_graph.record_relation("c0::functions", "c1::recursion", "reinforces")  # different relation, ignored
+    assert knowledge_graph.prerequisite_concepts("c1::recursion") == ["c0::functions"]
+    assert knowledge_graph.prerequisite_concepts("c0::functions") == []
+
+
+def test_record_concept_relations_persists_a_batch_as_depends_on():
+    relations = [
+        {"concept": "c1::recursion", "requires": "c0::functions"},
+        {"concept": "c1::trees", "requires": "c1::recursion"},
+    ]
+    knowledge_graph.record_concept_relations(relations)
+    assert knowledge_graph.prerequisite_concepts("c1::recursion") == ["c0::functions"]
+    assert knowledge_graph.prerequisite_concepts("c1::trees") == ["c1::recursion"]
+
+
 # ── Competency ───────────────────────────────────────────────────────────
 
 

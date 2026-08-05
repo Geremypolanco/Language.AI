@@ -90,6 +90,13 @@ def test_weak_concepts_filters_to_unknown_and_learning():
     assert [c["concept_id"] for c in weak] == ["f:BACHELOR:0::a"]
 
 
+def test_get_concept_status_single_lookup():
+    _make_user()
+    assert knowledge_profile.get_concept_status("u1", "f:BACHELOR:0::never-reviewed") == "unknown"
+    _insert_vocab_progress("u1", "academic:f:BACHELOR:0::a", repetitions=8, mistake_count=0, ease_factor=2.6)
+    assert knowledge_profile.get_concept_status("u1", "f:BACHELOR:0::a") == "expert"
+
+
 # ── Concept graph (course-level blocker detection) ────────────────────────
 
 
@@ -124,6 +131,45 @@ def test_likely_root_cause_picks_the_weakest_blocker():
 def test_likely_root_cause_none_when_no_blockers():
     _make_user()
     assert concept_graph.likely_root_cause("u1", "f:BACHELOR:5") is None
+
+
+# ── Concept graph (fine-grained concept-to-concept blocker detection) ────
+
+
+def test_find_concept_blockers_flags_weak_prerequisite_concepts():
+    _make_user()
+    knowledge_graph.record_relation("c0::variables", "c1::functions", "depends_on")
+    # never reviewed -> "unknown", which is weak
+    blockers = concept_graph.find_concept_blockers("u1", "c1::functions")
+    assert blockers == [{"concept_id": "c0::variables", "status": "unknown"}]
+
+
+def test_find_concept_blockers_empty_when_prerequisite_concept_is_solid():
+    _make_user()
+    knowledge_graph.record_relation("c0::variables", "c1::functions", "depends_on")
+    _insert_vocab_progress("u1", "academic:c0::variables", repetitions=8, mistake_count=0, ease_factor=2.6)
+    assert concept_graph.find_concept_blockers("u1", "c1::functions") == []
+
+
+def test_find_concept_blockers_empty_when_no_extracted_dependency():
+    _make_user()
+    assert concept_graph.find_concept_blockers("u1", "c1::functions") == []
+
+
+def test_likely_concept_root_cause_prefers_unknown_over_learning():
+    _make_user()
+    knowledge_graph.record_relation("c0::variables", "c1::recursion", "depends_on")
+    knowledge_graph.record_relation("c0::functions", "c1::recursion", "depends_on")
+    _insert_vocab_progress("u1", "academic:c0::functions", repetitions=1)  # "learning", not "unknown"
+
+    root = concept_graph.likely_concept_root_cause("u1", "c1::recursion")
+    assert root["concept_id"] == "c0::variables"
+    assert root["status"] == "unknown"
+
+
+def test_likely_concept_root_cause_none_when_no_blockers():
+    _make_user()
+    assert concept_graph.likely_concept_root_cause("u1", "c1::recursion") is None
 
 
 # ── Intelligent Recommendations ───────────────────────────────────────────

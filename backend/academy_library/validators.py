@@ -123,3 +123,34 @@ def validate_scenario(text: str) -> list[str]:
         length = len(text.strip()) if isinstance(text, str) else "n/a"
         return [f"scenario text is too short ({length} chars)"]
     return []
+
+
+def validate_concept_relations(data: list, new_ids: set, known_ids: set) -> list[str]:
+    """An empty list is a valid result here (unlike every other validator
+    above) — "this course's concepts genuinely don't depend on anything
+    already introduced" is a real, honest answer, not a failure to
+    retry. Every entry that IS present must reference real concept ids
+    from this build, never an id the model made up."""
+    if not isinstance(data, list):
+        return [f"expected a list, got {data!r}"]
+    problems: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            problems.append(f"relation {i} is not an object")
+            continue
+        concept, requires = item.get("concept"), item.get("requires")
+        if concept not in new_ids:
+            problems.append(f"relation {i} concept {concept!r} is not one of this course's new concepts")
+            continue
+        if requires not in known_ids:
+            problems.append(f"relation {i} requires {requires!r} is not a known concept id")
+            continue
+        if concept == requires:
+            problems.append(f"relation {i} links concept {concept!r} to itself")
+            continue
+        if (concept, requires) in seen:
+            problems.append(f"relation {i} duplicates an earlier entry")
+            continue
+        seen.add((concept, requires))
+    return problems
