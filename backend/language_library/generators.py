@@ -3,14 +3,16 @@ result, and retries a bounded number of times before giving up — the
 "reintentar automáticamente" requirement, applied to language content the
 same way academy_library.generators applies it to academic content.
 
-Deliberately bypasses hf_client.generate_exercises — the on-demand path
-routers/lessons.py still falls back to for any unit the build hasn't
-covered yet (see build.py's module docstring). That path is single-shot
-(no retry beyond the one built into chat() itself) and, critically,
-personalizes on interests/recent_mistakes: build-time generation here
+Deliberately bypasses hf_client.generate_exercises — the single-shot (no
+retry beyond the one built into chat() itself), personalized-on-interests
+path that free practice (routers/lessons.py's get_practice_exercises) and
+review sessions (get_review_session) still use, since both are
+inherently per-user, not shared unit content. Build-time generation here
 always passes interests=[] and recent_mistakes=[], so every student
 studying a given unit gets byte-identical content — "el contenido
-pertenece al curso, no al usuario."
+pertenece al curso, no al usuario." routers/lessons.py's fixed-unit path
+(get_lesson_exercises) never calls hf_client.generate_exercises at all —
+it only reads what this build pipeline already persisted.
 """
 
 from __future__ import annotations

@@ -1,14 +1,23 @@
-"""Adaptive lesson delivery: skill path, exercise generation, answer grading."""
+"""Adaptive lesson delivery: skill path, exercise reading, answer grading.
+
+Learning Runtime half of a two-phase architecture (see backend/language_
+library/ for Phase 1, run ahead of time by scripts/build_languages.py):
+the fixed unit curriculum (get_lesson_exercises) is read-only here, never
+generated on the spot. Free-form practice (get_practice_exercises) and
+spaced-repetition review (get_review_session) stay AI-driven on purpose —
+both are inherently personalized to one learner in the moment (their own
+due words, their own live modality choice), not shared course content a
+build pipeline could produce ahead of time for every learner."""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import auth, db, srs
-from ..curriculum import ALPHABET_TOPIC, LessonRequest, Unit, all_units, get_unit, topic_es, units_for_level
+from ..curriculum import ALPHABET_TOPIC, LessonRequest, all_units, get_unit, topic_es, units_for_level
 from ..hf_client import hf_client
 from ..language_library.storage import get_default_store, language_pair_key
 from ..models import CEFRLevel, Exercise, ExerciseType
@@ -17,33 +26,6 @@ from .users import get_user_by_id_or_404
 logger = logging.getLogger("lingua.lessons")
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
-
-
-def _next_unit_after(unit_id: str) -> Unit | None:
-    """The unit immediately after `unit_id` in the flattened, level-ordered
-    skill tree — used to predict which unit a learner is about to open next
-    right after they complete one, so its exercises can be prefetched in
-    the background. Returns None for a synthetic practice-mode unit id
-    (there's no "next" one to predict) or the very last unit overall."""
-    units = all_units()
-    for i, unit in enumerate(units):
-        if unit.id == unit_id:
-            return units[i + 1] if i + 1 < len(units) else None
-    return None
-
-
-async def _prefetch_unit(unit: Unit, native_lang: str, target_lang: str, interests: list[str]) -> None:
-    """Same rationale as users.py's _prefetch_units (warm the disk cache so
-    the next click feels instant), but for one specific predicted unit
-    instead of a fixed count from the start of a level — this is what keeps
-    an already-active learner one step ahead as they progress, not just a
-    one-time warm-up at signup."""
-    try:
-        await hf_client.generate_exercises(
-            LessonRequest(unit=unit, native_lang=native_lang, target_lang=target_lang, interests=interests, recent_mistakes=[])
-        )
-    except Exception:
-        logger.exception("Background exercise prefetch failed for unit %s", unit.id)
 
 
 class UnitNode(BaseModel):
@@ -88,23 +70,20 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
 
 
 @router.get("/{user_id}/unit/{unit_id}", response_model=list[Exercise])
-async def get_lesson_exercises(
-    user_id: str, unit_id: str, session: dict = Depends(auth.require_owner)
-) -> list[Exercise]:
-    """The fixed unit curriculum — served from the pre-generated,
-    versioned library (backend/language_library/, built by scripts/
-    build_languages.py) whenever that (target_lang, native_lang, unit) has
-    been built, so it never waits on an AI call. Falls back to the
-    existing on-demand generation for any pair/unit not yet built —
-    deliberate, not a leftover, same reasoning as routers/academy.py's
-    fallback: cutting it off immediately would make every language pair
-    "unavailable" until someone ran a large, real-cost AI build first.
+def get_lesson_exercises(user_id: str, unit_id: str, session: dict = Depends(auth.require_owner)) -> list[Exercise]:
+    """The fixed unit curriculum — library-only, read from backend/
+    language_library/ (built ahead of time by scripts/build_languages.py).
+    404s if this (target_lang, native_lang, unit) hasn't been built yet —
+    there is no on-demand AI fallback here; run the build script for
+    whichever language pairs need to be available before students reach
+    them.
 
-    Free-form practice (get_practice_exercises below) is NOT wired to the
-    library on purpose — it personalizes on the learner's own
-    recent_mistakes and lets them pick modality live, which is exactly the
-    kind of per-user adaptation the pre-generated library deliberately
-    excludes (see language_library/__init__.py)."""
+    Free-form practice (get_practice_exercises below) and the review
+    session (get_review_session) are NOT wired to the library on purpose
+    — they personalize on the learner's own recent_mistakes/due items and
+    let them pick modality live, which is exactly the kind of per-user
+    adaptation a shared, pre-built library deliberately excludes (see
+    language_library/__init__.py)."""
     user = get_user_by_id_or_404(user_id)
     unit = get_unit(unit_id)
     if unit is None:
@@ -112,17 +91,9 @@ async def get_lesson_exercises(
 
     pair_key = language_pair_key(user.target_lang, user.native_lang)
     persisted = get_default_store().load_course_asset(pair_key, unit.level.value, unit.id, "content")
-    if persisted is not None:
-        return [Exercise(**item) for item in persisted]
-
-    req = LessonRequest(
-        unit=unit,
-        native_lang=user.native_lang,
-        target_lang=user.target_lang,
-        interests=user.interests,
-        recent_mistakes=srs.recent_mistakes(user_id),
-    )
-    return await hf_client.generate_exercises(req)
+    if persisted is None:
+        raise HTTPException(status_code=404, detail="Esta unidad aún no está disponible en este idioma")
+    return [Exercise(**item) for item in persisted]
 
 
 PRACTICE_UNIT_PREFIX = "practice"
@@ -233,13 +204,9 @@ class CompleteLessonRequest(BaseModel):
 
 @router.post("/{user_id}/complete")
 def complete_lesson(
-    user_id: str, payload: CompleteLessonRequest, background_tasks: BackgroundTasks, session: dict = Depends(auth.require_owner)
+    user_id: str, payload: CompleteLessonRequest, session: dict = Depends(auth.require_owner)
 ) -> dict:
-    user = get_user_by_id_or_404(user_id)
-    result = srs.record_lesson_result(
+    get_user_by_id_or_404(user_id)
+    return srs.record_lesson_result(
         user_id, payload.unit_id, max(0.0, min(1.0, payload.score)), max(0, payload.elapsed_seconds)
     )
-    next_unit = _next_unit_after(payload.unit_id)
-    if next_unit is not None:
-        background_tasks.add_task(_prefetch_unit, next_unit, user.native_lang, user.target_lang, user.interests)
-    return result

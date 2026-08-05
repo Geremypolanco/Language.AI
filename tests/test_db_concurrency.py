@@ -13,18 +13,22 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
 
 from backend import db
+from backend.academy_library.storage import FileSystemAcademyStore
 from backend.main import app
-from test_api import _onboard
+from backend.routers import academy as academy_router
+from test_api import _onboard, _seed_built_course
 
 
-def test_concurrent_course_completions_never_duplicate_or_crash():
+def test_concurrent_course_completions_never_duplicate_or_crash(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
     with TestClient(app) as client:
         user = _onboard(client, email="concurrency1@example.com")
         user_id = user["id"]
 
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        client.post(f"/api/academy/{user_id}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
-        course_id = client.get(f"/api/academy/{user_id}/curriculum").json()["courses"][0]["id"]
+        client.post(f"/api/academy/{user_id}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
 
         def complete_once():
             return client.post(f"/api/academy/{user_id}/courses/{course_id}/complete")

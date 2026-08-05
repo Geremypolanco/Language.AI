@@ -1,22 +1,23 @@
-"""Background prefetch tests — see users.py's _prefetch_units, lessons.py's
-_prefetch_unit/_next_unit_after, and academy.py's _prefetch_first_course.
-The goal all three serve: a learner's next click should hit an already-
-warm disk cache instead of waiting on an AI generation, without ever
-generating content for units/courses nobody has committed to yet.
+"""Learning Runtime read-only guarantees — see routers/academy.py's and
+routers/lessons.py's module docstrings for the two-phase architecture
+this enforces: Phase 1 (backend/academy_library/, backend/language_
+library/, both driven by scripts/build_*.py) is the only place that ever
+calls the chat model to produce curriculum/course/lesson/assignment/
+scenario content; Phase 2 (these routers, what a student's session
+actually hits) only ever reads what Phase 1 already published.
 
-FastAPI's TestClient runs BackgroundTasks synchronously as part of the
-request/response cycle (they execute after the handler returns, before the
-test gets its response back), so these tests can assert on prefetch side
-effects immediately after the triggering request completes — no polling
-or real backgrounding needed."""
+These tests patch hf_client.chat itself (the one primitive every content-
+generation call ultimately goes through) rather than a specific generate_*
+method, so a regression that reintroduces a generation call through any
+new code path would still be caught here."""
 
 from fastapi.testclient import TestClient
 
-from backend.curriculum import ALPHABET_TOPIC, units_for_level
+from backend.curriculum import units_for_level
 from backend.main import app
 from backend.models import CEFRLevel
+from backend.routers import academy as academy_router
 from backend.routers import lessons as lessons_router
-from backend.routers import users as users_router
 from conftest import dev_login
 
 
@@ -30,99 +31,62 @@ def _onboard(client, email):
     return res.json()
 
 
-def test_next_unit_after_returns_the_following_unit_in_the_skill_tree():
-    units = units_for_level(CEFRLevel.A1)
-    assert lessons_router._next_unit_after(units[0].id).id == units[1].id
+def _explode(*args, **kwargs):
+    raise AssertionError("the Learning Runtime must never call the chat model to generate content")
 
 
-def test_next_unit_after_returns_none_for_the_last_unit_and_unknown_ids():
-    from backend.curriculum import all_units
-
-    assert lessons_router._next_unit_after(all_units()[-1].id) is None
-    assert lessons_router._next_unit_after("practice-listen_type-A1") is None
-    assert lessons_router._next_unit_after("does-not-exist") is None
-
-
-def test_onboarding_prefetches_the_first_units_exercises(monkeypatch):
-    # users.py's _prefetch_units imports hf_client locally (deferred import
-    # inside the function body, not a module-level name on users_router) —
-    # patch the shared singleton instance directly instead, which every
-    # importer sees regardless of how they imported it.
+def test_onboarding_never_calls_the_chat_model(monkeypatch):
     from backend.hf_client import hf_client as hf_client_singleton
 
-    seen_units = []
-    original = hf_client_singleton.generate_exercises
+    async def explode_async(*args, **kwargs):
+        _explode()
 
-    async def spy(req, mix_override=None):
-        seen_units.append(req.unit.id)
-        return await original(req, mix_override)
-
-    monkeypatch.setattr(hf_client_singleton, "generate_exercises", spy)
+    monkeypatch.setattr(hf_client_singleton, "chat", explode_async)
 
     with TestClient(app) as client:
-        _onboard(client, email="prefetch-onboard@example.com")
-
-    expected = [u.id for u in units_for_level(CEFRLevel.A1)[: users_router._PREFETCH_UNIT_COUNT]]
-    assert seen_units == expected
-    # The alphabet unit is unit 0 for A1 — prefetch must still warm it like
-    # any other unit; only free-practice mode skips it as a content seed.
-    assert units_for_level(CEFRLevel.A1)[0].topic == ALPHABET_TOPIC
+        user = _onboard(client, email="prefetch-onboard@example.com")
+        assert user["id"]
 
 
-def test_completing_a_lesson_prefetches_only_the_next_unit(monkeypatch):
-    seen_units = []
-    original = lessons_router.hf_client.generate_exercises
+def test_enrolling_in_academy_never_calls_the_chat_model(monkeypatch):
+    async def explode_async(*args, **kwargs):
+        _explode()
 
-    async def spy(req, mix_override=None):
-        seen_units.append(req.unit.id)
-        return await original(req, mix_override)
+    monkeypatch.setattr(academy_router.hf_client, "chat", explode_async)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="prefetch-academy@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        res = client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        assert res.status_code == 200
+
+        # Nothing was built for this field — reading it back must 404,
+        # never silently generate it on the spot.
+        assert client.get(f"/api/academy/{user['id']}/curriculum").status_code == 404
+
+
+def test_completing_a_lesson_never_calls_the_chat_model(monkeypatch):
+    async def explode_async(*args, **kwargs):
+        _explode()
+
+    monkeypatch.setattr(lessons_router.hf_client, "chat", explode_async)
 
     with TestClient(app) as client:
         user = _onboard(client, email="prefetch-complete@example.com")
         units = units_for_level(CEFRLevel.A1)
 
-        monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", spy)
         res = client.post(
             f"/api/lessons/{user['id']}/complete",
             json={"unit_id": units[0].id, "score": 1.0, "elapsed_seconds": 60},
         )
         assert res.status_code == 200
 
-    assert seen_units == [units[1].id]
-
-
-def test_completing_the_last_unit_does_not_prefetch_anything(monkeypatch):
-    from backend.curriculum import all_units
-
-    seen_units = []
-    original = lessons_router.hf_client.generate_exercises
-
-    async def spy(req, mix_override=None):
-        seen_units.append(req.unit.id)
-        return await original(req, mix_override)
-
-    with TestClient(app) as client:
-        user = _onboard(client, email="prefetch-last@example.com")
-        last_unit_id = all_units()[-1].id
-
-        monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", spy)
-        res = client.post(
-            f"/api/lessons/{user['id']}/complete",
-            json={"unit_id": last_unit_id, "score": 1.0, "elapsed_seconds": 60},
-        )
-        assert res.status_code == 200
-
-    assert seen_units == []
-
 
 def test_get_lesson_exercises_serves_pre_built_content_without_calling_hf_client(monkeypatch):
     from backend.academy_library.storage import FileSystemAcademyStore
     from backend.language_library.storage import language_pair_key
 
-    async def explode(*args, **kwargs):
-        raise AssertionError("hf_client.generate_exercises must not run for a pre-built unit")
-
-    monkeypatch.setattr(lessons_router.hf_client, "generate_exercises", explode)
+    monkeypatch.setattr(lessons_router.hf_client, "chat", _explode)
 
     with TestClient(app) as client:
         user = _onboard(client, email="prefetch-library@example.com")
@@ -153,11 +117,11 @@ def test_get_lesson_exercises_serves_pre_built_content_without_calling_hf_client
             assert exercises[0]["vocab_key"] == "greetings.hello"
 
 
-def test_get_lesson_exercises_falls_back_when_unit_not_built(monkeypatch):
+def test_get_lesson_exercises_404_when_unit_not_built(monkeypatch):
     from backend.academy_library.storage import FileSystemAcademyStore
 
     with TestClient(app) as client:
-        user = _onboard(client, email="prefetch-library-fallback@example.com")
+        user = _onboard(client, email="prefetch-library-unbuilt@example.com")
         unit = units_for_level(CEFRLevel.A1)[1]
 
         import tempfile
@@ -167,48 +131,4 @@ def test_get_lesson_exercises_falls_back_when_unit_not_built(monkeypatch):
             monkeypatch.setattr(lessons_router, "get_default_store", lambda: store)
 
             res = client.get(f"/api/lessons/{user['id']}/unit/{unit.id}")
-            assert res.status_code == 200
-            assert len(res.json()) > 0  # existing on-demand path still works
-
-
-def test_enrolling_in_academy_prefetches_curriculum_and_first_course(monkeypatch):
-    from backend.routers import academy as academy_router
-
-    curriculum_calls = []
-    course_calls = []
-    assignment_calls = []
-
-    original_curriculum = academy_router.hf_client.generate_curriculum
-    original_course = academy_router.hf_client.generate_course_content
-    original_assignments = academy_router.hf_client.generate_assignments
-
-    async def curriculum_spy(field, level, native_lang):
-        curriculum_calls.append((field.id, level))
-        return await original_curriculum(field, level, native_lang)
-
-    async def course_spy(field, level, course_id, title, description, native_lang):
-        course_calls.append(course_id)
-        return await original_course(field, level, course_id, title, description, native_lang)
-
-    async def assignments_spy(field, level, course_id, title, description, native_lang):
-        assignment_calls.append(course_id)
-        return await original_assignments(field, level, course_id, title, description, native_lang)
-
-    monkeypatch.setattr(academy_router.hf_client, "generate_curriculum", curriculum_spy)
-    monkeypatch.setattr(academy_router.hf_client, "generate_course_content", course_spy)
-    monkeypatch.setattr(academy_router.hf_client, "generate_assignments", assignments_spy)
-
-    with TestClient(app) as client:
-        user = _onboard(client, email="prefetch-academy@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        res = client.post(
-            f"/api/academy/{user['id']}/enroll",
-            json={"field_id": field_id, "level": "ASSOCIATE"},
-        )
-        assert res.status_code == 200
-
-    assert len(curriculum_calls) == 1
-    assert curriculum_calls[0][0] == field_id
-    assert len(course_calls) == 1
-    assert len(assignment_calls) == 1
-    assert course_calls == assignment_calls  # same first course both times
+            assert res.status_code == 404

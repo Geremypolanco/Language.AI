@@ -1,6 +1,10 @@
 """University-prep academy: a self-paced, accelerated study layer covering
-common academic fields, on top of the same "generate on demand and cache"
-architecture the language curriculum and book library already use.
+common academic fields. Prompt builders here are used exclusively by
+backend/academy_library/generators.py's build-time Content Production
+Pipeline (see routers/academy.py's module docstring) — the Learning
+Runtime never calls them on the spot. The Library's book reader
+(routers/library.py) still generates on demand, cached forever per
+(book, target language) on first read.
 
 Two things are intentionally NOT here: (1) a live web-search integration —
 the HF chat model itself was trained on a huge amount of public information

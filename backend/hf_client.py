@@ -72,7 +72,7 @@ from .curriculum import (
 from .models import Exercise, ExerciseType
 
 if TYPE_CHECKING:
-    from .models import AcademicField, AcademicLevel, BookStub
+    from .models import BookStub
 
 logger = logging.getLogger("lingua.hf_client")
 
@@ -573,163 +573,6 @@ class HFClient:
             f.write(content)
         return content
 
-    # ── Academy (on-demand AI-generated accelerated study curricula) ────
-
-    async def generate_curriculum(self, field: "AcademicField", level: "AcademicLevel", native_lang: str) -> list[dict]:
-        """Generates (once) and caches the ordered course list for a
-        (field, academic level) pair — analogous to generate_book_content,
-        but for a curriculum outline instead of a story. Content is written
-        in native_lang on purpose: the academy exists to teach real subject
-        knowledge, which the learner needs to actually understand — language
-        immersion is handled separately by the Lessons/Library, not here."""
-        from .academy import build_curriculum_prompt
-
-        cache_key = f"{field.id}:{level.value}:{native_lang}"
-        cache_path = self._cache_path("curriculum", cache_key, "json")
-        if os.path.exists(cache_path):
-            with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
-
-        from . import rag
-
-        # ELITE RAG: Parallel fetch from ArXiv and Wikipedia for deep grounding
-        arxiv_task = rag.fetch_arxiv_context(field.id, field.name)
-        wiki_task = rag.fetch_wikipedia_context(field.name)
-        arxiv_context, wiki_context = await asyncio.gather(arxiv_task, wiki_task)
-        
-        context = f"{arxiv_context}\n\n{wiki_context}".strip()
-        
-        prompt = build_curriculum_prompt(field, level.label_es, level.course_count, native_lang)
-        if context:
-            prompt = f"### REFERENCE DATA FROM REAL SOURCES (Wikipedia & ArXiv):\n{context}\n\n### INSTRUCTIONS:\n{prompt}"
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1600,
-                temperature=0.5,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            items = json.loads(cleaned)
-            courses = [
-                {"title": item.get("title", ""), "description": item.get("description", "")}
-                for item in items
-                if item.get("title")
-            ]
-        except Exception:
-            logger.exception("AI curriculum generation failed, using offline fallback content")
-            return _fallback_curriculum(field, level)
-
-        # Only successful HF generations are cached — same rule as books: a
-        # fallback must never get stuck on disk once a token is configured.
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(courses, f)
-        return courses
-
-    async def generate_course_content(
-        self,
-        field: "AcademicField",
-        level: "AcademicLevel",
-        course_id: str,
-        course_title: str,
-        course_description: str,
-        native_lang: str,
-    ) -> list[dict]:
-        """Generates (once) and caches a course's module content, written in
-        native_lang — same rationale as generate_curriculum."""
-        from .academy import build_course_prompt
-
-        cache_key = f"{course_id}:{native_lang}"
-        cache_path = self._cache_path("course", cache_key, "json")
-        if os.path.exists(cache_path):
-            with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
-
-        from . import rag
-
-        context = await rag.fetch_arxiv_context(field.id, course_title)
-        if not context:
-            context = await rag.fetch_wikipedia_context(course_title)
-        prompt = build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
-        if context:
-            prompt = f"{context}\n\n{prompt}"
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1800,
-                temperature=0.6,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            items = json.loads(cleaned)
-            modules = [
-                {"title": item.get("title", ""), "content": item.get("content", "")}
-                for item in items
-                if item.get("content")
-            ]
-        except Exception:
-            logger.exception("AI course generation failed, using offline fallback content")
-            return [
-                {
-                    "title": "No se pudo generar el curso",
-                    "content": "Inténtalo de nuevo en un momento.",
-                }
-            ]
-
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(modules, f)
-        return modules
-
-    async def generate_practice_scenario(
-        self,
-        field: "AcademicField",
-        level: "AcademicLevel",
-        course_id: str,
-        course_title: str,
-        course_description: str,
-        native_lang: str,
-    ) -> str:
-        """Hands-on fields (nursing, engineering, business, ...) need more than
-        theory — this generates a realistic case/scenario the learner responds
-        to in their own words, with AI feedback on their answer (see
-        grade_practice_response). Cached per course like the lesson content;
-        this is deliberately a text-based simulation, not real clinical/lab
-        practice — the honest, buildable version of "practice, not just
-        theory" for a software-only product. Written in native_lang, same
-        rationale as the rest of the academy."""
-        from .academy import build_practice_scenario_prompt
-
-        cache_path = self._cache_path("scenario", f"{course_id}:{native_lang}", "txt")
-        if os.path.exists(cache_path):
-            with open(cache_path, encoding="utf-8") as f:
-                return f.read()
-
-        prompt = build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang)
-        try:
-            content = await self.chat(
-                [
-                    {
-                        "role": "system",
-                        "content": "You design realistic, hands-on practice scenarios for students. Output only "
-                        "the scenario text, no meta-commentary.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=500,
-                temperature=0.8,
-            )
-        except Exception:
-            logger.exception("AI scenario generation failed, using offline fallback content")
-            return "No se pudo generar el caso práctico en este momento — inténtalo de nuevo."
-
-        with open(cache_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return content
-
     async def grade_practice_response(self, scenario: str, user_response: str, native_lang: str) -> str:
         """Feedback on the learner's own answer to a practice scenario — not
         cached, since it depends on what they personally wrote. Written in
@@ -749,70 +592,6 @@ class HFClient:
         except Exception:
             logger.exception("AI scenario feedback failed")
             return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
-
-    async def generate_assignments(
-        self,
-        field: "AcademicField",
-        level: "AcademicLevel",
-        course_id: str,
-        course_title: str,
-        course_description: str,
-        native_lang: str,
-    ) -> list[dict]:
-        """Generates (once) and caches real, gradeable schoolwork for a
-        course — one tarea, one informe, one proyecto — the same shape of
-        assigned work a normal school/university course gives, on top of
-        the theory in generate_course_content and the ungraded practice
-        scenario above."""
-        from .academy import build_assignments_prompt
-
-        cache_key = f"{course_id}:{native_lang}"
-        cache_path = self._cache_path("assignments", cache_key, "json")
-        if os.path.exists(cache_path):
-            with open(cache_path, encoding="utf-8") as f:
-                return json.load(f)
-
-        prompt = build_assignments_prompt(field, level.label_es, course_title, course_description, native_lang)
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                # 3 detailed, native-language instruction blocks (submission
-                # format, word counts, exact questions) routinely ran past a
-                # smaller budget and got cut off mid-JSON, which then failed
-                # to parse and fell straight to the "no se pudo generar"
-                # fallback even though the model was actually answering.
-                max_tokens=1800,
-                temperature=0.6,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            items = json.loads(cleaned)
-            assignments = [
-                {
-                    "id": f"{course_id}:{i}",
-                    "type": item.get("type", "tarea"),
-                    "title": item.get("title", ""),
-                    "instructions": item.get("instructions", ""),
-                }
-                for i, item in enumerate(items)
-                if item.get("instructions")
-            ]
-        except Exception:
-            logger.exception("AI assignment generation failed, using offline fallback content")
-            return [
-                {
-                    "id": f"{course_id}:0",
-                    "type": "tarea",
-                    "title": "No se pudieron generar las tareas",
-                    "instructions": "Inténtalo de nuevo en un momento.",
-                }
-            ]
-
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(assignments, f)
-        return assignments
 
     async def grade_assignment_submission(
         self, assignment_title: str, instructions: str, response: str, native_lang: str
@@ -1367,18 +1146,6 @@ def _fallback_exercises(req: LessonRequest, mix_override: list[ExerciseType] | N
             )
         )
     return exercises
-
-
-def _fallback_curriculum(field: "AcademicField", level: "AcademicLevel") -> list[dict]:
-    """Deterministic, network-free course list for when generation genuinely
-    fails — same role as _fallback_exercises for lessons."""
-    return [
-        {
-            "title": f"{field.name} — módulo {i + 1}",
-            "description": "(No se pudo generar el plan de estudios en este momento — inténtalo de nuevo)",
-        }
-        for i in range(level.course_count)
-    ]
 
 
 hf_client = HFClient()

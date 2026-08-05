@@ -2,26 +2,31 @@
 result (academy_library.validators), and retries a bounded number of times
 before giving up if Hugging Face/the chat model produces invalid output.
 
-Distinct from hf_client.py's existing generate_curriculum/generate_course_
-content/generate_assignments/generate_practice_scenario: those serve the
-legacy on-demand-generate-and-disk-cache path that routers/academy.py still
-falls back to for any (field, level) the build pipeline hasn't covered yet
-(see build.py's module docstring for why that fallback exists). The
-functions here are pipeline-only: they are never disk-cached themselves
-(the caller — build.py — is responsible for persisting the validated result
-through an AcademyStore) and they raise GenerationError instead of quietly
-returning filler/placeholder content, since a build-time failure should
-surface loudly in the build log rather than silently publish something that
-looks like a real course but isn't.
+This is the ONLY place in the app that generates academic content — the
+Content Production Pipeline (see build.py). routers/academy.py (the
+Learning Runtime) never calls an AI model to produce curriculum, course
+content, assignments, or practice scenarios; it only reads what build.py
+already persisted here. Functions here are never disk-cached themselves
+(the caller — build.py — is responsible for persisting the validated
+result through an AcademyStore) and they raise GenerationError instead of
+quietly returning filler/placeholder content, since a build-time failure
+should surface loudly in the build log rather than silently publish
+something that looks like a real course but isn't.
+
+generate_curriculum/generate_course_content ground their prompts in real
+arXiv/Wikipedia material (backend/rag.py) — ported here from the retired
+hf_client.py on-demand path that used to do this, so build-time content
+keeps the same grounding quality the old live-generation path had.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import TYPE_CHECKING, Any, Callable
 
-from .. import academy
+from .. import academy, rag
 from ..hf_client import hf_client
 from . import validators
 
@@ -73,7 +78,14 @@ async def _generate_validated(
 
 
 async def generate_curriculum(field: "AcademicField", level: "AcademicLevel", native_lang: str, course_count: int) -> dict:
+    arxiv_context, wiki_context = await asyncio.gather(
+        rag.fetch_arxiv_context(field.id, field.name), rag.fetch_wikipedia_context(field.name)
+    )
+    context = f"{arxiv_context}\n\n{wiki_context}".strip()
+
     prompt = academy.build_curriculum_prompt(field, level.label_es, course_count, native_lang)
+    if context:
+        prompt = f"### REFERENCE DATA FROM REAL SOURCES (Wikipedia & ArXiv):\n{context}\n\n### INSTRUCTIONS:\n{prompt}"
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         items = _clean_json(raw)
@@ -92,7 +104,13 @@ async def generate_curriculum(field: "AcademicField", level: "AcademicLevel", na
 async def generate_course_content(
     field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str
 ) -> dict:
+    context = await rag.fetch_arxiv_context(field.id, course_title)
+    if not context:
+        context = await rag.fetch_wikipedia_context(course_title)
+
     prompt = academy.build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
+    if context:
+        prompt = f"{context}\n\n{prompt}"
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         items = _clean_json(raw)

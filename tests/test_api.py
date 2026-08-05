@@ -1,10 +1,27 @@
 from fastapi.testclient import TestClient
 
 from backend.academy_library.storage import FileSystemAcademyStore
+from backend.language_library.storage import language_pair_key
 from backend.main import app
 from backend.models import AcademicField
 from backend.routers import academy as academy_router
+from backend.routers import lessons as lessons_router
 from conftest import dev_login
+
+
+def _seed_language_unit(store, target_lang, native_lang, unit_id, level, vocab_key="greetings.hello"):
+    pair_key = language_pair_key(target_lang, native_lang)
+    store.save_course_asset(
+        pair_key, level, "v1", unit_id, "content",
+        [
+            {
+                "id": f"{unit_id}-0", "type": "translate_to_target", "prompt": "Traduce", "target_text": "hola",
+                "native_text": "hello", "options": [], "correct_answer": "hola", "image_prompt": "",
+                "audio_text": "hola", "vocab_key": vocab_key,
+            }
+        ],
+    )
+    store.set_latest_version(pair_key, level, "v1")
 
 
 def _onboard(client, email="ada@example.com"):
@@ -23,7 +40,10 @@ def _onboard(client, email="ada@example.com"):
     return res.json()
 
 
-def test_full_onboarding_lesson_and_progress_flow():
+def test_full_onboarding_lesson_and_progress_flow(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(lessons_router, "get_default_store", lambda: store)
+
     with TestClient(app) as client:
         user = _onboard(client)
         user_id = user["id"]
@@ -39,6 +59,7 @@ def test_full_onboarding_lesson_and_progress_flow():
         a1_units = [u for u in units if u["level"] == "A1"]
 
         first_unit_id = a1_units[0]["id"]
+        _seed_language_unit(store, user["target_lang"], user["native_lang"], first_unit_id, "A1")
         lesson_res = client.get(f"/api/lessons/{user_id}/unit/{first_unit_id}")
         assert lesson_res.status_code == 200
         exercises = lesson_res.json()
@@ -87,12 +108,16 @@ def test_first_ever_lesson_starts_the_streak_at_one():
         assert complete["streak_days"] == 1
 
 
-def test_any_unit_is_reachable_regardless_of_level():
+def test_any_unit_is_reachable_regardless_of_level(monkeypatch, tmp_path):
     """The learner decides what to master first — a C2 unit must be just as
     reachable as an A1 one from day one, no level gate."""
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(lessons_router, "get_default_store", lambda: store)
+
     with TestClient(app) as client:
         user = _onboard(client)
         advanced_unit_id = "C2-0"
+        _seed_language_unit(store, user["target_lang"], user["native_lang"], advanced_unit_id, "C2")
         res = client.get(f"/api/lessons/{user['id']}/unit/{advanced_unit_id}")
         assert res.status_code == 200
         assert len(res.json()) > 0
@@ -556,26 +581,28 @@ def test_academy_curriculum_requires_enrollment_first():
         assert res.status_code == 404
 
 
-def test_academy_enroll_curriculum_course_and_complete_flow():
+def test_academy_enroll_curriculum_course_and_complete_flow(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
     with TestClient(app) as client:
         user = _onboard(client, email="academy2@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
 
         enroll_res = client.post(
             f"/api/academy/{user['id']}/enroll",
-            json={"field_id": field_id, "level": "ASSOCIATE"},
+            json={"field_id": "computer-science", "level": "ASSOCIATE"},
         )
         assert enroll_res.status_code == 200
         enrollment = enroll_res.json()
-        assert enrollment["field_id"] == field_id
+        assert enrollment["field_id"] == "computer-science"
         assert enrollment["level"] == "ASSOCIATE"
         assert "no otorga" not in enrollment["level_label"].lower()  # label itself is short; disclaimer lives in the UI
 
         curriculum_res = client.get(f"/api/academy/{user['id']}/curriculum")
         assert curriculum_res.status_code == 200
         courses = curriculum_res.json()["courses"]
-        assert len(courses) == 12  # ASSOCIATE.course_count
-        course_id = courses[0]["id"]
+        assert courses[0]["id"] == course_id
 
         course_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}")
         assert course_res.status_code == 200
@@ -585,12 +612,25 @@ def test_academy_enroll_curriculum_course_and_complete_flow():
         assert complete_res.status_code == 200
         progress = complete_res.json()
         assert progress["completed_course_ids"] == [course_id]
-        assert progress["total_courses"] == 12
+        assert progress["total_courses"] == 1
 
         # Completing again is idempotent, not double-counted.
         client.post(f"/api/academy/{user['id']}/courses/{course_id}/complete")
         progress2 = client.get(f"/api/academy/{user['id']}/progress").json()
         assert progress2["completed_course_ids"] == [course_id]
+
+
+def test_academy_curriculum_and_course_404_before_content_is_built():
+    """No on-demand fallback exists anymore — the Learning Runtime only
+    reads what the Content Production Pipeline already published (see
+    routers/academy.py's module docstring)."""
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-unbuilt@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+
+        curriculum_res = client.get(f"/api/academy/{user['id']}/curriculum")
+        assert curriculum_res.status_code == 404
 
 
 def test_academy_re_enrolling_switches_field_and_level():
@@ -635,18 +675,24 @@ def test_academy_fields_include_tutor_name():
         assert len({f["tutor_name"] for f in fields}) == len(fields)  # every tutor name is unique
 
 
-def test_academy_practice_scenario_and_feedback_demo_mode():
+def test_academy_practice_scenario_and_feedback(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
     with TestClient(app) as client:
         user = _onboard(client, email="academy6@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
-        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
 
         scenario_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}/scenario")
         assert scenario_res.status_code == 200
         scenario = scenario_res.json()["scenario"]
         assert scenario
 
+        # Feedback on the student's own response is grading, not content
+        # generation — grade_practice_response fails closed with a real
+        # message rather than raising, so this works even with the chat
+        # model disabled in tests.
         feedback_res = client.post(
             f"/api/academy/{user['id']}/courses/{course_id}/scenario/feedback",
             json={"scenario": scenario, "response": "Yo haría un diagnóstico paso a paso."},
@@ -655,12 +701,14 @@ def test_academy_practice_scenario_and_feedback_demo_mode():
         assert feedback_res.json()["feedback"]
 
 
-def test_academy_assignments_generate_and_submit_demo_mode():
+def test_academy_assignments_get_and_submit(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
     with TestClient(app) as client:
         user = _onboard(client, email="academy7@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
-        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
 
         assignments_res = client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments")
         assert assignments_res.status_code == 200
@@ -681,6 +729,8 @@ def test_academy_assignments_generate_and_submit_demo_mode():
         submitted = next(a for a in assignments_after if a["id"] == assignment_id)
         assert submitted["submitted"] is True
         assert submitted["response"] == "Mi respuesta a la tarea."
+
+
 
 
 def _seed_built_course(store, field_id, level, course_index=0):
@@ -739,20 +789,28 @@ def test_academy_serves_pre_built_content_from_the_library_without_calling_hf_cl
         assert scenario["scenario"] == "Un escenario práctico ya persistido para este curso."
 
 
-def test_academy_glossary_quiz_exam_404_when_course_not_yet_built(tmp_path, monkeypatch):
+def test_academy_glossary_quiz_exam_scenario_assignments_404_when_course_not_yet_built(tmp_path, monkeypatch):
+    """The curriculum + course content exist, but none of the other asset
+    types have been built yet for this course — every one of them is
+    library-only now (no on-demand fallback for any content type)."""
     store = FileSystemAcademyStore(str(tmp_path))
     monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    field_id, level = "computer-science", "ASSOCIATE"
+    course_id = f"{field_id}:{level}:0"
+    store.save_curriculum(field_id, level, "v1", {"courses": [{"title": "Curso", "description": "Una descripción real y completa."}]})
+    store.save_course_asset(field_id, level, "v1", course_id, "content", {"modules": [{"title": "M", "content": "contenido " * 20}]})
+    store.set_latest_version(field_id, level, "v1")
 
     with TestClient(app) as client:
         user = _onboard(client, email="academy-library2@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
-        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": level})
 
         assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/glossary").status_code == 404
         assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/quiz").status_code == 404
         assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/exam").status_code == 404
-        # Legacy content types still work via on-demand fallback — unaffected by not being pre-built.
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/scenario").status_code == 404
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/assignments").status_code == 404
+        # Course content itself was built — this one succeeds.
         assert client.get(f"/api/academy/{user['id']}/courses/{course_id}").status_code == 200
 
 
@@ -862,12 +920,15 @@ def test_academy_quiz_submission_missing_answers_score_zero_and_no_mastery(monke
 def test_academy_quiz_submit_404_when_not_built(tmp_path, monkeypatch):
     store = FileSystemAcademyStore(str(tmp_path))
     monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    field_id, level = "computer-science", "ASSOCIATE"
+    course_id = f"{field_id}:{level}:0"
+    store.save_curriculum(field_id, level, "v1", {"courses": [{"title": "Curso", "description": "Una descripción real y completa."}]})
+    store.save_course_asset(field_id, level, "v1", course_id, "content", {"modules": [{"title": "M", "content": "contenido " * 20}]})
+    store.set_latest_version(field_id, level, "v1")
 
     with TestClient(app) as client:
         user = _onboard(client, email="academy-learning3@example.com")
-        field_id = client.get("/api/academy/fields").json()[0]["id"]
-        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
-        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": level})
 
         res = client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {}})
         assert res.status_code == 404
