@@ -20,6 +20,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .. import auth, db, personas, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
+from ..mentor_engine import adaptive_mentor, conversation_memory_adapter
 from .users import get_user_by_id_or_404
 
 _DEFAULT_PERSONA_ID = "core-marcus"  # warm, conversational — the closest match to the old generic tutor voice
@@ -38,12 +39,6 @@ def _log_turn(user_id: str, role: str, content: str) -> None:
             (user_id, role, content, db.now_iso()),
         )
 
-
-def _get_user_memory(user_id: str) -> str:
-    with db.cursor() as cur:
-        cur.execute("SELECT content FROM user_memories WHERE user_id=?", (user_id,))
-        row = cur.fetchone()
-        return row["content"] if row else ""
 
 def _update_user_memory(user_id: str, new_memory: str) -> None:
     with db.cursor() as cur:
@@ -85,7 +80,7 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     requested_persona_id = websocket.query_params.get("persona") or user.tutor_persona_id or _DEFAULT_PERSONA_ID
     teacher = personas.get_core_teacher(requested_persona_id) or personas.get_core_teacher(_DEFAULT_PERSONA_ID)
     debate = websocket.query_params.get("debate") == "true"
-    memory = _get_user_memory(user_id)
+    memory = conversation_memory_adapter.get_memory(user_id)
     system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
 
     # Dual-core persona voice: the Instructor Core (system_voice) sets this
@@ -115,6 +110,16 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
         "\n\n### ADAPTIVE TONE: If the learner's latest message reads as frustrated, confused, or "
         "like they're struggling, respond with extra patience, simpler words, and more encouragement."
     )
+
+    # ADAPTIVE MENTOR: unlike the per-message ADAPTIVE TONE rule above,
+    # this reacts to the student's broader trend across sessions (recent
+    # lesson scores) rather than the current message alone — see
+    # mentor_engine/adaptive_mentor.py. Empty string (nothing appended)
+    # when there's no real "apoyo"/"reto" signal either way.
+    mentor_mode = adaptive_mentor.get_mentor_mode(user_id)
+    mode_instruction = adaptive_mentor.mode_instruction_text(mentor_mode)
+    if mode_instruction:
+        system_prompt += f"\n\n{mode_instruction}"
 
     # PREDICTIVE SRS: surface real due-for-review vocab (or, failing that, past
     # mistakes) from vocab_progress instead of a hardcoded placeholder list.

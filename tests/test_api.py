@@ -1146,3 +1146,92 @@ def test_learning_style_and_motivation_endpoints():
         motivation_res2 = client.get(f"/api/academy/{user['id']}/motivation").json()
         assert motivation_res2["signal"] == "buen_momentum"
         assert motivation_res2["message"] != ""
+
+
+def test_mentor_endpoints_work_without_academy_enrollment(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="mentor-noenroll@example.com")
+
+        dashboard_res = client.get(f"/api/academy/{user['id']}/mentor/dashboard")
+        assert dashboard_res.status_code == 200
+        dashboard = dashboard_res.json()
+        assert dashboard["status"]["mentor_mode"] == "neutral"
+        assert dashboard["goals"] == []
+        assert dashboard["mastered_concepts"] == []
+
+        plan_res = client.get(f"/api/academy/{user['id']}/mentor/daily-plan")
+        assert plan_res.status_code == 200
+        assert isinstance(plan_res.json(), list)
+
+        insights_res = client.get(f"/api/academy/{user['id']}/mentor/insights")
+        assert insights_res.status_code == 200
+        assert insights_res.json() == []
+
+        kp_res = client.get(f"/api/academy/{user['id']}/mentor/knowledge-profile")
+        assert kp_res.status_code == 200
+        assert kp_res.json() == []
+
+
+def test_mentor_dashboard_reflects_real_enrollment_data(monkeypatch, tmp_path):
+    from backend.learning_engine import knowledge_graph
+
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    # The knowledge graph is normally populated by scripts/build_academy.py
+    # at build time, not per-request — simulate that step directly here.
+    knowledge_graph.build_graph_for_field_level("computer-science", "ASSOCIATE", [course_id], store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="mentor-enrolled@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        client.post(f"/api/academy/{user['id']}/courses/{course_id}/quiz/submit", json={"answers": {}})
+
+        dashboard = client.get(f"/api/academy/{user['id']}/mentor/dashboard").json()
+        assert dashboard["competencies"]["academy"][0]["course_id"] == course_id
+        assert isinstance(dashboard["recommendations"], list)
+        assert all(r["reason"] for r in dashboard["recommendations"])
+
+        kp = client.get(f"/api/academy/{user['id']}/mentor/knowledge-profile").json()
+        assert any(c["course_id"] == course_id for c in kp)
+
+
+def test_goal_milestones_generated_once_and_advance(monkeypatch):
+    from backend import hf_client as hf_client_module
+
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        import json
+
+        return json.dumps(["Aprender Python", "Dominar Algoritmos", "Construir proyectos"])
+
+    monkeypatch.setattr(hf_client_module.hf_client, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="goal-milestones1@example.com")
+        goal = client.post(f"/api/academy/{user['id']}/goals", json={"text": "Convertirme en AI Engineer"}).json()
+
+        gen_res = client.post(f"/api/academy/{user['id']}/goals/{goal['id']}/milestones")
+        assert gen_res.status_code == 200
+        milestones = gen_res.json()["milestones"]
+        assert milestones == ["Aprender Python", "Dominar Algoritmos", "Construir proyectos"]
+
+        advance_res = client.patch(f"/api/academy/{user['id']}/goals/{goal['id']}/milestones/advance")
+        assert advance_res.status_code == 200
+        assert advance_res.json()["current_milestone"] == "Dominar Algoritmos"
+
+        # Generating again must not call the model a second time — reuses
+        # the persisted milestones instead of regenerating them.
+        gen_res2 = client.post(f"/api/academy/{user['id']}/goals/{goal['id']}/milestones")
+        assert gen_res2.json()["milestones"] == milestones
+
+
+def test_goal_milestones_404_for_unknown_goal():
+    with TestClient(app) as client:
+        user = _onboard(client, email="goal-milestones2@example.com")
+        res = client.post(f"/api/academy/{user['id']}/goals/999999/milestones")
+        assert res.status_code == 404
+        res2 = client.patch(f"/api/academy/{user['id']}/goals/999999/milestones/advance")
+        assert res2.status_code == 404

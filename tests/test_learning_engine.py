@@ -552,6 +552,54 @@ def test_remove_goal_deletes_only_the_owners_row():
     assert goals.list_goals("u1") == []
 
 
+def test_new_goal_has_no_milestones_yet():
+    _make_user()
+    goal = goals.add_goal("u1", "Convertirme en AI Engineer")
+    assert goal["milestones"] == []
+    assert goal["milestone_progress"] == 0
+    assert goal["current_milestone"] is None
+
+
+def test_set_milestones_and_get_goal_reflects_current_milestone():
+    _make_user()
+    goal = goals.add_goal("u1", "Convertirme en AI Engineer")
+    assert goals.set_milestones("u1", goal["id"], ["Aprender Python", "Dominar Algoritmos", "Aprender ML"]) is True
+
+    fetched = goals.get_goal("u1", goal["id"])
+    assert fetched["milestones"] == ["Aprender Python", "Dominar Algoritmos", "Aprender ML"]
+    assert fetched["current_milestone"] == "Aprender Python"
+
+
+def test_set_milestones_rejects_other_users_goal():
+    _make_user("u1")
+    _make_user("u2")
+    goal = goals.add_goal("u1", "Meta")
+    assert goals.set_milestones("u2", goal["id"], ["x"]) is False
+
+
+def test_advance_milestone_moves_the_cursor_forward_and_caps_at_the_end():
+    _make_user()
+    goal = goals.add_goal("u1", "Convertirme en AI Engineer")
+    goals.set_milestones("u1", goal["id"], ["Aprender Python", "Dominar Algoritmos"])
+
+    after_first = goals.advance_milestone("u1", goal["id"])
+    assert after_first["current_milestone"] == "Dominar Algoritmos"
+    assert after_first["milestone_progress"] == 1
+
+    after_second = goals.advance_milestone("u1", goal["id"])
+    assert after_second["current_milestone"] is None  # no more milestones left
+    assert after_second["milestone_progress"] == 2
+
+    # Advancing past the end doesn't error or overflow the index.
+    after_third = goals.advance_milestone("u1", goal["id"])
+    assert after_third["milestone_progress"] == 2
+
+
+def test_advance_milestone_returns_none_for_unknown_goal():
+    _make_user()
+    assert goals.advance_milestone("u1", 999999) is None
+
+
 # ── Predictions (heuristics, not ML) ─────────────────────────────────────
 
 

@@ -207,13 +207,20 @@ CREATE TABLE IF NOT EXISTS academy_scenario_submission (
 -- Multiple, ordered learning goals (backend/learning_engine/goals.py) —
 -- richer than academy_enrollment.career_goal's single free-text field,
 -- kept alongside it rather than replacing it (backward compat).
+-- milestones: JSON list of strings, '' until backend/mentor_engine/
+-- goal_planner.py generates them (on demand, once, persisted here —
+-- never regenerated unless the goal's text changes). milestone_progress:
+-- how many leading milestones are done (sequential, matching the
+-- worked example's linear "Learn Python -> Master algorithms -> ..." shape).
 CREATE TABLE IF NOT EXISTS learning_goal (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     text TEXT NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
     completed INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    milestones TEXT NOT NULL DEFAULT '',
+    milestone_progress INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -386,7 +393,9 @@ CREATE TABLE IF NOT EXISTS learning_goal (
     text TEXT NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
     completed INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    milestones TEXT NOT NULL DEFAULT '',
+    milestone_progress INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
@@ -489,6 +498,12 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
     course_progress_cols = {row[1] for row in conn.execute("PRAGMA table_info(academy_course_progress)").fetchall()}
     if "elapsed_seconds" not in course_progress_cols:
         conn.execute("ALTER TABLE academy_course_progress ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0")
+
+    goal_cols = {row[1] for row in conn.execute("PRAGMA table_info(learning_goal)").fetchall()}
+    if "milestones" not in goal_cols:
+        conn.execute("ALTER TABLE learning_goal ADD COLUMN milestones TEXT NOT NULL DEFAULT ''")
+    if "milestone_progress" not in goal_cols:
+        conn.execute("ALTER TABLE learning_goal ADD COLUMN milestone_progress INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
@@ -513,6 +528,10 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE vocab_progress ADD COLUMN IF NOT EXISTS unit_id TEXT NOT NULL DEFAULT ''")
         cur.execute(
             "ALTER TABLE academy_course_progress ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0"
+        )
+        cur.execute("ALTER TABLE learning_goal ADD COLUMN IF NOT EXISTS milestones TEXT NOT NULL DEFAULT ''")
+        cur.execute(
+            "ALTER TABLE learning_goal ADD COLUMN IF NOT EXISTS milestone_progress INTEGER NOT NULL DEFAULT 0"
         )
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
     conn.commit()

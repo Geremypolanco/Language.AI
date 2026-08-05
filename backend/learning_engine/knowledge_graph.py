@@ -119,6 +119,18 @@ def concepts_for_course(course_id: str) -> list[dict]:
         return [dict(row) for row in cur.fetchall()]
 
 
+def concepts_for_field(field_id: str) -> list[dict]:
+    """Every concept across every course this field has a built glossary
+    for — used by mentor_engine/knowledge_profile.py to build a field-wide
+    mastery map without a second per-course loop at the call site."""
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT id, field_id, course_id, term, definition FROM academic_concept WHERE field_id=?",
+            (field_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
 def prerequisite_courses(course_id: str) -> list[str]:
     """Courses that must come before `course_id`, per prerequisite_of edges."""
     with db.cursor() as cur:

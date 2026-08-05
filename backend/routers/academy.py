@@ -47,6 +47,11 @@ from ..learning_engine import (
     recommendations,
     student_profile,
 )
+from ..mentor_engine import daily_planner as mentor_daily_planner
+from ..mentor_engine import goal_planner
+from ..mentor_engine import insights as mentor_insights
+from ..mentor_engine import knowledge_profile as mentor_knowledge_profile
+from ..mentor_engine import mentor_engine as ai_mentor
 from ..models import (
     AcademicField,
     AcademicLevel,
@@ -499,6 +504,26 @@ def _resolve_titles_for_course_ids(course_ids: list[str]) -> dict[str, str]:
     return titles
 
 
+def _mentor_context_for(user_id: str) -> tuple[str | None, list[str], dict[str, str]]:
+    """(field_id, course_ids_in_order, titles) for whatever the student is
+    currently enrolled in — or (None, [], {}) with no enrollment, which
+    every mentor_engine entry point treats as "give a real, narrower
+    answer", never a 404 (same precedent as get_unified_competencies and
+    get_student_profile above). Uses the same sync, persisted-library-only
+    _course_titles_for as /recommendation and /competencies — an
+    unbuilt curriculum means an empty course list here too, not a live
+    AI call from inside the mentor engine."""
+    row = _get_enrollment_row(user_id)
+    if not row:
+        return None, [], {}
+    field = academy.get_field(row["field_id"])
+    if not field:
+        return None, [], {}
+    level = AcademicLevel(row["level"])
+    titles = _course_titles_for(field.id, level)
+    return field.id, list(titles.keys()), titles
+
+
 @router.get("/{user_id}/competencies")
 def get_competencies(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
     """Real per-course mastery scores (see learning_engine/competency.py) —
@@ -592,6 +617,53 @@ def get_motivation(user_id: str, session: dict = Depends(auth.require_owner)) ->
     "buen_momentum", "estancado", or "neutral"/"sin_datos"."""
     get_user_by_id_or_404(user_id)
     return motivation.detect_signal(user_id)
+
+
+@router.get("/{user_id}/mentor/dashboard")
+def get_mentor_dashboard(user_id: str, session: dict = Depends(auth.require_owner)) -> dict:
+    """The AI Mentor Engine's single combined view — see mentor_engine/
+    mentor_engine.py's module docstring for exactly which existing
+    Learning Intelligence Engine data every section reads from (nothing
+    here is tracked twice). Works without an Academy enrollment, same as
+    /profile and /competencies/unified above."""
+    user = get_user_by_id_or_404(user_id)
+    field_id, course_ids, titles = _mentor_context_for(user_id)
+    return ai_mentor.get_mentor_dashboard(user_id, field_id, course_ids, titles, level=user.level)
+
+
+@router.get("/{user_id}/mentor/daily-plan")
+def get_daily_plan(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    """"Hoy deberías..." — a short, ordered, always-justified list of
+    concrete actions (see mentor_engine/daily_planner.py). Never empty
+    without a real reason: an empty list just means there's genuinely
+    nothing pending right now, not a missing feature."""
+    user = get_user_by_id_or_404(user_id)
+    field_id, course_ids, titles = _mentor_context_for(user_id)
+    return mentor_daily_planner.build_daily_plan(user_id, field_id, course_ids, titles, user.level)
+
+
+@router.get("/{user_id}/mentor/insights")
+def get_mentor_insights(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    """Post-session observations (mentor_engine/insights.py) — empty
+    without an Academy enrollment, since these compare quiz-submission
+    trends and mistake concentration that only exist there."""
+    get_user_by_id_or_404(user_id)
+    field_id, course_ids, titles = _mentor_context_for(user_id)
+    if not field_id:
+        return []
+    return mentor_insights.generate_insights(user_id, field_id, course_ids, titles)
+
+
+@router.get("/{user_id}/mentor/knowledge-profile")
+def get_knowledge_profile(user_id: str, session: dict = Depends(auth.require_owner)) -> list[dict]:
+    """Every concept in the student's field, with a real mastery status
+    (Unknown/Learning/Practicing/Mastered/Expert) — see mentor_engine/
+    knowledge_profile.py. Empty without an Academy enrollment."""
+    get_user_by_id_or_404(user_id)
+    field_id, _, _ = _mentor_context_for(user_id)
+    if not field_id:
+        return []
+    return mentor_knowledge_profile.get_knowledge_profile(user_id, field_id)
 
 
 @router.get("/{user_id}/recommendation")
@@ -738,6 +810,28 @@ def delete_goal(user_id: str, goal_id: int, session: dict = Depends(auth.require
     if not goals.remove_goal(user_id, goal_id):
         raise HTTPException(status_code=404, detail="Objetivo no encontrado")
     return {"deleted": True}
+
+
+@router.post("/{user_id}/goals/{goal_id}/milestones")
+async def get_goal_milestones(user_id: str, goal_id: int, session: dict = Depends(auth.require_owner)) -> dict:
+    """Breaks the goal into ordered milestones the first time this is
+    called (mentor_engine/goal_planner.py) — generated once, persisted,
+    and returned as-is on every later call for the same goal."""
+    get_user_by_id_or_404(user_id)
+    try:
+        milestones = await goal_planner.ensure_milestones(user_id, goal_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Objetivo no encontrado")
+    return {"goal_id": goal_id, "milestones": milestones}
+
+
+@router.patch("/{user_id}/goals/{goal_id}/milestones/advance")
+def advance_goal_milestone(user_id: str, goal_id: int, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
+    updated = goals.advance_milestone(user_id, goal_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Objetivo no encontrado")
+    return updated
 
 
 @router.get("/{user_id}/concepts/review")
