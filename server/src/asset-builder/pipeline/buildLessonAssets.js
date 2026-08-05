@@ -5,6 +5,7 @@ import { createDefaultProviderChain } from '../providers/index.js';
 import { createAssetValidator } from '../validation/AssetValidator.js';
 import { queryIndex, isDuplicateChecksum } from '../persistence/libraryIndex.js';
 import { getNextVersionNumber, persistLessonVersion, publishVersion } from '../persistence/AssetLibrary.js';
+import { BuilderResult, BuilderMetrics, BuildLog } from '../../domain/editorial/index.js';
 
 /**
  * The Academic Asset Builder pipeline: Analyzer -> Planner -> Providers
@@ -56,6 +57,8 @@ export async function buildLessonAssets(rawLesson, { publish = true } = {}) {
     );
   }
 
+  const builderResult = buildBuilderResult({ lesson, resolvedAssets, unresolved });
+
   return {
     lessonId: lesson.lessonId,
     version,
@@ -64,5 +67,33 @@ export async function buildLessonAssets(rawLesson, { publish = true } = {}) {
     plan,
     assets,
     unresolved,
+    builderResult,
   };
+}
+
+/** Formalizes this run's outcome as a typed BuilderResult instead of the caller re-deriving success/metrics from raw arrays. */
+function buildBuilderResult({ lesson, resolvedAssets, unresolved }) {
+  const assetsBuilt = resolvedAssets.filter((r) => r.candidate.provider !== 'local-library').length;
+  const assetsReused = resolvedAssets.filter((r) => r.candidate.provider === 'local-library').length;
+  const assetsUnresolved = unresolved.reduce((sum, u) => sum + u.missing, 0);
+  const hasRequiredGaps = unresolved.some((u) => u.planItem.priority === 'required');
+
+  const invokedProviders = new Set([
+    ...resolvedAssets.map((r) => r.candidate.provider),
+    ...unresolved.flatMap((u) => u.attempts.map((a) => a.provider)),
+  ]);
+
+  return new BuilderResult({
+    success: !hasRequiredGaps,
+    targetId: lesson.lessonId,
+    metrics: new BuilderMetrics({ assetsBuilt, assetsReused, assetsUnresolved, providersInvoked: invokedProviders.size }),
+    logs: unresolved.map(
+      (u) =>
+        new BuildLog({
+          level: 'warn',
+          stage: 'providers',
+          message: `${u.planItem.resourceType} unresolved: missing ${u.missing}/${u.planItem.quantity} (priority: ${u.planItem.priority})`,
+        })
+    ),
+  });
 }

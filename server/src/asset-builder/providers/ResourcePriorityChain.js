@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { libraryRoot } from '../persistence/paths.js';
+import { CacheManifest } from '../../domain/editorial/index.js';
 
 /**
  * Walks providers in a fixed priority order — local library, persisted
@@ -22,11 +23,11 @@ export class ResourcePriorityChain {
    * doesn't just take the first result and stop, and it doesn't accept two
    * candidates with identical content within the same batch.
    *
-   * @param validate async (candidate, planItem, analysis) => { passed, reasons, scores, checksum }
+   * @param validate async (candidate, planItem, analysis) => { report: ValidationReport, scores, dimensions, checksum }
    */
   async resolveMany(planItem, analysis, { validate }) {
     const accepted = [];
-    const acceptedChecksums = new Set();
+    const batchCache = new CacheManifest({});
     const attempts = [];
 
     for (const provider of this.providers) {
@@ -47,16 +48,18 @@ export class ResourcePriorityChain {
         if (!hydrated) continue;
 
         const result = await validate(hydrated, planItem, analysis);
-        attempts.push({ provider: provider.name, title: candidate.title, passed: result.passed, reasons: result.reasons });
-        if (!result.passed) continue;
+        const passed = result.report.isValid();
+        const reasons = result.report.blockingFailures().map((r) => r.message);
+        attempts.push({ provider: provider.name, title: candidate.title, passed, reasons });
+        if (!passed) continue;
 
-        if (result.checksum && acceptedChecksums.has(result.checksum)) {
+        if (batchCache.has(result.checksum)) {
           attempts.push({ provider: provider.name, title: candidate.title, passed: false, reasons: ['duplicate within this batch'] });
           continue;
         }
 
         accepted.push({ candidate: hydrated, validation: result });
-        if (result.checksum) acceptedChecksums.add(result.checksum);
+        batchCache.record(result.checksum);
       }
     }
 

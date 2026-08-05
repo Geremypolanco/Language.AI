@@ -1,20 +1,20 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { indexFilePath } from './paths.js';
+import { PublicationIndex, AssetMetadata } from '../../domain/editorial/index.js';
 
 /**
- * Flat, in-memory-cached index of every *currently published* asset in the
- * library, backed by a single JSON file. This is what makes cross-lesson
- * reuse (LocalLibraryProvider) and duplicate detection O(index size) local
- * lookups instead of a filesystem walk or a live search-service call — the
- * mechanism the spec asks for to keep external-call volume flat as the
- * catalog grows.
+ * Persistence for the cross-lesson reuse index — every currently published
+ * asset in the library, backed by a single JSON file. The actual query/
+ * dedup/upsert *logic* lives on the domain model (PublicationIndex); this
+ * module is only responsible for loading that model from disk, delegating
+ * to it, and saving it back — no scoring or filtering happens here anymore.
  *
- * At true "millions of assets" scale this file would become a real
+ * At true "millions of assets" scale this file would load from a real
  * database/search index (Postgres + a keyword/vector index, Elasticsearch,
- * etc.) — swap the read/write/query functions below for that backend
- * without changing anything upstream, since providers and the pipeline only
- * ever call `queryIndex`/`isDuplicateChecksum`/`upsertEntries`.
+ * etc.) instead of a JSON file — swap the load()/save() functions below for
+ * that backend without changing anything upstream, since providers and the
+ * pipeline only ever call `queryIndex`/`isDuplicateChecksum`/`upsertLessonEntries`.
  */
 
 let cache = null;
@@ -23,61 +23,49 @@ async function load() {
   if (cache) return cache;
   try {
     const raw = await fs.readFile(indexFilePath(), 'utf8');
-    cache = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    cache = new PublicationIndex({ entries: parsed.map((e) => new AssetMetadata(e)) });
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
-    cache = [];
+    cache = new PublicationIndex({});
   }
   return cache;
 }
 
-async function save(entries) {
-  cache = entries;
+async function save(index) {
+  cache = index;
   await fs.mkdir(path.dirname(indexFilePath()), { recursive: true }).catch(() => {});
-  await fs.writeFile(indexFilePath(), JSON.stringify(entries, null, 2), 'utf8');
-}
-
-function tokenize(text) {
-  return (text.toLowerCase().match(/[a-zà-öø-ÿ]+/g) || []).filter((w) => w.length > 2);
+  await fs.writeFile(indexFilePath(), JSON.stringify(index.entries, null, 2), 'utf8');
 }
 
 /** Replaces this lesson's index entries with `newEntries` — called at Publication time. */
 export async function upsertLessonEntries(lessonId, newEntries) {
-  const entries = await load();
-  const withoutLesson = entries.filter((e) => e.lesson_id !== lessonId);
-  const updated = [...withoutLesson, ...newEntries];
-  await save(updated);
+  const index = await load();
+  const instances = newEntries.map((e) => (e instanceof AssetMetadata ? e : new AssetMetadata(e)));
+  index.upsertLessonEntries(lessonId, instances);
+  await save(index);
 }
 
 export async function queryIndex({ resourceType, keywords, language, limit = 5 }) {
-  const entries = await load();
-  const targetTerms = new Set(tokenize(keywords.join(' ')));
-
-  const scored = entries
-    .filter((e) => e.resource_type === resourceType && e.language === language)
-    .map((e) => {
-      const entryTerms = new Set(tokenize([e.title, ...(e.keywords || [])].join(' ')));
-      let hits = 0;
-      for (const term of targetTerms) if (entryTerms.has(term)) hits += 1;
-      const score = targetTerms.size ? hits / targetTerms.size : 0;
-      return { entry: e, score };
-    })
-    .filter((s) => s.score > 0.2)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-
-  return scored.map((s) => s.entry);
+  const index = await load();
+  return index.findReusable({ resourceType, keywords, language, limit });
 }
 
 export async function isDuplicateChecksum(checksum) {
-  if (!checksum) return false;
-  const entries = await load();
-  return entries.some((e) => e.checksum_sha256 === checksum);
+  const index = await load();
+  return index.hasChecksum(checksum);
+}
+
+/** Same duplicate check, but ignores one specific asset id — used when regenerating a replacement for that exact asset. */
+export async function isDuplicateChecksumExcluding(checksum, excludeAssetId) {
+  const index = await load();
+  return index.hasChecksumExcluding(checksum, excludeAssetId);
 }
 
 /** Every currently published asset — used by the maintenance job's broken-link sweep. */
 export async function getAllEntries() {
-  return [...(await load())];
+  const index = await load();
+  return [...index.entries];
 }
 
 /** Test/CLI helper to force a re-read from disk instead of the in-memory cache. */

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { LICENSE_ALLOWLIST } from '../schemas.js';
 import { readImageDimensions } from './imageDimensions.js';
+import { ValidationResult, ValidationReport } from '../../domain/editorial/index.js';
 
 const FORMATS_BY_TYPE = {
   image: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
@@ -34,12 +35,7 @@ function tokenize(text) {
 
 function computeRelevance(candidate, planItem, analysis) {
   const targetTerms = new Set(
-    tokenize(
-      [
-        ...(planItem.searchTerms.length ? planItem.searchTerms : analysis.keywords),
-        analysis.mainTopic,
-      ].join(' ')
-    )
+    tokenize([...(planItem.searchTerms.length ? planItem.searchTerms : analysis.keywords), analysis.mainTopic].join(' '))
   );
   if (targetTerms.size === 0) return 0.5; // nothing to compare against — neutral score, don't punish
 
@@ -64,37 +60,48 @@ function computeQuality(candidate, dimensions) {
 /**
  * Runs every acceptance check the spec requires before a candidate may be
  * persisted: format, resolution, license, relevance, duplicate, and a
- * composite quality/educational score. Any single failure rejects the
- * candidate outright — the priority chain then simply tries the next one.
+ * composite quality/educational score. Each check produces a typed
+ * ValidationResult (not a string pushed onto an array); they're aggregated
+ * into a ValidationReport, and a single blocking (error-severity) failure
+ * rejects the candidate outright — the priority chain then simply tries
+ * the next one.
  *
  * `isDuplicateChecksum(sha256) => boolean` is injected so the validator
  * doesn't depend on the filesystem/persistence layer directly.
  */
 export function createAssetValidator({ isDuplicateChecksum, minRelevance = 0.12, minQuality = 0.35 }) {
   return async function validate(candidate, planItem, analysis) {
-    const reasons = [];
+    const results = [];
+    const check = (id, passed, message, severity = 'error') =>
+      results.push(new ValidationResult({ check: id, passed, message, severity }));
 
     const allowedFormats = FORMATS_BY_TYPE[candidate.resourceType] || [];
-    if (!allowedFormats.includes(candidate.format)) {
-      reasons.push(`format "${candidate.format}" not allowed for resourceType "${candidate.resourceType}"`);
-    }
+    check(
+      'format',
+      allowedFormats.includes(candidate.format),
+      `format "${candidate.format}" not allowed for resourceType "${candidate.resourceType}"`
+    );
 
-    if (!candidate.bytes || candidate.bytes.length === 0) {
-      // Local-library reuse candidates carry a filePath instead of bytes — that's fine, not a failure.
-      if (!candidate.filePath) reasons.push('candidate has no content (empty bytes) and no reusable file path');
-    }
+    // Local-library reuse candidates carry a filePath instead of bytes — that's fine, not a failure.
+    check(
+      'content-present',
+      Boolean((candidate.bytes && candidate.bytes.length > 0) || candidate.filePath),
+      'candidate has no content (empty bytes) and no reusable file path'
+    );
 
-    if (!LICENSE_ALLOWLIST.includes(candidate.license)) {
-      reasons.push(`license "${candidate.license}" is not on the allow-list`);
-    }
+    check('license-allowlist', LICENSE_ALLOWLIST.includes(candidate.license), `license "${candidate.license}" is not on the allow-list`);
 
     let dimensions = null;
     if (candidate.bytes && RASTER_FORMATS.has(candidate.format)) {
       dimensions = readImageDimensions(candidate.bytes, candidate.format);
-      if (dimensions && (dimensions.width < MIN_RASTER_DIMENSION || dimensions.height < MIN_RASTER_DIMENSION)) {
-        reasons.push(`resolution ${dimensions.width}x${dimensions.height} below minimum ${MIN_RASTER_DIMENSION}px`);
+      if (dimensions) {
+        check(
+          'resolution',
+          dimensions.width >= MIN_RASTER_DIMENSION && dimensions.height >= MIN_RASTER_DIMENSION,
+          `resolution ${dimensions.width}x${dimensions.height} below minimum ${MIN_RASTER_DIMENSION}px`
+        );
       }
-    } else if (candidate.bytes && (candidate.format === 'svg')) {
+    } else if (candidate.bytes && candidate.format === 'svg') {
       dimensions = readImageDimensions(candidate.bytes, candidate.format);
     }
 
@@ -102,28 +109,30 @@ export function createAssetValidator({ isDuplicateChecksum, minRelevance = 0.12,
     if (candidate.bytes) {
       checksum = crypto.createHash('sha256').update(candidate.bytes).digest('hex');
       const isDuplicate = candidate.provider !== 'local-library' && (await isDuplicateChecksum(checksum));
-      if (isDuplicate) reasons.push('duplicate of an already-persisted asset (identical content)');
+      check('duplicate', !isDuplicate, 'duplicate of an already-persisted asset (identical content)');
     }
 
     const relevanceScore = computeRelevance(candidate, planItem, analysis);
-    if (relevanceScore < minRelevance) {
-      reasons.push(`relevance score ${relevanceScore.toFixed(2)} below minimum ${minRelevance}`);
-    }
-
-    const qualityScore = computeQuality(candidate, dimensions);
-    if (qualityScore < minQuality) {
-      reasons.push(`quality score ${qualityScore.toFixed(2)} below minimum ${minQuality}`);
-    }
-
-    const licenseBonus = LICENSE_BONUS[candidate.license] ?? 0.7;
-    const educationalScore = Math.max(
-      0,
-      Math.min(1, 0.5 * relevanceScore + 0.3 * qualityScore + 0.2 * licenseBonus)
+    check(
+      'relevance',
+      relevanceScore >= minRelevance,
+      `relevance score ${relevanceScore.toFixed(2)} below minimum ${minRelevance}`
     );
 
+    const qualityScore = computeQuality(candidate, dimensions);
+    check('quality', qualityScore >= minQuality, `quality score ${qualityScore.toFixed(2)} below minimum ${minQuality}`);
+
+    const licenseBonus = LICENSE_BONUS[candidate.license] ?? 0.7;
+    const educationalScore = Math.max(0, Math.min(1, 0.5 * relevanceScore + 0.3 * qualityScore + 0.2 * licenseBonus));
+
+    const report = new ValidationReport({
+      targetId: candidate.title || candidate.resourceType,
+      targetType: candidate.resourceType,
+      results,
+    });
+
     return {
-      passed: reasons.length === 0,
-      reasons,
+      report,
       scores: { relevance: relevanceScore, quality: qualityScore, educational: educationalScore },
       dimensions,
       checksum,

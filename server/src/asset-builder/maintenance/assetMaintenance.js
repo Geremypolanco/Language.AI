@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { libraryRoot } from '../persistence/paths.js';
 import { getCurrentVersion, readCurrentLesson, replaceAssetInVersion } from '../persistence/AssetLibrary.js';
-import { getAllEntries, upsertLessonEntries, queryIndex } from '../persistence/libraryIndex.js';
+import { getAllEntries, upsertLessonEntries, queryIndex, isDuplicateChecksumExcluding } from '../persistence/libraryIndex.js';
 import { createDefaultProviderChain } from '../providers/index.js';
 import { createAssetValidator } from '../validation/AssetValidator.js';
 import { analyzeLesson } from '../analyzer/AssetAnalyzer.js';
@@ -50,11 +50,7 @@ function pathSegmentsFromEntry(entry) {
  * duplicate of itself just because the index hasn't been updated yet.
  */
 function duplicateCheckExcluding(excludeId) {
-  return async (checksum) => {
-    if (!checksum) return false;
-    const entries = await getAllEntries();
-    return entries.some((e) => e.checksum_sha256 === checksum && e.id !== excludeId);
-  };
+  return (checksum) => isDuplicateChecksumExcluding(checksum, excludeId);
 }
 
 export async function runMaintenance({ timeoutMs = 8000 } = {}) {

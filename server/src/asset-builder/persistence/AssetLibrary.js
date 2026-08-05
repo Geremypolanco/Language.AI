@@ -11,8 +11,8 @@ import {
   assetFileName,
   ASSET_SUBFOLDERS,
 } from './paths.js';
-import { assetMetadataSchema } from '../schemas.js';
 import { upsertLessonEntries } from './libraryIndex.js';
+import { AssetMetadata, AssetManifest } from '../../domain/editorial/index.js';
 
 /**
  * The permanent, versioned educational asset library described in the spec:
@@ -101,7 +101,7 @@ export async function persistLessonVersion({ lesson, resolvedAssets, version }) 
     // versionDir() creates on disk (e.g. "Álgebra Lineal" -> "algebra-lineal").
     const libraryRelativePath = path.relative(libraryRoot(), absoluteFilePath).split(path.sep).join('/');
 
-    const metadata = assetMetadataSchema.parse({
+    const metadata = new AssetMetadata({
       id: assetId,
       lesson_id: lessonId,
       course_id: courseId,
@@ -128,14 +128,12 @@ export async function persistLessonVersion({ lesson, resolvedAssets, version }) 
     assetMetadataList.push(metadata);
   }
 
-  await fs.writeFile(path.join(dir, 'content.json'), JSON.stringify(lesson, null, 2), 'utf8');
-  await fs.writeFile(
-    path.join(dir, 'metadata.json'),
-    JSON.stringify({ lessonId, courseId, discipline, language, version, builtAt: now, assets: assetMetadataList }, null, 2),
-    'utf8'
-  );
+  const manifest = new AssetManifest({ lessonId, courseId, discipline, language, version, builtAt: now, assets: assetMetadataList });
 
-  return { dir, assets: assetMetadataList };
+  await fs.writeFile(path.join(dir, 'content.json'), JSON.stringify(lesson, null, 2), 'utf8');
+  await fs.writeFile(path.join(dir, 'metadata.json'), JSON.stringify(manifest, null, 2), 'utf8');
+
+  return { dir, assets: assetMetadataList, manifest };
 }
 
 /** Makes a built version the one students are served, and adds its assets to the reuse index. */
@@ -190,7 +188,7 @@ export async function replaceAssetInVersion(discipline, courseId, lessonId, vers
     validation.checksum ||
     (candidate.bytes ? crypto.createHash('sha256').update(candidate.bytes).digest('hex') : existing.checksum_sha256);
 
-  const updated = assetMetadataSchema.parse({
+  const updated = new AssetMetadata({
     ...existing,
     provider: candidate.provider,
     license: candidate.license,
@@ -204,9 +202,12 @@ export async function replaceAssetInVersion(discipline, courseId, lessonId, vers
     source_url: candidate.sourceUrl ?? existing.source_url,
   });
 
-  meta.assets[idx] = updated;
-  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
-  return { updated, allAssets: meta.assets };
+  const manifest = new AssetManifest({
+    ...meta,
+    assets: meta.assets.map((a, i) => (i === idx ? updated : new AssetMetadata(a))),
+  });
+  await fs.writeFile(metaPath, JSON.stringify(manifest, null, 2), 'utf8');
+  return { updated, allAssets: manifest.assets };
 }
 
 /** Resolves a requested asset file to an absolute path, refusing anything outside the published version's directory. */

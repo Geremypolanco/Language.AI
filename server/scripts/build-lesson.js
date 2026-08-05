@@ -39,6 +39,12 @@ async function main() {
   }
 
   console.log(result.published ? '\nPublished — students will now be served this version.' : '\nNot published (--no-publish).');
+
+  const { metrics } = result.builderResult;
+  console.log(
+    `\nBuilderResult: success=${result.builderResult.success} built=${metrics.assetsBuilt} reused=${metrics.assetsReused} ` +
+      `unresolved=${metrics.assetsUnresolved} reuseRatio=${metrics.reuseRatio().toFixed(2)}`
+  );
 }
 
 main().catch((err) => {
