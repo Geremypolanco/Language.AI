@@ -16,7 +16,40 @@ wants the actual credential still has to enroll at an accredited institution.
 
 from __future__ import annotations
 
-from .models import AcademicField
+from .models import AcademicField, CEFRLevel
+
+# Threshold in the learner's TARGET language (see models.CEFRLevel) at or
+# above which the Curriculum Engine automatically studies an Academy career
+# in that target language instead of the learner's native_lang — the
+# "Knowledge Engine" integration point between the language and university
+# engines. B2 ("independent user") is the level CEFR itself already
+# describes as capable of following most non-specialist discourse, which is
+# the honest bar for "academic content in this language now teaches you the
+# subject, not just the language." See routers/academy.py's enroll() for
+# where this activates, and get_progress()'s CEFR-threshold notice for the
+# one-tap prompt an already-enrolled learner sees on crossing it later.
+TARGET_LANG_CEFR_THRESHOLD = CEFRLevel.B2
+
+
+def _cefr_calibration_note(cefr_level: CEFRLevel | None) -> str:
+    """Appended to a content-generation prompt when the learner is studying
+    this career in a language they're still acquiring (see
+    TARGET_LANG_CEFR_THRESHOLD) — calibrates LANGUAGE complexity to their
+    level while leaving ACADEMIC depth exactly as requested by the
+    AcademicLevel/course itself. Two independent axes on purpose: a
+    Master's-level course studied at target-language B2 must stay
+    intellectually rigorous, just more linguistically accessible — never
+    "dumbed down" content passed off as the real subject matter."""
+    if cefr_level is None:
+        return ""
+    return (
+        f" The learner is studying this in a language they're still acquiring, currently at CEFR level "
+        f"{cefr_level.value}. Calibrate sentence complexity and vocabulary difficulty to that language level "
+        f"(shorter sentences, more common words, one idea per sentence for A1-B1; natural but still clear "
+        f"prose from B2 up) — but do NOT reduce the academic depth, rigor, or the real technical/professional "
+        f"terminology this subject actually requires; explain a hard term in simple language the first time it "
+        f"appears rather than avoiding it."
+    )
 
 _FIELDS: list[AcademicField] = [
     # Tecnología
@@ -158,7 +191,9 @@ def get_field(field_id: str) -> AcademicField | None:
     return next((f for f in _FIELDS if f.id == field_id), None)
 
 
-def build_curriculum_prompt(field: AcademicField, level_label: str, course_count: int, native_lang: str) -> str:
+def build_curriculum_prompt(
+    field: AcademicField, level_label: str, course_count: int, native_lang: str, cefr_level: CEFRLevel | None = None
+) -> str:
     return (
         f"Design a {course_count}-course study curriculum for the academic field \"{field.name}\" "
         f"({field.description}), at a depth roughly equivalent to a {level_label} program. "
@@ -167,13 +202,17 @@ def build_curriculum_prompt(field: AcademicField, level_label: str, course_count
         f"Order the courses from foundational to advanced, so difficulty builds gradually across the "
         f"{course_count} courses rather than jumping straight to advanced material. "
         f"Write each one-sentence description in plain, clear language a curious 7-year-old could follow, "
-        f"even though the course title itself keeps the real, correct academic name. "
+        f"even though the course title itself keeps the real, correct academic name."
+        f"{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "course title in {native_lang}", "description": "one sentence, in {native_lang}, on what it covers"}}'
     )
 
 
-def build_course_prompt(field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str) -> str:
+def build_course_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    cefr_level: CEFRLevel | None = None,
+) -> str:
     return (
         f"Write ELITE self-study course material in {native_lang} for the course \"{course_title}\" "
         f"({course_description}), part of an accelerated, self-paced {field.name} curriculum at a "
@@ -183,7 +222,8 @@ def build_course_prompt(field: AcademicField, level_label: str, course_title: st
         f"explanations and at least one concrete example per module. "
         f"If a concept is complex, include a Mermaid.js diagram in the content using the format [DIAGRAM: graph TD...]. "
         f"Explain each term the first time it appears clearly enough that a curious 7-year-old could follow the explanation, "
-        f"even though the terminology itself stays accurate and professional — simplify the explanation, never the vocabulary. "
+        f"even though the terminology itself stays accurate and professional — simplify the explanation, never the vocabulary."
+        f"{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON array, no other text, each item shaped like: "
         f'{{"title": "module title", "content": "the module\'s full teaching content, several paragraphs with diagrams if helpful"}}'
     )
@@ -200,7 +240,8 @@ def build_mission_prompt(target_lang: str, level_label: str, scenario_type: str)
 
 
 def build_practice_scenario_prompt(
-    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    cefr_level: CEFRLevel | None = None,
 ) -> str:
     return (
         f"Write a short, realistic hands-on practice scenario in {native_lang} for a student studying "
@@ -211,12 +252,13 @@ def build_practice_scenario_prompt(
         f"business fields, a text/argument to analyze for humanities, etc). End with a direct question "
         f"asking what the student would do. 2 to 4 short paragraphs. Write it in plain, clear language "
         f"a curious 7-year-old could follow, keeping any necessary technical terms but explaining them "
-        f"the first time they appear. Output ONLY the scenario text."
+        f"the first time they appear.{_cefr_calibration_note(cefr_level)} Output ONLY the scenario text."
     )
 
 
 def build_assignments_prompt(
-    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+    cefr_level: CEFRLevel | None = None,
 ) -> str:
     return (
         f"Design 3 pieces of real, gradeable schoolwork in {native_lang} for the course \"{course_title}\" "
@@ -228,7 +270,8 @@ def build_assignments_prompt(
         f"Write instructions clear enough for a curious 7-year-old to follow, using the correct "
         f"professional/technical vocabulary this field actually uses — simplify the explanation, never the "
         f"terminology. Each item's instructions must say exactly what to submit (e.g. word count, what "
-        f"questions to answer, what the project should include). "
+        f"questions to answer, what the project should include)."
+        f"{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON array of exactly 3 items, no other text, each shaped like: "
         f'{{"type": "tarea|informe|proyecto", "title": "short title", "instructions": "what the student must do and submit"}}'
     )
@@ -236,14 +279,14 @@ def build_assignments_prompt(
 
 def build_glossary_prompt(
     field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
-    term_count: int = 10,
+    term_count: int = 10, cefr_level: CEFRLevel | None = None,
 ) -> str:
     return (
         f"List the {term_count} most important technical terms a student must know after completing "
         f"the course \"{course_title}\" ({course_description}), part of a {field.name} curriculum at a "
         f"{level_label} depth. For each term, give a clear definition in {native_lang} a curious 7-year-old "
         f"could follow, while keeping the term itself in its correct, real technical/professional form — "
-        f"simplify the explanation, never the vocabulary. "
+        f"simplify the explanation, never the vocabulary.{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON object, no other text: "
         f'{{"terms": [{{"term": "...", "definition": "..."}}]}}'
     )
@@ -251,7 +294,7 @@ def build_glossary_prompt(
 
 def build_quiz_prompt(
     field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
-    question_count: int = 6,
+    question_count: int = 6, cefr_level: CEFRLevel | None = None,
 ) -> str:
     return (
         f"Write a {question_count}-question quiz in {native_lang} covering the course \"{course_title}\" "
@@ -259,7 +302,8 @@ def build_quiz_prompt(
         f"multiple_choice, true_false, and open question types, at least one of each. For multiple_choice "
         f"give 3-4 options and which one is correct; for true_false give the correct boolean; for open "
         f"questions give a short rubric_note describing what a correct answer should include, used only to "
-        f"grade the answer later — never shown to the student before they answer. "
+        f"grade the answer later — never shown to the student before they answer."
+        f"{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON object, no other text: "
         f'{{"questions": [{{"type": "multiple_choice|true_false|open", "question": "...", '
         f'"options": ["..."], "correct_answer": "...", "rubric_note": "..."}}]}}'
@@ -268,7 +312,7 @@ def build_quiz_prompt(
 
 def build_exam_prompt(
     field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
-    exam_kind: str = "final", question_count: int = 12,
+    exam_kind: str = "final", question_count: int = 12, cefr_level: CEFRLevel | None = None,
 ) -> str:
     scope = "everything covered across the whole course" if exam_kind == "final" else "roughly the first half of the course"
     return (
@@ -277,8 +321,90 @@ def build_exam_prompt(
         f"depth, covering {scope}. Include a mix of multiple_choice, true_false, open, and at least 2 "
         f"applied_problem questions (a realistic problem to work through, graded like an open question "
         f"against a rubric_note). Also write one overall grading rubric describing what separates an "
-        f"excellent, a passing, and a failing exam. "
+        f"excellent, a passing, and a failing exam."
+        f"{_cefr_calibration_note(cefr_level)} "
         f"Respond with ONLY a JSON object, no other text: "
         f'{{"questions": [{{"type": "multiple_choice|true_false|open|applied_problem", "question": "...", '
         f'"options": ["..."], "correct_answer": "...", "rubric_note": "..."}}], "rubric": "..."}}'
+    )
+
+
+# ── Curriculum Engine Phase 1: course metadata, prerequisite graph, tutor
+# biography, and the always-available "simplify" support prompts ─────────
+
+
+def build_course_metadata_prompt(
+    field: AcademicField, level_label: str, course_title: str, course_description: str, native_lang: str,
+) -> str:
+    return (
+        f"For the course \"{course_title}\" ({course_description}), part of a {field.name} curriculum at a "
+        f"{level_label} depth, provide the educational metadata a real syllabus would include, in {native_lang} "
+        f"except where noted. Respond with ONLY a JSON object, no other text: "
+        f'{{"learning_objectives": ["3-5 concrete, measurable objectives"], '
+        f'"prerequisite_concepts": ["concepts a student should already know before this course"], '
+        f'"bloom_level": "one of: remember, understand, apply, analyze, evaluate, create", '
+        f'"estimated_hours": <int, realistic self-study hours to complete this course>, '
+        f'"difficulty": "one of: beginner, intermediate, advanced", '
+        f'"cognitive_load": "one of: low, medium, high", '
+        f'"required_vocabulary": ["key terms a student must know entering this course"], '
+        f'"expected_competencies": ["skills the student will be able to demonstrate after this course"], '
+        f'"practical_outcomes": ["concrete things the student can DO after this course, not just know"], '
+        f'"assessment_strategy": "one short sentence on how mastery of this course is realistically assessed"}}'
+    )
+
+
+def build_prerequisite_graph_prompt(
+    field: AcademicField, level_label: str, courses: list[dict], native_lang: str,
+) -> str:
+    numbered = "\n".join(f"{i}: {c['title']} — {c['description']}" for i, c in enumerate(courses))
+    return (
+        f"Here is the ordered course list for a {level_label} curriculum in \"{field.name}\":\n\n{numbered}\n\n"
+        f"Beyond the obvious sequential order (each course already assumes the one right before it), identify "
+        f"REAL, non-adjacent prerequisite relationships a student would actually need — e.g. a course near the "
+        f"end might specifically require the concepts from a course much earlier, not just 'the one right "
+        f"before it.' Only include a pair when the dependency is genuine and specific — it is fine, and "
+        f"expected, to return an empty list if the sequential order already captures every real dependency. "
+        f"Respond with ONLY a JSON object, no other text: "
+        f'{{"prerequisites": [{{"course_index": <int>, "requires_index": <int>}}]}} '
+        f"where the course at course_index requires the course at requires_index to be completed first."
+    )
+
+
+def build_tutor_biography_prompt(field: AcademicField, native_lang: str) -> str:
+    return (
+        f"Create a distinctive, experienced professional persona for the tutor who teaches \"{field.name}\" "
+        f"({field.description}). Give them the kind of real-world career background that would make their "
+        f"teaching voice authoritative and specific — not a generic 'expert professor,' but someone whose "
+        f"actual career shows in how they teach (for example: a business tutor who spent two decades as a "
+        f"CEO, a computer science tutor who was a principal engineer at a major tech company, a medicine "
+        f"tutor who practiced clinically for years, a finance tutor who is a working CFA charterholder — pick "
+        f"whatever real-world background is most authentic and specific to THIS field, not a copy of these "
+        f"examples). Write everything in {native_lang}. "
+        f"Respond with ONLY a JSON object, no other text: "
+        f'{{"career_highlights": ["2-4 short, specific, believable career facts, e.g. \'18 años como CTO de una '
+        f"empresa de logística global'\"], "
+        f'"philosophy": "1-2 sentences on their teaching philosophy, grounded in that career background", '
+        f'"correction_focus": "one short phrase: what they are most rigorous about correcting", '
+        f'"system_voice": "2-4 sentences, written as instructions TO the tutor (\'You are ... You always ...\'), '
+        f'describing exactly how they teach and correct students, in character", '
+        f'"motivational_style": "1-2 sentences on how they frame corrections so they land as encouragement, '
+        f'grounded in their specific background"}}'
+    )
+
+
+def build_simplify_prompt(text: str, help_lang: str, cefr_level: CEFRLevel | None) -> str:
+    """Powers the always-available 'simplify / switch language' control
+    (routers/academy.py's /simplify endpoint) — the single-call, never-
+    persisted help path required whenever a learner is studying Academy
+    content in a language they're still acquiring (see
+    TARGET_LANG_CEFR_THRESHOLD) and hits something too hard to follow."""
+    level_note = f" The learner's current level in this language is CEFR {cefr_level.value}." if cefr_level else ""
+    return (
+        f"A student studying academic content found this passage hard to understand:\n\n\"{text}\"\n\n"
+        f"Explain it in {help_lang}, simply and clearly.{level_note} Include: "
+        f"1) a plain-language explanation of what it means, "
+        f"2) a short glossary of any hard terms in it, "
+        f"3) one simple example. "
+        f"Be encouraging — the goal is to help them understand and keep going in the original language, not "
+        f"to replace it. Respond in {help_lang}."
     )

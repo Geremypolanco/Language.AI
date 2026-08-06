@@ -192,6 +192,8 @@ export interface CourseStub {
   order: number;
   title: string;
   description: string;
+  prerequisite_ids: string[];
+  locked: boolean;
 }
 
 export interface Curriculum {
@@ -482,6 +484,22 @@ class ApiClient {
 
   async getAcademyAssignments(userId: string, courseId: string): Promise<Assignment[]> {
     return this.request(`/api/academy/${userId}/courses/${courseId}/assignments`);
+  }
+
+  // Always-available "¿no entiendes? simplifica / cambia de idioma" control
+  // — never persisted, per-learner help (see routers/academy.py's
+  // /simplify). helpLang defaults server-side to the learner's own
+  // native_lang when omitted.
+  async simplifyAcademyText(
+    userId: string,
+    courseId: string,
+    text: string,
+    helpLang?: string
+  ): Promise<{ explanation: string }> {
+    return this.request(`/api/academy/${userId}/courses/${courseId}/simplify`, {
+      method: "POST",
+      body: JSON.stringify({ text, help_lang: helpLang }),
+    });
   }
 
   async submitAcademyAssignment(

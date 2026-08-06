@@ -504,11 +504,23 @@ _TITLES_BY_CATEGORY = {
 }
 
 
-def build_field_faculty(field: "AcademicField") -> TeacherPersona:
+def build_field_faculty(field: "AcademicField", store=None) -> TeacherPersona:
     """Deterministically assigns `field` its own dedicated professor —
     stable across calls (and across processes/restarts), since it's derived
     from the field's fixed position in academy.all_fields() rather than
-    randomness or a persisted table."""
+    randomness or a persisted table.
+
+    Curriculum Engine Phase 1: prefers a persisted, field-SPECIFIC tutor
+    biography (see academy_library.generators.generate_tutor_biography —
+    "18 years as CEO of a logistics company," not a generic "expert
+    professor") when the proactive builder has generated one for this
+    field, replacing the philosophy/correction_focus/system_voice/
+    motivational_style text below with that biography's own. Name,
+    portrait appearance, and voice tone stay from the deterministic pools
+    either way — this only replaces the *written persona*, not the visual/
+    vocal identity system. Falls back to the original 7-shared-category-
+    archetype text (unchanged) when no biography has been built yet for
+    this field, so a professor is never missing while that catches up."""
     from . import academy
 
     fields = academy.all_fields()
@@ -519,23 +531,46 @@ def build_field_faculty(field: "AcademicField") -> TeacherPersona:
     category_info = _CATEGORY_ARCHETYPES.get(field.category, _CATEGORY_ARCHETYPES["Humanidades"])
     title = _TITLES_BY_CATEGORY.get(field.category, "Profesor(a)")
 
+    if store is None:
+        from .academy_library.storage import get_default_store
+
+        store = get_default_store()
+    bio = store.load_field_biography(field.id)
+
+    if bio and bio.get("system_voice"):
+        highlights = "; ".join(bio.get("career_highlights") or [])
+        philosophy = bio.get("philosophy") or (
+            f"Especialista en {field.name.lower()}, con exigencia particular en "
+            f"{category_info['correction_focus']}."
+        )
+        correction_focus = bio.get("correction_focus") or category_info["correction_focus"]
+        system_voice = bio["system_voice"] + (
+            f" Your real career background, which grounds your teaching authority: {highlights}." if highlights else ""
+        )
+        motivational_style = bio.get("motivational_style") or category_info["motivation"]
+    else:
+        philosophy = (
+            f"Especialista en {field.name.lower()}, con exigencia particular en "
+            f"{category_info['correction_focus']}."
+        )
+        correction_focus = category_info["correction_focus"]
+        system_voice = (
+            f"{category_info['style']} Your subject is {field.name} "
+            f"({field.description}). You are rigorous about {category_info['correction_focus']} "
+            f"specifically, and you always correct a factual or conceptual error the "
+            f"moment you notice it rather than letting it pass."
+        )
+        motivational_style = category_info["motivation"]
+
     return TeacherPersona(
         id=f"faculty:{field.id}",
         name=name,
         title=f"{title} de {field.name}",
         archetype=category_info["archetype"],
-        philosophy=(
-            f"Especialista en {field.name.lower()}, con exigencia particular en "
-            f"{category_info['correction_focus']}."
-        ),
-        correction_focus=category_info["correction_focus"],
-        system_voice=(
-            f"{category_info['style']} Your subject is {field.name} "
-            f"({field.description}). You are rigorous about {category_info['correction_focus']} "
-            f"specifically, and you always correct a factual or conceptual error the "
-            f"moment you notice it rather than letting it pass."
-        ),
-        motivational_style=category_info["motivation"],
+        philosophy=philosophy,
+        correction_focus=correction_focus,
+        system_voice=system_voice,
+        motivational_style=motivational_style,
         voice_description=(
             f"This speaker has {voice_tone}, recorded with clear, professional "
             f"audio quality."

@@ -23,9 +23,17 @@ a redesign.
 
 from __future__ import annotations
 
+import logging
 import re
+from typing import TYPE_CHECKING
 
 from .. import db
+from . import graph_algorithms
+
+if TYPE_CHECKING:
+    from ..models import AcademicField, AcademicLevel
+
+logger = logging.getLogger("lingua.knowledge_graph")
 
 # Every relation type the request named — build_graph_for_field_level only
 # ever writes "prerequisite_of" for now (see module docstring), but the
@@ -156,3 +164,135 @@ def graph_exists_for(field_id: str) -> bool:
     with db.cursor() as cur:
         cur.execute("SELECT 1 FROM academic_concept WHERE field_id=? LIMIT 1", (field_id,))
         return cur.fetchone() is not None
+
+
+# ── Real DAG traversal (Curriculum Engine Phase 1) ───────────────────────
+#
+# Everything below builds on the same academic_concept_relation edges above
+# — course ids self-describe their owning (field, level) as
+# "<field_id>:<level>:<index>", which is what lets these helpers work
+# transparently across a specialization's merged curriculum (base field's
+# course ids + the specialization's own) without the caller needing to know
+# it's actually two field namespaces: just pass the full course id list.
+
+
+def _field_levels_from_course_ids(course_ids: list[str]) -> set[tuple[str, str]]:
+    result: set[tuple[str, str]] = set()
+    for cid in course_ids:
+        parts = cid.split(":")
+        if len(parts) == 3:
+            result.add((parts[0], parts[1]))
+    return result
+
+
+def prerequisite_edges_for(course_ids: list[str]) -> list[tuple[str, str]]:
+    """Every prerequisite_of edge whose target course belongs to one of the
+    (field, level) namespaces implied by `course_ids`. Spans multiple
+    fields transparently — pass a specialization's already-merged course id
+    list (base field's ids + its own) and edges from both are included."""
+    field_levels = _field_levels_from_course_ids(course_ids)
+    if not field_levels:
+        return []
+    edges: list[tuple[str, str]] = []
+    with db.cursor() as cur:
+        for field_id, level in field_levels:
+            cur.execute(
+                "SELECT from_concept_id, to_concept_id FROM academic_concept_relation "
+                "WHERE relation_type='prerequisite_of' AND to_concept_id LIKE ?",
+                (f"{field_id}:{level}:%",),
+            )
+            edges.extend((row["from_concept_id"], row["to_concept_id"]) for row in cur.fetchall())
+    return edges
+
+
+def topological_course_order(course_ids_in_order: list[str]) -> list[str]:
+    """The order a student could actually study these courses in, honoring
+    every recorded prerequisite edge — falls back to `course_ids_in_order`
+    itself (the curriculum's own generated order) if the graph somehow has
+    a cycle, since enrich_prerequisite_graph already refuses to persist any
+    edge that would create one; this is a defensive fallback, not the
+    expected path."""
+    edges = prerequisite_edges_for(course_ids_in_order)
+    try:
+        return graph_algorithms.topological_order(course_ids_in_order, edges)
+    except ValueError:
+        logger.exception("Prerequisite graph for %s has a cycle — serving curriculum order instead", course_ids_in_order[:1])
+        return course_ids_in_order
+
+
+def unlocked_courses(user_id: str, course_ids: list[str]) -> set[str]:
+    """Courses this student can start right now — everything with no
+    unmet prerequisite (see graph_algorithms.locked_courses). A course
+    with no recorded prerequisite edges at all is always unlocked, same
+    "nothing is locked by default" default the language skill-tree uses."""
+    all_ids = set(course_ids)
+    edges = prerequisite_edges_for(course_ids)
+    completed: set[str] = set()
+    with db.cursor() as cur:
+        for field_id, level in _field_levels_from_course_ids(course_ids):
+            cur.execute(
+                "SELECT course_id FROM academy_course_progress WHERE user_id=? AND course_id LIKE ?",
+                (user_id, f"{field_id}:{level}:%"),
+            )
+            completed.update(row["course_id"] for row in cur.fetchall())
+    return all_ids - graph_algorithms.locked_courses(all_ids, edges, completed)
+
+
+def ancestor_closure(course_id: str, course_ids: list[str]) -> set[str]:
+    """Every course (direct or transitive) this one requires."""
+    return graph_algorithms.ancestors(course_id, prerequisite_edges_for(course_ids))
+
+
+def unlocks(course_id: str, course_ids: list[str]) -> set[str]:
+    """Every course (direct or transitive) that becomes reachable once this
+    one is completed — "what does finishing X unlock.\""""
+    return graph_algorithms.descendants(course_id, prerequisite_edges_for(course_ids))
+
+
+async def enrich_prerequisite_graph(
+    field: "AcademicField",
+    level: "AcademicLevel",
+    course_ids_in_order: list[str],
+    curriculum_courses: list[dict],
+    native_lang: str,
+) -> int:
+    """AI-driven enrichment on top of the guaranteed sequential baseline
+    build_graph_for_field_level already writes (course[i-1] -> course[i]):
+    proposes real, non-adjacent prerequisite edges (e.g. "Statistics"
+    required by a much-later "Machine Learning" course, not just the one
+    immediately before it), and persists only the edges that don't
+    introduce a cycle — checked incrementally against the running edge set,
+    so one bad proposed edge in the batch doesn't sink the rest of it.
+
+    Never raises: a build must never fail over this enrichment step, since
+    the sequential chain alone is already a valid (if less rich) DAG on its
+    own. Returns how many new edges were actually recorded."""
+    from ..academy_library import generators as academy_generators
+    from ..academy_library.generators import GenerationError
+
+    try:
+        proposal = await academy_generators.generate_prerequisite_graph(field, level, native_lang, curriculum_courses)
+    except GenerationError:
+        logger.exception(
+            "Prerequisite-graph enrichment failed for %s/%s — sequential baseline stands alone", field.id, level.value
+        )
+        return 0
+
+    existing_edges = prerequisite_edges_for(course_ids_in_order)
+    recorded = 0
+    for item in proposal.get("prerequisites", []):
+        try:
+            from_id = course_ids_in_order[item["requires_index"]]
+            to_id = course_ids_in_order[item["course_index"]]
+        except (KeyError, IndexError, TypeError):
+            continue  # validators.validate_prerequisite_graph already bounds-checks this, but stay defensive
+        candidate_edges = existing_edges + [(from_id, to_id)]
+        if graph_algorithms.has_cycle(course_ids_in_order, candidate_edges):
+            logger.warning(
+                "Skipping prerequisite edge %s -> %s for %s/%s: would introduce a cycle", from_id, to_id, field.id, level.value
+            )
+            continue
+        record_relation(from_id, to_id, "prerequisite_of")
+        existing_edges = candidate_edges
+        recorded += 1
+    return recorded

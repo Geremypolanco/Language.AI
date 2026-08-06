@@ -26,7 +26,7 @@ from ..hf_client import hf_client
 from . import validators
 
 if TYPE_CHECKING:
-    from ..models import AcademicField, AcademicLevel
+    from ..models import AcademicField, AcademicLevel, CEFRLevel
 
 _MAX_ATTEMPTS = 3
 
@@ -72,8 +72,11 @@ async def _generate_validated(
     raise GenerationError(f"failed after {_MAX_ATTEMPTS} attempts: {'; '.join(last_problems)}")
 
 
-async def generate_curriculum(field: "AcademicField", level: "AcademicLevel", native_lang: str, course_count: int) -> dict:
-    prompt = academy.build_curriculum_prompt(field, level.label_es, course_count, native_lang)
+async def generate_curriculum(
+    field: "AcademicField", level: "AcademicLevel", native_lang: str, course_count: int,
+    cefr_level: "CEFRLevel | None" = None,
+) -> dict:
+    prompt = academy.build_curriculum_prompt(field, level.label_es, course_count, native_lang, cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         items = _clean_json(raw)
@@ -90,9 +93,10 @@ async def generate_curriculum(field: "AcademicField", level: "AcademicLevel", na
 
 
 async def generate_course_content(
-    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str
+    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
+    cefr_level: "CEFRLevel | None" = None,
 ) -> dict:
-    prompt = academy.build_course_prompt(field, level.label_es, course_title, course_description, native_lang)
+    prompt = academy.build_course_prompt(field, level.label_es, course_title, course_description, native_lang, cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         items = _clean_json(raw)
@@ -109,9 +113,10 @@ async def generate_course_content(
 
 
 async def generate_glossary(
-    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str
+    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
+    cefr_level: "CEFRLevel | None" = None,
 ) -> dict:
-    prompt = academy.build_glossary_prompt(field, level.label_es, course_title, course_description, native_lang)
+    prompt = academy.build_glossary_prompt(field, level.label_es, course_title, course_description, native_lang, cefr_level=cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         data = _clean_json(raw)
@@ -121,9 +126,10 @@ async def generate_glossary(
 
 
 async def generate_quiz(
-    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str
+    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
+    cefr_level: "CEFRLevel | None" = None,
 ) -> dict:
-    prompt = academy.build_quiz_prompt(field, level.label_es, course_title, course_description, native_lang)
+    prompt = academy.build_quiz_prompt(field, level.label_es, course_title, course_description, native_lang, cefr_level=cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         data = _clean_json(raw)
@@ -134,9 +140,9 @@ async def generate_quiz(
 
 async def generate_exam(
     field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
-    exam_kind: str = "final",
+    exam_kind: str = "final", cefr_level: "CEFRLevel | None" = None,
 ) -> dict:
-    prompt = academy.build_exam_prompt(field, level.label_es, course_title, course_description, native_lang, exam_kind)
+    prompt = academy.build_exam_prompt(field, level.label_es, course_title, course_description, native_lang, exam_kind, cefr_level=cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
         data = _clean_json(raw)
@@ -147,9 +153,9 @@ async def generate_exam(
 
 async def generate_assignments(
     field: "AcademicField", level: "AcademicLevel", course_id: str, course_title: str, course_description: str,
-    native_lang: str,
+    native_lang: str, cefr_level: "CEFRLevel | None" = None,
 ) -> list[dict]:
-    prompt = academy.build_assignments_prompt(field, level.label_es, course_title, course_description, native_lang)
+    prompt = academy.build_assignments_prompt(field, level.label_es, course_title, course_description, native_lang, cefr_level=cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[list[dict], list[str]]:
         items = _clean_json(raw)
@@ -169,11 +175,51 @@ async def generate_assignments(
 
 
 async def generate_scenario(
-    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str
+    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
+    cefr_level: "CEFRLevel | None" = None,
 ) -> str:
-    prompt = academy.build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang)
+    prompt = academy.build_practice_scenario_prompt(field, level.label_es, course_title, course_description, native_lang, cefr_level=cefr_level)
 
     def parse_and_validate(raw: str) -> tuple[str, list[str]]:
         return raw, validators.validate_scenario(raw)
 
     return await _generate_validated(prompt, parse_and_validate, max_tokens=500, temperature=0.8)
+
+
+# ── Curriculum Engine Phase 1: metadata, prerequisite graph, biography ───
+
+
+async def generate_course_metadata(
+    field: "AcademicField", level: "AcademicLevel", course_title: str, course_description: str, native_lang: str,
+) -> dict:
+    prompt = academy.build_course_metadata_prompt(field, level.label_es, course_title, course_description, native_lang)
+
+    def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
+        data = _clean_json(raw)
+        return data, validators.validate_course_metadata(data)
+
+    return await _generate_validated(prompt, parse_and_validate, max_tokens=900, temperature=0.4)
+
+
+async def generate_prerequisite_graph(
+    field: "AcademicField", level: "AcademicLevel", native_lang: str, courses: list[dict],
+) -> dict:
+    """courses: [{"title": ..., "description": ...}, ...] in curriculum
+    order — same shape as a persisted curriculum.json's "courses" list."""
+    prompt = academy.build_prerequisite_graph_prompt(field, level.label_es, courses, native_lang)
+
+    def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
+        data = _clean_json(raw)
+        return data, validators.validate_prerequisite_graph(data, len(courses))
+
+    return await _generate_validated(prompt, parse_and_validate, max_tokens=900, temperature=0.4)
+
+
+async def generate_tutor_biography(field: "AcademicField", native_lang: str) -> dict:
+    prompt = academy.build_tutor_biography_prompt(field, native_lang)
+
+    def parse_and_validate(raw: str) -> tuple[dict, list[str]]:
+        data = _clean_json(raw)
+        return data, validators.validate_tutor_biography(data)
+
+    return await _generate_validated(prompt, parse_and_validate, max_tokens=700, temperature=0.7)

@@ -238,6 +238,16 @@ class CourseStub(BaseModel):
     order: int
     title: str
     description: str
+    # Curriculum Engine Phase 1 (real prerequisite DAG — see
+    # backend/learning_engine/knowledge_graph.py) — direct prerequisite
+    # course ids, and whether at least one of them isn't completed yet for
+    # the requesting student. Both default empty/False so any caller that
+    # doesn't populate the graph (e.g. the legacy on-demand fallback, which
+    # has no persisted course ids to look edges up against) still returns a
+    # valid, fully-unlocked CourseStub — "nothing is locked by default"
+    # stays true unless a real edge says otherwise.
+    prerequisite_ids: list[str] = Field(default_factory=list)
+    locked: bool = False
 
 
 class Curriculum(BaseModel):
@@ -246,6 +256,24 @@ class Curriculum(BaseModel):
     level: AcademicLevel
     level_label: str
     courses: list[CourseStub]
+
+
+class CourseMetadata(BaseModel):
+    """Educational metadata for one course — learning_objectives through
+    assessment_strategy — generated once alongside the course's content
+    (see academy_library.generators.generate_course_metadata) and served
+    from the same persisted library as glossary/quiz/exam."""
+
+    learning_objectives: list[str] = Field(default_factory=list)
+    prerequisite_concepts: list[str] = Field(default_factory=list)
+    bloom_level: str = ""
+    estimated_hours: int = 0
+    difficulty: str = ""
+    cognitive_load: str = ""
+    required_vocabulary: list[str] = Field(default_factory=list)
+    expected_competencies: list[str] = Field(default_factory=list)
+    practical_outcomes: list[str] = Field(default_factory=list)
+    assessment_strategy: str = ""
 
 
 class CourseModule(BaseModel):
@@ -295,6 +323,12 @@ class AcademyProgress(BaseModel):
     enrollment: AcademyEnrollment | None
     completed_course_ids: list[str] = Field(default_factory=list)
     total_courses: int = 0
+    # Curriculum Engine Phase 1 — course ids the student can start right
+    # now per the real prerequisite DAG (see knowledge_graph.unlocked_
+    # courses). Empty when there's no enrollment; otherwise always
+    # populated, even if it equals every course id (no real prerequisite
+    # edges recorded yet for this field/level).
+    unlocked_course_ids: list[str] = Field(default_factory=list)
 
 
 class Recommendation(BaseModel):

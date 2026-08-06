@@ -41,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend import academy  # noqa: E402
 from backend.academy_library import build  # noqa: E402
 from backend.academy_library.storage import FileSystemAcademyStore  # noqa: E402
 from backend.config import settings  # noqa: E402
@@ -110,6 +111,24 @@ async def main() -> int:
         course_ids = [f"{report.field_id}:{report.level}:{i}" for i in range(len(curriculum["courses"]))]
         added = knowledge_graph.build_graph_for_field_level(report.field_id, report.level, course_ids, store)
         logger.info("Knowledge graph: %s/%s contributed concepts from %d course(s).", report.field_id, report.level, added)
+
+        field = academy.get_field(report.field_id)
+        if field is None:
+            continue
+        level = AcademicLevel(report.level)
+        # Real, non-sequential prerequisite edges on top of the guaranteed
+        # chain build_graph_for_field_level just wrote — best-effort, never
+        # blocks the rest of the run (see enrich_prerequisite_graph's own
+        # docstring for why it never raises).
+        enriched = await knowledge_graph.enrich_prerequisite_graph(
+            field, level, course_ids, curriculum["courses"], args.native_lang
+        )
+        logger.info("Prerequisite graph: %s/%s gained %d enriched edge(s).", report.field_id, report.level, enriched)
+        # One tutor biography per field (not per level) — skipped if already
+        # built for this field unless --force.
+        has_bio = await build.build_field_biography(store, field, args.native_lang, force=args.force)
+        if not has_bio:
+            logger.error("Tutor biography build failed for %s.", report.field_id)
 
     logger.info("Done: %d succeeded, %d had failures.", len(ok), len(failed))
     for report in failed:

@@ -21,6 +21,10 @@ Disk layout (FileSystemAcademyStore), rooted at settings.academy_library_dir:
     <field_id>/<level>/<version>/courses/<course_id>.assignments.json
     <field_id>/<level>/<version>/courses/<course_id>.scenario.json
     <field_id>/<level>/latest.txt        <- just the current version string
+    <field_id>/biography.json            <- one tutor biography per field,
+                                             independent of level/version
+                                             (see academy_library.build.
+                                             build_field_biography)
 
 `latest.txt` is what makes versioning atomic from a reader's point of view:
 a rebuild writes an entirely new <version> directory tree first, and only
@@ -56,6 +60,12 @@ class AcademyStore(Protocol):
 
     def is_built(self, field_id: str, level: str) -> bool: ...
 
+    def is_complete(self, field_id: str, level: str, course_ids: list[str]) -> bool: ...
+
+    def save_field_biography(self, field_id: str, data: dict) -> None: ...
+
+    def load_field_biography(self, field_id: str) -> dict | None: ...
+
 
 # Every non-"content" course asset is saved as "<course_id>.<kind>.json" so
 # the 6+ files belonging to one course sort and glob together on disk; the
@@ -72,6 +82,9 @@ _KIND_SUFFIX = {
     # language-lesson content — a word/phrase flashcard set per unit,
     # derived from that unit's own generated exercises.
     "flashcards": ".flashcards",
+    # Curriculum Engine Phase 1: learning objectives, Bloom level, estimated
+    # hours, difficulty, ... — see academy_library.generators.generate_course_metadata.
+    "metadata": ".metadata",
 }
 
 
@@ -152,6 +165,34 @@ class FileSystemAcademyStore:
         path = os.path.join(
             self._version_dir(field_id, level, resolved), "courses", f"{_safe_component(course_id)}{suffix}.json"
         )
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def is_complete(self, field_id: str, level: str, course_ids: list[str]) -> bool:
+        """True once every course_id has its 'content' asset saved under
+        the current latest version — derived from what's already on disk
+        (no separate sentinel to keep in sync), so it reports correctly
+        even for a store built by an older process or a hand-seeded test
+        fixture. Used by the proactive builder/auto-build safety net to
+        know a (field, level) needs no more work — never re-triggers
+        generation for something already complete."""
+        if not course_ids:
+            return self.is_built(field_id, level)
+        return all(self.load_course_asset(field_id, level, cid, "content") is not None for cid in course_ids)
+
+    def _biography_path(self, field_id: str) -> str:
+        return os.path.join(self.base_dir, _safe_component(field_id), "biography.json")
+
+    def save_field_biography(self, field_id: str, data: dict) -> None:
+        path = self._biography_path(field_id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def load_field_biography(self, field_id: str) -> dict | None:
+        path = self._biography_path(field_id)
         if not os.path.exists(path):
             return None
         with open(path, encoding="utf-8") as f:

@@ -135,13 +135,27 @@ _VALID_ASSIGNMENTS_JSON = json.dumps(
     ]
 )
 _VALID_SCENARIO_TEXT = "a" * 50
+_VALID_METADATA_JSON = json.dumps(
+    {
+        "learning_objectives": ["Objective 1", "Objective 2", "Objective 3"],
+        "prerequisite_concepts": ["Concept A"],
+        "bloom_level": "apply",
+        "estimated_hours": 10,
+        "difficulty": "intermediate",
+        "cognitive_load": "medium",
+        "required_vocabulary": ["term1", "term2"],
+        "expected_competencies": ["competency1"],
+        "practical_outcomes": ["outcome1"],
+        "assessment_strategy": "A short quiz and a hands-on project.",
+    }
+)
 
 
 def _queue_responses(monkeypatch, responses: list[str]):
     """Feeds hf_client.chat() one canned response per call, in order —
     simulates the model producing exactly the sequence of content types
     build_field_level asks for (curriculum, then per-course: content,
-    glossary, quiz, exam, assignments, scenario)."""
+    glossary, quiz, exam, assignments, scenario, metadata)."""
     from backend import hf_client as hf_client_module
 
     calls = iter(responses)
@@ -161,6 +175,7 @@ def _one_course_responses() -> list[str]:
         _VALID_EXAM_JSON,
         _VALID_ASSIGNMENTS_JSON,
         _VALID_SCENARIO_TEXT,
+        _VALID_METADATA_JSON,
     ]
 
 
@@ -233,7 +248,10 @@ def test_build_is_resumable_by_default_and_force_regenerates(tmp_path, monkeypat
 
     # Only the still-missing assets (glossary/quiz/exam/assignments/scenario)
     # should be requested from the model — curriculum and content are skipped.
-    _queue_responses(monkeypatch, [_VALID_GLOSSARY_JSON, _VALID_QUIZ_JSON, _VALID_EXAM_JSON, _VALID_ASSIGNMENTS_JSON, _VALID_SCENARIO_TEXT])
+    _queue_responses(
+        monkeypatch,
+        [_VALID_GLOSSARY_JSON, _VALID_QUIZ_JSON, _VALID_EXAM_JSON, _VALID_ASSIGNMENTS_JSON, _VALID_SCENARIO_TEXT, _VALID_METADATA_JSON],
+    )
     report = asyncio.run(build.build_field_level(store, field, AcademicLevel.BACHELOR, "es", "v1", force=False))
     assert report.ok
     # The pre-existing content asset was left untouched, not regenerated.

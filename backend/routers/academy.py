@@ -4,20 +4,29 @@ response that reaches the UI is meant to be shown next to a persistent
 disclaimer (enforced in the frontend, not here).
 
 Content is served from the pre-generated, versioned library
-(backend/academy_library/ — built by scripts/build_academy.py) whenever it
-exists, so a student's learning session never waits on an AI call. Any
-(field, level) the build pipeline hasn't covered yet transparently falls
-back to the legacy on-demand-generate-and-cache path (hf_client.generate_
-curriculum/generate_course_content/...) — this fallback is deliberate, not
-a leftover: flipping it off entirely the moment the library module shipped
-would have made every one of the ~60 fields "not available" for every
-learner until someone ran a very large, real-money AI build first. Once a
-field is actually built, it serves instantly from disk and never touches
-Hugging Face again; unbuilt fields keep working exactly as they always
-have until they, too, get built. Brand-new content types this library adds
-(glossary/quiz/exam) have no such legacy path — there's no "how it always
-worked" to preserve for something that didn't exist before, so those
-endpoints are library-only and return 404 until the course is built.
+(backend/academy_library/), which a background task
+(academy_library.proactive_builder.run_periodic_academy_build, started from
+main.py's lifespan) keeps building automatically for as long as the app
+runs — nobody has to run scripts/build_academy.py by hand for a real
+deployment anymore (that CLI still exists for a forced/one-off rebuild of a
+specific field, see its own docstring). Whatever the proactive builder
+hasn't reached yet for a given (field, level) is covered by
+academy_library.auto_build's bounded, synchronous on-demand safety net —
+see that module's docstring — so a request is never more than "the next
+course's generation time" away from a real answer.
+
+The oldest fallback layer — fully unpersisted, live generation via
+hf_client.generate_curriculum/generate_course_content/... — still exists
+underneath both of the above, as the last resort when every AI provider is
+genuinely unreachable (or in the test suite, where AI calls are disabled
+outright). That one path predates this whole library and is intentionally
+never removed: it's what keeps this router honest about "never show
+content unavailable" even in total-outage conditions, at the cost of not
+persisting what it generates. glossary/quiz/exam never had this legacy
+fallback (they're new content types with no "how it always worked" to
+preserve) — they still 404 in that specific worst case, but now only after
+the on-demand safety net itself has already tried and failed to build the
+missing course.
 """
 
 from __future__ import annotations
@@ -26,10 +35,12 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import academy, auth, db
+from ..academy_library import auto_build
+from ..academy_library.build import course_id_for
 from ..academy_library.storage import get_default_store
 from ..hf_client import hf_client
 from ..learning_engine import (
@@ -58,9 +69,12 @@ from ..models import (
     AcademyEnrollment,
     AcademyProgress,
     Assignment,
+    CEFRLevel,
     Curriculum,
     CourseContent,
+    CourseMetadata,
     CourseStub,
+    UserProfile,
 )
 from .users import get_user_by_id_or_404
 
@@ -74,22 +88,61 @@ def get_fields() -> list[AcademicField]:
     return academy.all_fields()
 
 
-def _course_id(field_id: str, level: AcademicLevel, order: int) -> str:
-    return f"{field_id}:{level.value}:{order}"
+# Kept as a thin alias — this router used to keep its own private copy of
+# this exact function; several call sites below still spell it _course_id.
+_course_id = course_id_for
 
 
-def _stubs_from_courses(field_id: str, level: AcademicLevel, courses: list[dict], order_offset: int = 0) -> list[CourseStub]:
+def _cefr_level_for(user: UserProfile, content_lang: str) -> CEFRLevel | None:
+    """CEFR-aware content calibration only makes sense when content_lang IS
+    the language this app actually tracks a proficiency level for — the
+    learner's target_lang (see models.UserProfile.level). Any other
+    content_lang (including the learner's own native_lang, the default)
+    generates uncalibrated, exactly as before this existed."""
+    return user.level if content_lang == user.target_lang else None
+
+
+def _stubs_from_courses(
+    field_id: str, level: AcademicLevel, courses: list[dict], order_offset: int = 0,
+    prerequisite_edges: list[tuple[str, str]] | None = None,
+) -> list[CourseStub]:
+    prerequisites_of: dict[str, list[str]] = {}
+    for from_id, to_id in prerequisite_edges or ():
+        prerequisites_of.setdefault(to_id, []).append(from_id)
     return [
-        CourseStub(id=_course_id(field_id, level, i), order=order_offset + i, title=c["title"], description=c["description"])
+        CourseStub(
+            id=_course_id(field_id, level, i), order=order_offset + i, title=c["title"], description=c["description"],
+            prerequisite_ids=prerequisites_of.get(_course_id(field_id, level, i), []),
+        )
         for i, c in enumerate(courses)
     ]
 
 
-async def _load_curriculum(field: AcademicField, level: AcademicLevel, content_lang: str) -> Curriculum:
+async def _load_curriculum(
+    field: AcademicField, level: AcademicLevel, content_lang: str, cefr_level: CEFRLevel | None = None,
+) -> Curriculum:
     store = get_default_store()
+
+    # Auto-build safety net: bounded and synchronous, a no-op with zero AI
+    # calls whenever a curriculum is already persisted (the normal case,
+    # once the proactive builder — or a previous call here — has reached
+    # this field/level). Never raises; a failure just means this falls
+    # through to the legacy live-generation path below, exactly as it
+    # always has. See academy_library/auto_build.py's module docstring.
+    try:
+        await auto_build.ensure_field_level_started(store, field, level, content_lang, cefr_level)
+        if field.base_field_id:
+            base_field = academy.get_field(field.base_field_id)
+            if base_field:
+                await auto_build.ensure_field_level_started(store, base_field, level, content_lang, cefr_level)
+    except Exception:
+        logger.exception("Auto-build safety net raised for %s/%s", field.id, level.value)
+
     persisted = store.load_curriculum(field.id, level.value)
     if persisted is not None:
-        courses = _stubs_from_courses(field.id, level, persisted["courses"])
+        all_ids = [_course_id(field.id, level, i) for i in range(len(persisted["courses"]))]
+        edges = knowledge_graph.prerequisite_edges_for(all_ids)
+        courses = _stubs_from_courses(field.id, level, persisted["courses"], prerequisite_edges=edges)
         # A specialization's served curriculum prepends its base field's
         # already-built courses ahead of its own — see academy_library/
         # build.py's module docstring for why the specialization's own
@@ -98,13 +151,30 @@ async def _load_curriculum(field: AcademicField, level: AcademicLevel, content_l
             base_field = academy.get_field(field.base_field_id)
             base_persisted = store.load_curriculum(field.base_field_id, level.value) if base_field else None
             if base_field and base_persisted:
-                base_stubs = _stubs_from_courses(base_field.id, level, base_persisted["courses"])
+                base_ids = [_course_id(base_field.id, level, i) for i in range(len(base_persisted["courses"]))]
+                base_edges = knowledge_graph.prerequisite_edges_for(base_ids)
+                base_stubs = _stubs_from_courses(base_field.id, level, base_persisted["courses"], prerequisite_edges=base_edges)
                 courses = base_stubs + courses
                 for i, stub in enumerate(courses):
                     stub.order = i
+        # Best-effort: finishes building the rest of this field/level (and
+        # its base field, for a specialization) in the background —
+        # deduplicated per-process, a no-op once already complete. Never
+        # awaited: a curriculum read must never wait on a whole field's
+        # worth of generation.
+        try:
+            auto_build.ensure_background_completion(store, field, level, content_lang, cefr_level)
+            if field.base_field_id:
+                base_field = academy.get_field(field.base_field_id)
+                if base_field:
+                    auto_build.ensure_background_completion(store, base_field, level, content_lang, cefr_level)
+        except Exception:
+            logger.exception("Failed to schedule background completion for %s/%s", field.id, level.value)
         return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
 
-    # Not built yet — same on-demand generation this app has always used.
+    # Still not built (the auto-build safety net itself failed, e.g. every
+    # AI provider is down, or LINGUA_TESTING disables AI outright) — same
+    # on-demand, unpersisted generation this app has always used.
     raw_courses = await hf_client.generate_curriculum(field, level, content_lang)
     courses = _stubs_from_courses(field.id, level, raw_courses)
     return Curriculum(field_id=field.id, field_name=field.name, level=level, level_label=level.label_es, courses=courses)
@@ -128,44 +198,33 @@ def _get_enrollment_row(user_id: str) -> Any:
         return cur.fetchone()
 
 
-async def _prefetch_first_course(field: AcademicField, level: AcademicLevel, content_lang: str) -> None:
-    """Warms the curriculum + first course's content/assignments cache
-    right after enrollment — same "make the next click instant" rationale
-    as lessons.py's unit prefetch, so opening the first course doesn't sit
-    on an AI generation wait right when a learner has just committed to a
-    field. Best-effort: a failure here just means it generates on demand
-    like before, same as any cache miss."""
-    try:
-        curriculum = await _load_curriculum(field, level, content_lang)
-        if not curriculum.courses:
-            return
-        first = curriculum.courses[0]
-        await hf_client.generate_course_content(field, level, first.id, first.title, first.description, content_lang)
-        await hf_client.generate_assignments(field, level, first.id, first.title, first.description, content_lang)
-    except Exception:
-        logger.exception("Background academy prefetch failed for field %s", field.id)
-
-
 class EnrollRequest(BaseModel):
     field_id: str
     level: AcademicLevel
     # Optional — the language to study this career's content in. Defaults to
-    # the learner's native_lang (the previous, only behavior) when omitted,
-    # but a learner can pick a different one, e.g. to study in their target
-    # language for extra immersion.
+    # the learner's native_lang UNLESS they've already reached
+    # academy.TARGET_LANG_CEFR_THRESHOLD in their target_lang, in which case
+    # it defaults to target_lang instead (see _default_content_lang) — the
+    # "Knowledge Engine" integration between the language and university
+    # engines. A learner can always override this explicitly either way.
     content_lang: str | None = None
 
 
+def _default_content_lang(user: UserProfile) -> str:
+    if user.level.rank >= academy.TARGET_LANG_CEFR_THRESHOLD.rank:
+        return user.target_lang
+    return user.native_lang
+
+
 @router.post("/{user_id}/enroll", response_model=AcademyEnrollment)
-def enroll(
-    user_id: str, payload: EnrollRequest, background_tasks: BackgroundTasks, session: dict = Depends(auth.require_owner)
-) -> AcademyEnrollment:
+async def enroll(user_id: str, payload: EnrollRequest, session: dict = Depends(auth.require_owner)) -> AcademyEnrollment:
     user = get_user_by_id_or_404(user_id)
     field = academy.get_field(payload.field_id)
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
 
-    content_lang = payload.content_lang or user.native_lang
+    content_lang = payload.content_lang or _default_content_lang(user)
+    cefr_level = _cefr_level_for(user, content_lang)
     enrolled_at = datetime.now(UTC).isoformat()
     with db.cursor() as cur:
         cur.execute(
@@ -175,7 +234,19 @@ def enroll(
             "enrolled_at=excluded.enrolled_at, content_lang=excluded.content_lang",
             (user_id, field.id, payload.level.value, enrolled_at, content_lang),
         )
-    background_tasks.add_task(_prefetch_first_course, field, payload.level, content_lang)
+
+    # Bounded, synchronous fast path (curriculum shell + first course) so
+    # opening the curriculum right after enrolling is never a cold start —
+    # a no-op with zero AI calls if the proactive builder already covered
+    # this field/level (the normal case). The rest of the field finishes in
+    # the background; see academy_library/auto_build.py.
+    store = get_default_store()
+    try:
+        await auto_build.ensure_field_level_started(store, field, payload.level, content_lang, cefr_level)
+        auto_build.ensure_background_completion(store, field, payload.level, content_lang, cefr_level)
+    except Exception:
+        logger.exception("Auto-build at enrollment failed for %s/%s", field.id, payload.level.value)
+
     return _build_enrollment(field, payload.level, enrolled_at, content_lang)
 
 
@@ -194,10 +265,16 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
     # content_lang is '' for enrollments made before this column existed —
     # fall back to native_lang, the only behavior back then.
     content_lang = row["content_lang"] or user.native_lang
+    cefr_level = _cefr_level_for(user, content_lang)
     enrollment = _build_enrollment(field, level, row["enrolled_at"], content_lang)
+    unlocked: list[str] = []
     try:
-        curriculum = await _load_curriculum(field, level, content_lang)
+        curriculum = await _load_curriculum(field, level, content_lang, cefr_level)
         total_courses = len(curriculum.courses)
+        try:
+            unlocked = sorted(knowledge_graph.unlocked_courses(user_id, [c.id for c in curriculum.courses]))
+        except Exception:
+            logger.exception("unlocked_courses failed for %s/%s", field.id, level.value)
     except Exception:
         # generate_curriculum does live arXiv/Wikipedia/AI calls on first
         # request (nothing cached yet) — any of those failing shouldn't 500
@@ -210,7 +287,9 @@ async def get_progress(user_id: str, session: dict = Depends(auth.require_owner)
         cur.execute("SELECT course_id FROM academy_course_progress WHERE user_id=?", (user_id,))
         completed = [r["course_id"] for r in cur.fetchall()]
 
-    return AcademyProgress(enrollment=enrollment, completed_course_ids=completed, total_courses=total_courses)
+    return AcademyProgress(
+        enrollment=enrollment, completed_course_ids=completed, total_courses=total_courses, unlocked_course_ids=unlocked
+    )
 
 
 @router.get("/{user_id}/curriculum", response_model=Curriculum)
@@ -223,7 +302,8 @@ async def get_curriculum(user_id: str, session: dict = Depends(auth.require_owne
     if not field:
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
-    return await _load_curriculum(field, level, row["content_lang"] or user.native_lang)
+    content_lang = row["content_lang"] or user.native_lang
+    return await _load_curriculum(field, level, content_lang, _cefr_level_for(user, content_lang))
 
 
 async def _resolve_course(user_id: str, course_id: str):
@@ -236,8 +316,9 @@ async def _resolve_course(user_id: str, course_id: str):
         raise HTTPException(status_code=404, detail="Área de estudio no encontrada")
     level = AcademicLevel(row["level"])
     content_lang = row["content_lang"] or user.native_lang
+    cefr_level = _cefr_level_for(user, content_lang)
 
-    curriculum = await _load_curriculum(field, level, content_lang)
+    curriculum = await _load_curriculum(field, level, content_lang, cefr_level)
     stub = next((c for c in curriculum.courses if c.id == course_id), None)
     if not stub:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
@@ -247,26 +328,48 @@ async def _resolve_course(user_id: str, course_id: str):
     # always the TRUE owner of that course's content, so library/legacy
     # lookups below must use that field, not necessarily the enrolled one.
     owning_field = academy.get_field(course_id.split(":")[0]) or field
-    return user, owning_field, level, stub, content_lang
+    return user, owning_field, level, stub, content_lang, cefr_level
 
 
 @router.get("/{user_id}/courses/{course_id}", response_model=CourseContent)
 async def get_course(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseContent:
-    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    persisted = get_default_store().load_course_asset(field.id, level.value, course_id, "content")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    store = get_default_store()
+    persisted = store.load_course_asset(field.id, level.value, course_id, "content")
+    if persisted is None:
+        # On-demand safety net: builds (and persists) this one course if the
+        # proactive builder hasn't reached it yet. A no-op if there's no
+        # persisted curriculum to build against at all (see
+        # academy_library.auto_build.ensure_course_built) — falls through
+        # to the fully-unpersisted legacy generator below either way.
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        persisted = store.load_course_asset(field.id, level.value, course_id, "content")
     if persisted is not None:
         return CourseContent(id=stub.id, title=stub.title, modules=persisted["modules"])
     modules_raw = await hf_client.generate_course_content(field, level, stub.id, stub.title, stub.description, content_lang)
     return CourseContent(id=stub.id, title=stub.title, modules=[{"title": m["title"], "content": m["content"]} for m in modules_raw])
 
 
+async def _get_or_build_course_asset(field: AcademicField, level: AcademicLevel, course_id: str, kind: str, stub: CourseStub, content_lang: str, cefr_level: CEFRLevel | None) -> Any | None:
+    """Shared persisted-or-safety-net-build lookup for the library-only
+    asset kinds (glossary/quiz/exam/metadata) — these have no legacy
+    unpersisted fallback (see this module's docstring), so once the safety
+    net itself fails too, the caller's own 404 is the honest final answer."""
+    store = get_default_store()
+    data = store.load_course_asset(field.id, level.value, course_id, kind)
+    if data is None:
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        data = store.load_course_asset(field.id, level.value, course_id, kind)
+    return data
+
+
 @router.get("/{user_id}/courses/{course_id}/glossary")
 async def get_glossary(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
     """Key terms + plain-language definitions for this course. Library-only
-    — a brand-new content type with no legacy on-demand path — so this 404s
-    until the course has actually been built (see backend/academy_library)."""
-    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
-    data = get_default_store().load_course_asset(field.id, level.value, course_id, "glossary")
+    — tries the on-demand safety net if not already built, and only 404s
+    if that itself fails too (e.g. every AI provider is genuinely down)."""
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    data = await _get_or_build_course_asset(field, level, course_id, "glossary", stub, content_lang, cefr_level)
     if data is None:
         raise HTTPException(status_code=404, detail="El glosario de este curso aún no está disponible")
     return data
@@ -275,8 +378,8 @@ async def get_glossary(user_id: str, course_id: str, session: dict = Depends(aut
 @router.get("/{user_id}/courses/{course_id}/quiz")
 async def get_quiz(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
     """Library-only, like get_glossary above."""
-    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
-    data = get_default_store().load_course_asset(field.id, level.value, course_id, "quiz")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    data = await _get_or_build_course_asset(field, level, course_id, "quiz", stub, content_lang, cefr_level)
     if data is None:
         raise HTTPException(status_code=404, detail="El quiz de este curso aún no está disponible")
     return data
@@ -285,11 +388,22 @@ async def get_quiz(user_id: str, course_id: str, session: dict = Depends(auth.re
 @router.get("/{user_id}/courses/{course_id}/exam")
 async def get_exam(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> dict:
     """Library-only, like get_glossary above."""
-    _user, field, level, _stub, _content_lang = await _resolve_course(user_id, course_id)
-    data = get_default_store().load_course_asset(field.id, level.value, course_id, "exam")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    data = await _get_or_build_course_asset(field, level, course_id, "exam", stub, content_lang, cefr_level)
     if data is None:
         raise HTTPException(status_code=404, detail="El examen de este curso aún no está disponible")
     return data
+
+
+@router.get("/{user_id}/courses/{course_id}/metadata", response_model=CourseMetadata)
+async def get_course_metadata(user_id: str, course_id: str, session: dict = Depends(auth.require_owner)) -> CourseMetadata:
+    """Educational metadata (learning objectives, Bloom level, estimated
+    hours, difficulty, ...) — library-only, like get_glossary above."""
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    data = await _get_or_build_course_asset(field, level, course_id, "metadata", stub, content_lang, cefr_level)
+    if data is None:
+        raise HTTPException(status_code=404, detail="La metadata de este curso aún no está disponible")
+    return CourseMetadata(**data)
 
 
 @router.get("/{user_id}/courses/{course_id}/scenario")
@@ -297,11 +411,40 @@ async def get_practice_scenario(user_id: str, course_id: str, session: dict = De
     """A realistic, hands-on case/scenario for this course — the practical
     complement to the theory in get_course, for fields (nursing, engineering,
     business, ...) where reading alone isn't enough."""
-    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    scenario = get_default_store().load_course_asset(field.id, level.value, course_id, "scenario")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    store = get_default_store()
+    scenario = store.load_course_asset(field.id, level.value, course_id, "scenario")
+    if scenario is None:
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        scenario = store.load_course_asset(field.id, level.value, course_id, "scenario")
     if scenario is None:
         scenario = await hf_client.generate_practice_scenario(field, level, stub.id, stub.title, stub.description, content_lang)
     return {"scenario": scenario}
+
+
+class SimplifyRequest(BaseModel):
+    text: str
+    # Defaults to the learner's own native_lang — the always-available
+    # "switch language / get help" control required whenever Academy
+    # content is being studied in a language the learner is still
+    # acquiring (see academy.TARGET_LANG_CEFR_THRESHOLD). Never persisted:
+    # this is per-learner, in-the-moment help, not shared library content.
+    help_lang: str | None = None
+
+
+@router.post("/{user_id}/courses/{course_id}/simplify")
+async def simplify_course_text(
+    user_id: str, course_id: str, payload: SimplifyRequest, session: dict = Depends(auth.require_owner)
+) -> dict:
+    user, _field, _level, _stub, _content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    help_lang = payload.help_lang or user.native_lang
+    prompt = academy.build_simplify_prompt(payload.text, help_lang, cefr_level)
+    try:
+        explanation = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=500)
+    except Exception:
+        logger.exception("Simplify request failed for course %s", course_id)
+        explanation = "No se pudo generar una simplificación en este momento — inténtalo de nuevo."
+    return {"explanation": explanation}
 
 
 class ScenarioResponseRequest(BaseModel):
@@ -344,8 +487,12 @@ async def get_assignments(user_id: str, course_id: str, session: dict = Depends(
     """Real, gradeable schoolwork for this course — a tarea, an informe, and
     a proyecto — on top of the theory in get_course and the ungraded
     practice scenario. Submission status/feedback/grade persist per user."""
-    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    raw = get_default_store().load_course_asset(field.id, level.value, course_id, "assignments")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    store = get_default_store()
+    raw = store.load_course_asset(field.id, level.value, course_id, "assignments")
+    if raw is None:
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        raw = store.load_course_asset(field.id, level.value, course_id, "assignments")
     if raw is None:
         raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     submissions = _get_submission_rows(user_id, course_id)
@@ -379,8 +526,12 @@ async def submit_assignment(
     payload: AssignmentSubmitRequest,
     session: dict = Depends(auth.require_owner),
 ) -> dict:
-    _user, field, level, stub, content_lang = await _resolve_course(user_id, course_id)
-    raw = get_default_store().load_course_asset(field.id, level.value, course_id, "assignments")
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    store = get_default_store()
+    raw = store.load_course_asset(field.id, level.value, course_id, "assignments")
+    if raw is None:
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        raw = store.load_course_asset(field.id, level.value, course_id, "assignments")
     if raw is None:
         raw = await hf_client.generate_assignments(field, level, stub.id, stub.title, stub.description, content_lang)
     assignment = next((a for a in raw if a["id"] == assignment_id), None)
@@ -438,8 +589,17 @@ class QuizSubmitRequest(BaseModel):
 
 
 async def _submit_quiz_or_exam(user_id: str, course_id: str, kind: str, payload: "QuizSubmitRequest") -> dict:
-    _user, field, level, _stub, content_lang = await _resolve_course(user_id, course_id)
-    data = get_default_store().load_course_asset(field.id, level.value, course_id, kind)
+    _user, field, level, stub, content_lang, cefr_level = await _resolve_course(user_id, course_id)
+    store = get_default_store()
+    data = store.load_course_asset(field.id, level.value, course_id, kind)
+    if data is None:
+        # Rare in practice — GET .../quiz or .../exam already triggers the
+        # on-demand safety net (see _get_or_build_course_asset), so a
+        # submission almost always finds this already built. Still worth
+        # one more bounded attempt here rather than a hard 404 on a
+        # student's actual submission.
+        await auto_build.ensure_course_built(store, field, level, course_id, stub.title, stub.description, content_lang, cefr_level)
+        data = store.load_course_asset(field.id, level.value, course_id, kind)
     if data is None:
         raise HTTPException(status_code=404, detail="Esta evaluación aún no está disponible")
 

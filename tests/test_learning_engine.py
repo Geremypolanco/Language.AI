@@ -91,6 +91,111 @@ def test_record_relation_rejects_unknown_type():
         pass
 
 
+# ── Real DAG traversal (Curriculum Engine Phase 1) ──────────────────────
+
+
+def test_prerequisite_edges_for_spans_a_specializations_merged_course_ids():
+    # Base field's own chain plus a cross-field edge into the specialization
+    # — prerequisite_edges_for must find both from one merged course id list,
+    # since a specialization's served curriculum mixes base + own course ids.
+    knowledge_graph.record_relation("base:BACHELOR:0", "base:BACHELOR:1", "prerequisite_of")
+    knowledge_graph.record_relation("base:BACHELOR:1", "spec:BACHELOR:0", "prerequisite_of")
+    merged = ["base:BACHELOR:0", "base:BACHELOR:1", "spec:BACHELOR:0"]
+    edges = set(knowledge_graph.prerequisite_edges_for(merged))
+    assert ("base:BACHELOR:0", "base:BACHELOR:1") in edges
+    assert ("base:BACHELOR:1", "spec:BACHELOR:0") in edges
+
+
+def test_topological_course_order_honors_a_non_adjacent_prerequisite():
+    course_ids = ["g:BACHELOR:0", "g:BACHELOR:1", "g:BACHELOR:2"]
+    # Course 2 needs course 0 specifically (not just "the one before it").
+    knowledge_graph.record_relation("g:BACHELOR:0", "g:BACHELOR:2", "prerequisite_of")
+    order = knowledge_graph.topological_course_order(course_ids)
+    assert order.index("g:BACHELOR:0") < order.index("g:BACHELOR:2")
+    assert set(order) == set(course_ids)
+
+
+def test_topological_course_order_falls_back_to_original_order_on_no_edges():
+    course_ids = ["h:BACHELOR:0", "h:BACHELOR:1", "h:BACHELOR:2"]
+    assert knowledge_graph.topological_course_order(course_ids) == course_ids
+
+
+def test_unlocked_courses_reflects_real_completion():
+    _make_user("u-unlock")
+    course_ids = ["i:BACHELOR:0", "i:BACHELOR:1", "i:BACHELOR:2"]
+    knowledge_graph.record_relation("i:BACHELOR:0", "i:BACHELOR:1", "prerequisite_of")
+    knowledge_graph.record_relation("i:BACHELOR:1", "i:BACHELOR:2", "prerequisite_of")
+
+    # Nothing completed: only the prerequisite-free course 0 is unlocked.
+    assert knowledge_graph.unlocked_courses("u-unlock", course_ids) == {"i:BACHELOR:0"}
+
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO academy_course_progress (user_id, course_id, completed_at, elapsed_seconds) VALUES (?, ?, ?, 0)",
+            ("u-unlock", "i:BACHELOR:0", db.now_iso()),
+        )
+    assert knowledge_graph.unlocked_courses("u-unlock", course_ids) == {"i:BACHELOR:0", "i:BACHELOR:1"}
+
+
+def test_ancestor_closure_and_unlocks_are_multi_hop():
+    course_ids = ["j:BACHELOR:0", "j:BACHELOR:1", "j:BACHELOR:2"]
+    knowledge_graph.record_relation("j:BACHELOR:0", "j:BACHELOR:1", "prerequisite_of")
+    knowledge_graph.record_relation("j:BACHELOR:1", "j:BACHELOR:2", "prerequisite_of")
+
+    assert knowledge_graph.ancestor_closure("j:BACHELOR:2", course_ids) == {"j:BACHELOR:0", "j:BACHELOR:1"}
+    assert knowledge_graph.unlocks("j:BACHELOR:0", course_ids) == {"j:BACHELOR:1", "j:BACHELOR:2"}
+
+
+def test_enrich_prerequisite_graph_persists_valid_edges_and_skips_cyclic_ones(monkeypatch):
+    from backend.academy_library import generators as academy_generators
+
+    from backend.models import AcademicLevel
+
+    field = academy.get_field("computer-science")
+    course_ids = ["computer-science:BACHELOR:0", "computer-science:BACHELOR:1", "computer-science:BACHELOR:2"]
+    # A guaranteed sequential baseline, as build_graph_for_field_level would already have written.
+    knowledge_graph.record_relation(course_ids[0], course_ids[1], "prerequisite_of")
+    knowledge_graph.record_relation(course_ids[1], course_ids[2], "prerequisite_of")
+
+    async def fake_generate_prerequisite_graph(field, level, native_lang, courses):
+        return {
+            "prerequisites": [
+                {"course_index": 2, "requires_index": 0},  # valid, non-adjacent, no cycle
+                {"course_index": 0, "requires_index": 2},  # would create a cycle with the baseline — must be skipped
+            ]
+        }
+
+    monkeypatch.setattr(academy_generators, "generate_prerequisite_graph", fake_generate_prerequisite_graph)
+
+    courses = [{"title": f"C{i}", "description": "d"} for i in range(3)]
+    recorded = asyncio.run(
+        knowledge_graph.enrich_prerequisite_graph(field, AcademicLevel.BACHELOR, course_ids, courses, "es")
+    )
+    assert recorded == 1
+    edges = set(knowledge_graph.prerequisite_edges_for(course_ids))
+    assert (course_ids[0], course_ids[2]) in edges
+    assert (course_ids[2], course_ids[0]) not in edges  # the cyclic one was never persisted
+
+
+def test_enrich_prerequisite_graph_never_raises_when_generation_fails(monkeypatch):
+    from backend.academy_library import generators as academy_generators
+    from backend.academy_library.generators import GenerationError
+    from backend.models import AcademicLevel
+
+    field = academy.get_field("computer-science")
+
+    async def always_fails(field, level, native_lang, courses):
+        raise GenerationError("model produced garbage")
+
+    monkeypatch.setattr(academy_generators, "generate_prerequisite_graph", always_fails)
+    course_ids = ["computer-science:MASTER:0", "computer-science:MASTER:1"]
+    courses = [{"title": f"C{i}", "description": "d"} for i in range(2)]
+    recorded = asyncio.run(
+        knowledge_graph.enrich_prerequisite_graph(field, AcademicLevel.MASTER, course_ids, courses, "es")
+    )
+    assert recorded == 0
+
+
 # ── Competency ───────────────────────────────────────────────────────────
 
 

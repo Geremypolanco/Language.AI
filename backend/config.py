@@ -163,6 +163,24 @@ class Settings:
         default_factory=lambda: int(os.environ.get("LINGUA_CACHE_MAX_MB", "600")) * 1024 * 1024
     )
 
+    # ── Curriculum Engine: proactive academy-library builder ────────────
+    # Seconds between build steps in the background loop that builds the
+    # whole academy_library ahead of time (see academy_library/
+    # proactive_builder.py) — deliberately not a tight poll: the point is
+    # to make steady, unattended progress without competing for resources
+    # with real request traffic, not to finish as fast as possible.
+    academy_build_interval_s: float = field(
+        default_factory=lambda: float(os.environ.get("LINGUA_ACADEMY_BUILD_INTERVAL_S", "5"))
+    )
+    # Language the proactively-built library is generated in — independent
+    # of any one learner's content_lang (see AcademyEnrollment.content_lang);
+    # a learner studying in a different language still gets the on-demand
+    # safety net (auto_build.py) for that specific language, same as any
+    # field this loop hasn't reached yet.
+    academy_build_native_lang: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_ACADEMY_BUILD_LANG", "Español")
+    )
+
     # Durable production storage: a dedicated Supabase Postgres project (never
     # ARIA's). When set, db.py persists users/progress/sessions-linked state
     # here instead of the local SQLite file, so a Fly restart or redeploy never

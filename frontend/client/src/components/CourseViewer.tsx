@@ -14,6 +14,50 @@ interface CourseViewerProps {
   onCompleted: () => void;
 }
 
+function SimplifyControl({ userId, courseId, text }: { userId: string; courseId: string; text: string }) {
+  // The always-available "switch language / get help" control required
+  // whenever Academy content is studied in a language the learner is still
+  // acquiring (see backend/academy.py's TARGET_LANG_CEFR_THRESHOLD) — but
+  // shown on every module regardless, since any learner can hit a hard
+  // passage. Never persisted: this is in-the-moment help, not library
+  // content (see routers/academy.py's /simplify).
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [explanation, setExplanation] = useState<string | null>(null);
+
+  const handleClick = async () => {
+    setOpen(true);
+    if (explanation) return;
+    setLoading(true);
+    try {
+      const data = await api.simplifyAcademyText(userId, courseId, text);
+      setExplanation(data.explanation);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo generar una simplificación");
+      setOpen(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <Button size="sm" variant="ghost" onClick={handleClick} className="text-muted-foreground">
+        ¿No entiendes? Simplifica / cambia de idioma
+      </Button>
+      {open && (
+        <Card className="mt-2 p-4 bg-muted/30">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Generando explicación...</p>
+          ) : (
+            <p className="text-sm text-foreground whitespace-pre-wrap">{explanation}</p>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function AssignmentCard({
   userId,
   courseId,
@@ -196,6 +240,7 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
             <Card key={i} className="p-5">
               <h3 className="font-bold text-foreground mb-2">{m.title}</h3>
               <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{m.content}</div>
+              <SimplifyControl userId={userId} courseId={course.id} text={m.content} />
             </Card>
           ))}
         </div>

@@ -1070,6 +1070,143 @@ def test_academy_goals_crud_and_ownership(monkeypatch, tmp_path):
         assert client.get(f"/api/academy/{user['id']}/goals").json() == []
 
 
+def test_academy_metadata_serves_pre_built_and_404s_when_missing(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+    store.save_course_asset(
+        "computer-science", "ASSOCIATE", "v1", course_id, "metadata",
+        {
+            "learning_objectives": ["Objective 1"], "prerequisite_concepts": ["A"], "bloom_level": "apply",
+            "estimated_hours": 8, "difficulty": "beginner", "cognitive_load": "low",
+            "required_vocabulary": ["v1"], "expected_competencies": ["c1"], "practical_outcomes": ["o1"],
+            "assessment_strategy": "A short quiz.",
+        },
+    )
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-metadata1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        res = client.get(f"/api/academy/{user['id']}/courses/{course_id}/metadata")
+        assert res.status_code == 200
+        assert res.json()["bloom_level"] == "apply"
+        assert res.json()["estimated_hours"] == 8
+
+
+def test_academy_metadata_404_when_course_not_built(tmp_path, monkeypatch):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-metadata2@example.com")
+        field_id = client.get("/api/academy/fields").json()[0]["id"]
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": field_id, "level": "ASSOCIATE"})
+        course_id = client.get(f"/api/academy/{user['id']}/curriculum").json()["courses"][0]["id"]
+        assert client.get(f"/api/academy/{user['id']}/courses/{course_id}/metadata").status_code == 404
+
+
+def test_academy_simplify_returns_an_explanation(monkeypatch, tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    course_id = _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    async def fake_chat(messages, max_tokens=1000, temperature=0.7):
+        return "Una explicación simple con un glosario y un ejemplo."
+
+    monkeypatch.setattr(academy_router.hf_client, "chat", fake_chat)
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-simplify1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        res = client.post(
+            f"/api/academy/{user['id']}/courses/{course_id}/simplify",
+            json={"text": "Un texto académico complejo."},
+        )
+        assert res.status_code == 200
+        assert "explicación" in res.json()["explanation"]
+
+
+def test_academy_curriculum_exposes_prerequisite_ids(monkeypatch, tmp_path):
+    from backend.learning_engine import knowledge_graph
+
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    store.save_curriculum(
+        "computer-science", "ASSOCIATE", "v1",
+        {
+            "courses": [
+                {"title": "Course A", "description": "Una descripción real y completa."},
+                {"title": "Course B", "description": "Una descripción real y completa."},
+            ]
+        },
+    )
+    store.set_latest_version("computer-science", "ASSOCIATE", "v1")
+    knowledge_graph.record_relation("computer-science:ASSOCIATE:0", "computer-science:ASSOCIATE:1", "prerequisite_of")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-prereq1@example.com")
+        client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        curriculum = client.get(f"/api/academy/{user['id']}/curriculum").json()
+        courses = {c["id"]: c for c in curriculum["courses"]}
+        assert courses["computer-science:ASSOCIATE:0"]["prerequisite_ids"] == []
+        assert courses["computer-science:ASSOCIATE:1"]["prerequisite_ids"] == ["computer-science:ASSOCIATE:0"]
+
+        progress = client.get(f"/api/academy/{user['id']}/progress").json()
+        # Nothing completed yet: only the prerequisite-free course is unlocked.
+        assert progress["unlocked_course_ids"] == ["computer-science:ASSOCIATE:0"]
+
+
+def test_academy_enroll_defaults_to_target_lang_once_cefr_threshold_reached(tmp_path, monkeypatch):
+    from backend import db
+
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-cefr1@example.com")
+        with db.cursor() as cur:
+            cur.execute("UPDATE users SET level=? WHERE id=?", ("B2", user["id"]))
+
+        res = client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        assert res.status_code == 200
+        # user's native_lang="English", target_lang="Spanish" (see _onboard) —
+        # B2 in target_lang means content_lang defaults to target_lang now.
+        assert res.json()["content_lang"] == "Spanish"
+
+
+def test_academy_enroll_stays_native_lang_below_cefr_threshold(tmp_path, monkeypatch):
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-cefr2@example.com")  # A1 by default
+        res = client.post(f"/api/academy/{user['id']}/enroll", json={"field_id": "computer-science", "level": "ASSOCIATE"})
+        assert res.status_code == 200
+        assert res.json()["content_lang"] == "English"
+
+
+def test_academy_enroll_explicit_content_lang_overrides_the_cefr_default(tmp_path, monkeypatch):
+    from backend import db
+
+    store = FileSystemAcademyStore(str(tmp_path))
+    monkeypatch.setattr(academy_router, "get_default_store", lambda: store)
+    _seed_built_course(store, "computer-science", "ASSOCIATE")
+
+    with TestClient(app) as client:
+        user = _onboard(client, email="academy-cefr3@example.com")
+        with db.cursor() as cur:
+            cur.execute("UPDATE users SET level=? WHERE id=?", ("C1", user["id"]))
+
+        res = client.post(
+            f"/api/academy/{user['id']}/enroll",
+            json={"field_id": "computer-science", "level": "ASSOCIATE", "content_lang": "French"},
+        )
+        assert res.status_code == 200
+        assert res.json()["content_lang"] == "French"
+
+
 def test_unified_competencies_works_without_academy_enrollment(monkeypatch, tmp_path):
     store = FileSystemAcademyStore(str(tmp_path))
     monkeypatch.setattr(academy_router, "get_default_store", lambda: store)

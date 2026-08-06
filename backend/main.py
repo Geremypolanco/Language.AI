@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .academy_library.proactive_builder import run_periodic_academy_build
 from .cache_gc import run_periodic_gc
 from .config import settings
 from .hf_client import hf_client
@@ -68,6 +69,15 @@ async def lifespan(app: FastAPI):
     # with nothing to do against the tests' throwaway cache dir, and no
     # test asserts on it.
     gc_task = None if settings.testing else asyncio.create_task(run_periodic_gc())
+    # Builds the whole academy_library ahead of time, in the background, for
+    # as long as the app runs — see academy_library/proactive_builder.py.
+    # This is the primary mechanism behind "no page can ever say content
+    # unavailable"; academy_library/auto_build.py is the bounded on-demand
+    # safety net for whatever this loop hasn't reached yet. Skipped in
+    # tests for the same reason gc_task is: it's a slow background loop
+    # that would otherwise make real (mocked-away) AI calls with nothing
+    # for any test to assert on.
+    academy_build_task = None if settings.testing else asyncio.create_task(run_periodic_academy_build())
 
     yield
 
@@ -75,6 +85,10 @@ async def lifespan(app: FastAPI):
         gc_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await gc_task
+    if academy_build_task is not None:
+        academy_build_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await academy_build_task
     await hf_client.aclose()
 
 

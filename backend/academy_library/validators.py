@@ -123,3 +123,76 @@ def validate_scenario(text: str) -> list[str]:
         length = len(text.strip()) if isinstance(text, str) else "n/a"
         return [f"scenario text is too short ({length} chars)"]
     return []
+
+
+# ── Curriculum Engine Phase 1: metadata, prerequisite graph, biography ───
+
+_VALID_BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+_VALID_DIFFICULTIES = ("beginner", "intermediate", "advanced")
+_VALID_COGNITIVE_LOADS = ("low", "medium", "high")
+
+
+def validate_course_metadata(data: dict) -> list[str]:
+    problems: list[str] = []
+    if not isinstance(data, dict):
+        return ["expected a metadata object"]
+
+    for list_field in (
+        "learning_objectives", "prerequisite_concepts", "required_vocabulary",
+        "expected_competencies", "practical_outcomes",
+    ):
+        value = data.get(list_field)
+        if not isinstance(value, list) or not value or not all(isinstance(v, str) and v.strip() for v in value):
+            problems.append(f"{list_field} must be a non-empty list of non-empty strings")
+
+    if data.get("bloom_level") not in _VALID_BLOOM_LEVELS:
+        problems.append(f"bloom_level must be one of {_VALID_BLOOM_LEVELS}, got {data.get('bloom_level')!r}")
+    if data.get("difficulty") not in _VALID_DIFFICULTIES:
+        problems.append(f"difficulty must be one of {_VALID_DIFFICULTIES}, got {data.get('difficulty')!r}")
+    if data.get("cognitive_load") not in _VALID_COGNITIVE_LOADS:
+        problems.append(f"cognitive_load must be one of {_VALID_COGNITIVE_LOADS}, got {data.get('cognitive_load')!r}")
+
+    hours = data.get("estimated_hours")
+    if not isinstance(hours, int) or isinstance(hours, bool) or not (0 < hours <= 200):
+        problems.append(f"estimated_hours must be a realistic positive integer, got {hours!r}")
+
+    if not (data.get("assessment_strategy") or "").strip():
+        problems.append("assessment_strategy must not be empty")
+
+    return problems
+
+
+def validate_prerequisite_graph(data: dict, course_count: int) -> list[str]:
+    problems: list[str] = []
+    prereqs = data.get("prerequisites") if isinstance(data, dict) else None
+    if not isinstance(prereqs, list):
+        return [f"expected a 'prerequisites' list, got {prereqs!r}"]
+    for i, item in enumerate(prereqs):
+        if not isinstance(item, dict):
+            problems.append(f"prerequisite {i} is not an object")
+            continue
+        course_index, requires_index = item.get("course_index"), item.get("requires_index")
+        for name, idx in (("course_index", course_index), ("requires_index", requires_index)):
+            if not isinstance(idx, int) or isinstance(idx, bool) or not (0 <= idx < course_count):
+                problems.append(f"prerequisite {i} has an invalid {name} {idx!r} (course_count={course_count})")
+        if course_index == requires_index:
+            problems.append(f"prerequisite {i} references itself (course_index == requires_index)")
+    return problems
+
+
+def validate_tutor_biography(data: dict) -> list[str]:
+    problems: list[str] = []
+    if not isinstance(data, dict):
+        return ["expected a biography object"]
+
+    highlights = data.get("career_highlights")
+    if not isinstance(highlights, list) or len(highlights) < 2 or not all(
+        isinstance(h, str) and h.strip() for h in highlights
+    ):
+        problems.append("career_highlights must be a list of at least 2 non-empty strings")
+
+    for text_field in ("philosophy", "correction_focus", "system_voice", "motivational_style"):
+        if len((data.get(text_field) or "").strip()) < _MIN_DESCRIPTION_LEN:
+            problems.append(f"{text_field} is missing or too short")
+
+    return problems
