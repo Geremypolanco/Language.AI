@@ -27,12 +27,23 @@ class TTSRequest(BaseModel):
 
 
 @router.post("/tts")
-async def text_to_speech(payload: TTSRequest) -> Response:
+async def text_to_speech(payload: TTSRequest) -> dict:
+    """Resolves (generating + permanently caching if needed — see
+    hf_client.text_to_speech) a URL for this text/language, rather than
+    streaming bytes back directly. This is the on-demand path for content
+    that can't be pre-built (free practice, spaced-repetition review — see
+    routers/lessons.py's module docstring): fixed-unit lesson exercises
+    carry their audio_url already baked in by the build pipeline (see
+    language_library/build.py) and never call this at all. Returning a
+    plain GET URL instead of raw bytes lets the frontend hand it straight
+    to an <audio> element and lets routers/audio.py's response carry real
+    Cache-Control/Range semantics — a POST response never gets any of that
+    from a browser's own HTTP cache."""
     result = await hf_client.text_to_speech(payload.text, payload.target_lang)
     if result is None:
         raise HTTPException(status_code=503, detail="Audio no disponible en este momento — inténtalo de nuevo")
-    audio, media_type = result
-    return Response(content=audio, media_type=media_type)
+    _audio, _media_type, filename = result
+    return {"url": f"/api/audio/{filename}"}
 
 
 class ImageRequest(BaseModel):

@@ -792,13 +792,25 @@ class HFClient:
 
     # ── Text-to-speech ──────────────────────────────────────────────────
 
+    def _audio_cache_path(self, namespace: str, key: str, ext: str) -> str:
+        """Same hash(namespace + key) scheme as _cache_path, but rooted at
+        settings.audio_store_dir (permanent, never LRU-evicted — see that
+        setting's comment in config.py) instead of the regenerable
+        cache_dir. The returned path's basename is exactly the filename
+        routers/audio.py serves back out at GET /api/audio/<filename>, so a
+        resolved (bytes, media_type, filename) tuple is enough for a caller
+        to either read the bytes directly or hand a browser a stable URL."""
+        digest = hashlib.sha256(key.encode()).hexdigest()[:32]
+        os.makedirs(settings.audio_store_dir, exist_ok=True)
+        return os.path.join(settings.audio_store_dir, f"{namespace}-{digest}.{ext}")
+
     async def text_to_speech(
         self,
         text: str,
         target_lang: str,
         voice_description: str | None = None,
         persona_id: str | None = None,
-    ) -> tuple[bytes, str] | None:
+    ) -> tuple[bytes, str, str] | None:
         """Piper first (self-hosted, free, and genuinely unlimited — see
         piper_tts.py — for the ~53 languages it covers), falling back to the
         Hugging Face MMS-TTS path for everything else, or if Piper's
@@ -806,9 +818,13 @@ class HFClient:
         its old keyless audio endpoint now 404s ("Model not found:
         openai-audio... visit https://enter.pollinations.ai") — there's no
         free keyless TTS on that side to use. Returns (audio_bytes,
-        media_type) rather than bare bytes because the two engines produce
-        different containers (Piper: WAV, HF/MMS: FLAC) and callers need to
-        label the response correctly rather than guessing.
+        media_type, filename) rather than bare bytes: the two engines
+        produce different containers (Piper: WAV, HF/MMS: FLAC) so callers
+        need to label the response correctly rather than guessing, and
+        `filename` is what routers/audio.py serves back out at a stable,
+        cacheable GET URL (see _audio_cache_path) — the primitive every
+        caller that wants a URL instead of raw bytes (routers/content.py's
+        /tts, language_library/build.py's pre-generation pass) is built on.
 
         When `persona_id`/`voice_description` are given (Talk Live's chosen
         teacher persona — see backend/personas.py), two optional tiers are
@@ -819,21 +835,35 @@ class HFClient:
         the free-form voice_description) if the language supports it and
         HF is configured. Either falling through — no key, no mapping, a
         rate limit, a cold Space — degrades straight to Piper/MMS below,
-        never to silence."""
+        never to silence.
+
+        Every resolution (cache hit, cache miss + generate, or exhausted
+        with no audio at all) is logged with which tier served it and how
+        long it took — "no ocultes errores": a silent None here is exactly
+        what used to make the frontend's Escuchar button look like it did
+        nothing, so every path out of this function is now observable."""
+        started = time.monotonic()
         lang_code2 = target_lang.lower()[:2]
+
+        def _resolved(provider: str, cache_hit: bool, audio: bytes, media_type: str, path: str) -> tuple[bytes, str, str]:
+            logger.info(
+                "tts resolved provider=%s lang=%s cache_hit=%s bytes=%d elapsed_ms=%d",
+                provider, target_lang, cache_hit, len(audio), int((time.monotonic() - started) * 1000),
+            )
+            return audio, media_type, os.path.basename(path)
 
         voice_id = settings.elevenlabs_voice_map.get(persona_id) if persona_id else None
         if voice_id and settings.elevenlabs_configured:
-            elevenlabs_cache_path = self._cache_path("tts-elevenlabs", f"{voice_id}::{text}", "mp3")
+            elevenlabs_cache_path = self._audio_cache_path("tts-elevenlabs", f"{voice_id}::{text}", "mp3")
             if os.path.exists(elevenlabs_cache_path):
                 with open(elevenlabs_cache_path, "rb") as f:
-                    return f.read(), "audio/mpeg"
+                    return _resolved("elevenlabs", True, f.read(), "audio/mpeg", elevenlabs_cache_path)
             audio = await self._call_elevenlabs(text, voice_id)
             if audio:
                 with open(elevenlabs_cache_path, "wb") as f:
                     f.write(audio)
-                return audio, "audio/mpeg"
-            logger.info("ElevenLabs tier unavailable/failed, falling back to the Parler-TTS/Piper chain")
+                return _resolved("elevenlabs", False, audio, "audio/mpeg", elevenlabs_cache_path)
+            logger.info("tts tier elevenlabs unavailable/failed lang=%s, falling back to Parler-TTS/Piper", target_lang)
 
         if (
             voice_description
@@ -842,10 +872,10 @@ class HFClient:
             and not settings.testing
             and self._hf_guard.allowed()
         ):
-            parler_cache_path = self._cache_path("tts-parler", f"{voice_description}::{text}", "flac")
+            parler_cache_path = self._audio_cache_path("tts-parler", f"{voice_description}::{text}", "flac")
             if os.path.exists(parler_cache_path):
                 with open(parler_cache_path, "rb") as f:
-                    return f.read(), "audio/flac"
+                    return _resolved("parler", True, f.read(), "audio/flac", parler_cache_path)
 
             # Only the copy sent to the model is preprocessed — the visible
             # transcript/history stays natural; see _preprocess_for_parler.
@@ -861,12 +891,12 @@ class HFClient:
                     self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(resp.content)
-                    return resp.content, "audio/flac"
+                    return _resolved("parler", False, resp.content, "audio/flac", parler_cache_path)
                 if resp.status_code in (402, 429):
                     self._hf_guard.record_rate_limited()
-                logger.warning("HF Parler-TTS HTTP %s: %s", resp.status_code, resp.text[:200])
+                logger.warning("tts tier parler-direct failed lang=%s http=%s: %s", target_lang, resp.status_code, resp.text[:200])
             except Exception:
-                logger.exception("HF Parler-TTS direct endpoint failed, trying the verified Space fallback")
+                logger.exception("tts tier parler-direct raised lang=%s, trying the verified Space fallback", target_lang)
 
             try:
                 audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
@@ -874,32 +904,37 @@ class HFClient:
                     self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)
-                    return audio_bytes, "audio/flac"
+                    return _resolved("parler-space", False, audio_bytes, "audio/flac", parler_cache_path)
             except Exception:
-                logger.exception("Parler-TTS Space fallback failed, falling back to Piper/MMS")
+                logger.exception("tts tier parler-space raised lang=%s, falling back to Piper/MMS", target_lang)
 
         from . import piper_tts
 
         piper_voice = piper_tts.voice_key_for(target_lang)
         if piper_voice is not None:
-            cache_path = self._cache_path("tts-piper", f"{piper_voice}:{text}", "wav")
+            cache_path = self._audio_cache_path("tts-piper", f"{piper_voice}:{text}", "wav")
             if os.path.exists(cache_path):
                 with open(cache_path, "rb") as f:
-                    return f.read(), "audio/wav"
+                    return _resolved("piper", True, f.read(), "audio/wav", cache_path)
             if not settings.testing:
                 audio = await piper_tts.synthesize(text, target_lang)
                 if audio is not None:
                     with open(cache_path, "wb") as f:
                         f.write(audio)
-                    return audio, "audio/wav"
+                    return _resolved("piper", False, audio, "audio/wav", cache_path)
+                logger.warning("tts tier piper synthesis failed voice=%s lang=%s, falling back to HF MMS", piper_voice, target_lang)
 
         lang_code = _MMS_LANG_CODES.get(target_lang.lower()[:2], "eng")
         model = f"{settings.tts_model_prefix}-{lang_code}"
-        cache_path = self._cache_path("tts", f"{model}:{text}", "flac")
+        cache_path = self._audio_cache_path("tts", f"{model}:{text}", "flac")
         if os.path.exists(cache_path):
             with open(cache_path, "rb") as f:
-                return f.read(), "audio/flac"
+                return _resolved("hf-mms", True, f.read(), "audio/flac", cache_path)
         if not settings.hf_configured or not self._hf_guard.allowed():
+            logger.warning(
+                "tts exhausted lang=%s: no more tiers to try (hf_configured=%s, hf_guard_allowed=%s), elapsed_ms=%d",
+                target_lang, settings.hf_configured, self._hf_guard.allowed(), int((time.monotonic() - started) * 1000),
+            )
             return None
         try:
             resp = await self._post_with_retry(
@@ -911,12 +946,16 @@ class HFClient:
                 self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
-                return resp.content, "audio/flac"
+                return _resolved("hf-mms", False, resp.content, "audio/flac", cache_path)
             if resp.status_code in (402, 429):
                 self._hf_guard.record_rate_limited()
-            logger.warning("HF TTS HTTP %s (%s): %s", resp.status_code, model, resp.text[:200])
+            logger.warning("tts tier hf-mms failed lang=%s http=%s (%s): %s", target_lang, resp.status_code, model, resp.text[:200])
         except Exception:
-            logger.exception("HF TTS failed")
+            logger.exception("tts tier hf-mms raised lang=%s", target_lang)
+        logger.warning(
+            "tts exhausted lang=%s: every tier failed, elapsed_ms=%d",
+            target_lang, int((time.monotonic() - started) * 1000),
+        )
         return None
 
     async def stream_speech(

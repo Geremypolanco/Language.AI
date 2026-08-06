@@ -32,6 +32,11 @@ on:
         required: false
         type: boolean
         default: false
+      audio_only:
+        description: "language pipeline only: backfill audio_url onto the already-published version instead of a normal build (no text regenerated, no new version) — see scripts/build_languages.py --audio-only"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: build-content-library
@@ -62,13 +67,17 @@ jobs:
           if [ "${{ inputs.force }}" = "true" ]; then
             FORCE_ARG="--force"
           fi
+          AUDIO_ONLY_ARG=""
+          if [ "${{ inputs.audio_only }}" = "true" ]; then
+            AUDIO_ONLY_ARG="--audio-only"
+          fi
 
           if [ "${{ inputs.pipeline }}" = "language" ]; then
             if [ -z "${{ inputs.target_langs }}" ] || [ -z "${{ inputs.native_langs }}" ]; then
               echo "target_langs and native_langs are required for the language pipeline" >&2
               exit 1
             fi
-            CMD="python scripts/build_languages.py --target-langs ${{ inputs.target_langs }} --native-langs ${{ inputs.native_langs }} $LEVELS_ARG $FORCE_ARG"
+            CMD="python scripts/build_languages.py --target-langs ${{ inputs.target_langs }} --native-langs ${{ inputs.native_langs }} $LEVELS_ARG $FORCE_ARG $AUDIO_ONLY_ARG"
           else
             CMD="python scripts/build_academy.py $LEVELS_ARG $FORCE_ARG"
           fi

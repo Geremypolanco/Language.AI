@@ -157,6 +157,11 @@ export interface Exercise {
   correct_answer: string;
   image_prompt: string;
   audio_text: string;
+  // Pre-generated at build time (see backend/language_library/build.py) for
+  // every fixed-unit lesson exercise — empty for exercises generated
+  // on-demand (free practice, spaced-repetition review), which resolve
+  // audio at play time via getExerciseAudioUrl instead.
+  audio_url: string;
   vocab_key: string;
 }
 
@@ -390,8 +395,18 @@ class ApiClient {
     return this.fetchMediaUrl("/api/content/image", { prompt, skip_photo_search: true });
   }
 
-  async getExerciseAudio(text: string, targetLang: string): Promise<string> {
-    return this.fetchMediaUrl("/api/content/tts", { text, target_lang: targetLang });
+  // Returns a same-origin, permanently-cacheable /api/audio/... URL (see
+  // backend/routers/audio.py) — not a blob: URL. Unlike images/video, TTS
+  // audio is content-addressed and never regenerated for the same
+  // (text, targetLang), so there's no revocation/lifecycle to manage here;
+  // the browser's own HTTP cache (Cache-Control: immutable) handles reuse
+  // across plays and page loads.
+  async getExerciseAudioUrl(text: string, targetLang: string): Promise<string> {
+    const data = await this.request<{ url: string }>("/api/content/tts", {
+      method: "POST",
+      body: JSON.stringify({ text, target_lang: targetLang }),
+    });
+    return data.url;
   }
 
   async transcribeAudio(audioBlob: Blob): Promise<string> {

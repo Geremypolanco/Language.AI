@@ -159,7 +159,11 @@ def test_build_language_level_persists_content_and_flashcards_and_sets_version(t
     async def fake_chat(messages, max_tokens=1000, temperature=0.7):
         return _VALID_EXERCISE_JSON
 
+    async def fake_text_to_speech(text, target_lang, voice_description=None, persona_id=None):
+        return f"WAV:{text}".encode(), "audio/wav", "tts-fake-abc.wav"
+
     monkeypatch.setattr(hf_client_module.hf_client, "chat", fake_chat)
+    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", fake_text_to_speech)
     # Limit scope to one unit so the test doesn't need one response per unit.
     monkeypatch.setattr(
         "backend.language_library.build.curriculum.units_for_level",
@@ -175,6 +179,7 @@ def test_build_language_level_persists_content_and_flashcards_and_sets_version(t
     unit_id = units_for_level(CEFRLevel.A1)[1].id
     content = store.load_course_asset("English:Spanish", "A1", unit_id, "content")
     assert content[0]["type"] == "vocab_intro"  # teaching intro prepended
+    assert content[0]["audio_url"] == "/api/audio/tts-fake-abc.wav"  # pre-generated, not left for request time
     assert content[1]["vocab_key"] == "greetings.hello"
     flashcards = store.load_course_asset("English:Spanish", "A1", unit_id, "flashcards")
     assert flashcards[0]["vocab_key"] == "greetings.hello"
@@ -216,6 +221,61 @@ def test_build_language_level_records_failure_and_does_not_publish(tmp_path, mon
     report = asyncio.run(build.build_language_level(store, "English", "Spanish", CEFRLevel.A1, "v1"))
     assert not report.ok
     assert store.get_latest_version("English:Spanish", "A1") is None
+
+
+# ── Audio backfill (content published before audio pre-generation existed) ─
+
+
+def test_backfill_audio_adds_urls_without_touching_version_or_text(tmp_path, monkeypatch):
+    from backend import hf_client as hf_client_module
+
+    monkeypatch.setattr(
+        "backend.language_library.build.curriculum.units_for_level",
+        lambda level: units_for_level(level)[1:2],
+    )
+    unit_id = units_for_level(CEFRLevel.A1)[1].id
+    store = FileSystemAcademyStore(str(tmp_path))
+    pre_audio_content = [
+        {
+            "id": "ex-0", "type": "vocab_intro", "prompt": "p", "target_text": "hola", "native_text": "hello",
+            "options": [], "correct_answer": "hola", "image_prompt": "", "audio_text": "hola", "audio_url": "",
+            "vocab_key": "greetings.hello",
+        },
+        {
+            "id": "ex-1", "type": "multiple_choice", "prompt": "p", "target_text": "hola", "native_text": "hello",
+            "options": ["hola", "adios"], "correct_answer": "hola", "image_prompt": "", "audio_text": "",
+            "audio_url": "", "vocab_key": "",
+        },
+    ]
+    store.save_course_asset("English:Spanish", "A1", "v1", unit_id, "content", pre_audio_content)
+    store.set_latest_version("English:Spanish", "A1", "v1")
+
+    async def fake_text_to_speech(text, target_lang, voice_description=None, persona_id=None):
+        return f"WAV:{text}".encode(), "audio/wav", "tts-fake-backfill.wav"
+
+    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", fake_text_to_speech)
+
+    async def explode_chat(*args, **kwargs):
+        raise AssertionError("backfill_audio must never regenerate exercise text")
+
+    monkeypatch.setattr(hf_client_module.hf_client, "chat", explode_chat)
+
+    report = asyncio.run(build.backfill_audio(store, "English", "Spanish", CEFRLevel.A1))
+    assert report.ok
+    assert report.units_built == 1
+    # Still v1 — no new version was created for a pure audio backfill.
+    assert store.get_latest_version("English:Spanish", "A1") == "v1"
+
+    content = store.load_course_asset("English:Spanish", "A1", unit_id, "content")
+    assert content[0]["audio_url"] == "/api/audio/tts-fake-backfill.wav"
+    assert content[0]["target_text"] == "hola"  # text untouched
+    assert content[1]["audio_url"] == ""  # multiple_choice was never audible to begin with
+
+
+def test_backfill_audio_records_failure_for_unbuilt_level(tmp_path):
+    store = FileSystemAcademyStore(str(tmp_path))
+    report = asyncio.run(build.backfill_audio(store, "English", "Spanish", CEFRLevel.A1))
+    assert not report.ok
 
 
 def test_next_version_independent_per_pair_and_level():

@@ -31,6 +31,13 @@ Examples:
     python scripts/build_languages.py \
         --target-langs English --native-langs Spanish --force
 
+    # Content was published before audio pre-generation existed (see
+    # language_library/build.py's _attach_audio): backfill audio_url onto
+    # the *already-published* version in place, without regenerating any
+    # exercise text or bumping the version.
+    python scripts/build_languages.py \
+        --target-langs English --native-langs Spanish --audio-only
+
 Requires HF_TOKEN (or another configured chat provider — see
 backend/hf_client.py's chat()) to actually generate anything; run this
 from an environment with real AI credentials and budget, not from a CI
@@ -84,6 +91,14 @@ def parse_args() -> argparse.Namespace:
         help="Override settings.language_library_dir (default: LINGUA_LANGUAGE_LIBRARY_DIR env var, or "
         "data/language_library).",
     )
+    parser.add_argument(
+        "--audio-only", action="store_true",
+        help="Backfill audio_url onto the already-published version of each (pair, level) instead of a normal "
+        "build — no exercise text is regenerated and no new version is created. For content published before "
+        "audio pre-generation existed; a normal build (with or without --force) already attaches audio to "
+        "everything it (re)generates, so this flag is never needed for a pair/level being built for the "
+        "first time. Incompatible with --force/--version, which only apply to a normal build.",
+    )
     return parser.parse_args()
 
 
@@ -102,10 +117,17 @@ async def main() -> int:
 
     store = FileSystemAcademyStore(args.library_dir or settings.language_library_dir)
 
-    logger.info(
-        "Building %d language pair(s) x %d level(s) into %s ...", len(language_pairs), len(levels), store.base_dir
-    )
-    reports = await build.build_all(store, language_pairs, levels, version=args.version, force=args.force)
+    if args.audio_only:
+        logger.info(
+            "Backfilling audio for %d language pair(s) x %d level(s) in %s ...",
+            len(language_pairs), len(levels), store.base_dir,
+        )
+        reports = await build.backfill_audio_all(store, language_pairs, levels)
+    else:
+        logger.info(
+            "Building %d language pair(s) x %d level(s) into %s ...", len(language_pairs), len(levels), store.base_dir
+        )
+        reports = await build.build_all(store, language_pairs, levels, version=args.version, force=args.force)
 
     ok = [r for r in reports if r.ok]
     failed = [r for r in reports if not r.ok]

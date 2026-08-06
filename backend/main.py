@@ -27,7 +27,20 @@ from .cache_gc import run_periodic_gc
 from .config import settings
 from .hf_client import hf_client
 from .routers import auth as auth_router
-from .routers import academy, content, conversation, feedback, lessons, library, personas, placement, progress, shop, users
+from .routers import (
+    academy,
+    audio,
+    content,
+    conversation,
+    feedback,
+    lessons,
+    library,
+    personas,
+    placement,
+    progress,
+    shop,
+    users,
+)
 from .security_headers import SecurityHeadersMiddleware
 
 logger = logging.getLogger("lingua.main")
@@ -92,6 +105,7 @@ app.include_router(auth_router.router)
 app.include_router(users.router)
 app.include_router(lessons.router)
 app.include_router(content.router)
+app.include_router(audio.router)
 app.include_router(progress.router)
 app.include_router(shop.router)
 app.include_router(placement.router)

@@ -1,9 +1,18 @@
 """Keeps the on-disk media/content cache (backend/config.py's cache_dir)
 under a size budget via simple LRU eviction — a free, code-only way to stop
-the Fly volume from filling up as generated exercises/images/audio/RAG
-context/Piper voice models accumulate, instead of paying to grow the
-volume. Runs as a lightweight periodic background task (see main.py's
-lifespan), not on every cache write, so it never adds latency to a request.
+the Fly volume from filling up as generated images/video/book text/RAG
+context accumulate, instead of paying to grow the volume. Runs as a
+lightweight periodic background task (see main.py's lifespan), not on every
+cache write, so it never adds latency to a request.
+
+Synthesized speech and downloaded Piper voice models live under the
+separate, never-evicted audio_store_dir instead (see backend/hf_client.py's
+text_to_speech and backend/piper_tts.py) — audio is expensive enough to
+regenerate on the spot (a cold voice download, a cold Parler-TTS Space,
+an HF round trip) that silently evicting it to make room for a vocabulary
+image would just reintroduce the exact latency spikes that break a
+click-triggered play() (see routers/audio.py), for content this app
+already promises is pre-generated once and reused forever.
 """
 
 from __future__ import annotations

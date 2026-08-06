@@ -74,6 +74,7 @@ class Exercise(BaseModel):
     correct_answer: str
     image_prompt: str = ""
     audio_text: str = ""
+    audio_url: str = ""
     vocab_key: str = ""
 
 

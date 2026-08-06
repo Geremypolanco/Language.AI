@@ -147,9 +147,15 @@ def _voice_url_prefix(voice_key: str) -> str:
 
 
 async def _download_voice_files(voice_key: str) -> tuple[str, str] | None:
+    # Lives under audio_store_dir, not cache_dir — a downloaded voice model
+    # is a permanent, reusable resource (like the audio it synthesizes),
+    # never subject to cache_gc's LRU eviction. Losing one to eviction mid-
+    # traffic would force the next request for that language to pay a fresh
+    # ~20-90MB download inline, which is exactly the kind of latency spike
+    # that breaks a click-triggered play() (see routers/audio.py's docstring).
     url_prefix = _voice_url_prefix(voice_key)
-    onnx_path = os.path.join(settings.cache_dir, "piper-voices", f"{voice_key}.onnx")
-    json_path = os.path.join(settings.cache_dir, "piper-voices", f"{voice_key}.onnx.json")
+    onnx_path = os.path.join(settings.audio_store_dir, "piper-voices", f"{voice_key}.onnx")
+    json_path = os.path.join(settings.audio_store_dir, "piper-voices", f"{voice_key}.onnx.json")
     os.makedirs(os.path.dirname(onnx_path), exist_ok=True)
 
     if os.path.exists(onnx_path) and os.path.exists(json_path):

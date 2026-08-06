@@ -151,14 +151,27 @@ class Settings:
     language_library_dir: str = field(
         default_factory=lambda: os.environ.get("LINGUA_LANGUAGE_LIBRARY_DIR", str(_BASE_DIR / "data" / "language_library"))
     )
+    # Synthesized speech (backend/hf_client.py's text_to_speech) lives here,
+    # not under cache_dir — audio is expensive to regenerate on the spot
+    # (cold Piper voice download, a cold Parler-TTS Space, an HF round trip)
+    # and the whole point of pre-generating it at build time (see
+    # language_library/build.py) is that it's never silently evicted and
+    # regenerated later just because cache_dir got LRU-collected for space.
+    # Served back out by routers/audio.py, content-addressed by
+    # hash(provider/voice + text) so a given URL's bytes never change and
+    # can be cached by the browser (or a CDN in front of this app) forever.
+    audio_store_dir: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_AUDIO_STORE_DIR", str(_BASE_DIR / "data" / "audio_store"))
+    )
     # Free, code-only disk-space safety valve (see cache_gc.py) instead of
     # paying to grow the Fly volume: a periodic background task deletes the
     # least-recently-accessed cache files whenever cache_dir exceeds this
-    # many bytes. Every file in there is regenerable (exercises, images,
-    # audio, RAG context) or re-downloadable (Piper voice models), so
-    # eviction only ever costs a future cache miss, never real data.
-    # Default 600MB leaves headroom in the deploy's 1GB volume for the rest
-    # of /app/data (SQLite fallback, etc).
+    # many bytes. Every file in there is regenerable (images, video, book
+    # text, RAG context), so eviction only ever costs a future cache miss,
+    # never real data. Synthesized audio and downloaded Piper voice models
+    # no longer live here at all (see audio_store_dir above) — both are
+    # permanent, never evicted. Default 600MB leaves headroom in the
+    # deploy's 1GB volume for the rest of /app/data (SQLite fallback, etc).
     cache_max_bytes: int = field(
         default_factory=lambda: int(os.environ.get("LINGUA_CACHE_MAX_MB", "600")) * 1024 * 1024
     )
