@@ -183,7 +183,11 @@ def _fake_text_to_speech_factory():
 
     async def fake(text, target_lang, voice_description=None, persona_id=None):
         calls.append(text)
-        return f"WAV:{text}".encode(), "audio/wav", f"tts-fake-{len(calls)}.wav"
+        # Padded past validate_audio_bytes's minimum-size floor (see
+        # language_library/build.py) — a handful of raw bytes wouldn't
+        # pass as a real WAV/FLAC/MP3 payload and _attach_audio would
+        # (correctly) discard it rather than set audio_url from it.
+        return f"WAV:{text}".encode().ljust(128, b"\0"), "audio/wav", f"tts-fake-{len(calls)}.wav"
 
     return fake, calls
 

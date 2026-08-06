@@ -222,6 +222,30 @@ CREATE TABLE IF NOT EXISTS learning_goal (
     milestones TEXT NOT NULL DEFAULT '',
     milestone_progress INTEGER NOT NULL DEFAULT 0
 );
+
+-- Persistent job queue (see backend/jobs/) — every asset the Content
+-- Production Pipeline needs to generate (currently: pre-generated lesson
+-- audio) becomes a row here instead of a synchronous call inline in a
+-- build script. dedupe_key makes re-enqueueing the same unit of work a
+-- no-op (a rescan finding the same gap twice never double-queues it).
+-- payload is JSON, shaped per job_type by its executor (see
+-- backend/jobs/registry.py). run_after is when this job next becomes
+-- claimable — "now" for a fresh job, pushed into the future by fail()'s
+-- backoff for a retrying one.
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_type TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    run_after TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_claim ON jobs(status, run_after);
 """
 
 _SCHEMA_POSTGRES = """
@@ -398,11 +422,28 @@ CREATE TABLE IF NOT EXISTS learning_goal (
     milestone_progress INTEGER NOT NULL DEFAULT 0
 );
 
+-- See the SQLite schema's jobs table comment above (backend/jobs/) — same
+-- shape on both engines.
+CREATE TABLE IF NOT EXISTS jobs (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    run_after TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_vocab_progress_due ON vocab_progress(user_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_conversation_log_user ON conversation_log(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_academic_concept_course ON academic_concept(course_id);
 CREATE INDEX IF NOT EXISTS idx_concept_relation_from ON academic_concept_relation(from_concept_id);
 CREATE INDEX IF NOT EXISTS idx_learning_goal_user ON learning_goal(user_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_jobs_claim ON jobs(status, run_after);
 """
 
 

@@ -155,15 +155,16 @@ def test_wrap_with_teaching_intros_delegates():
 
 def test_build_language_level_persists_content_and_flashcards_and_sets_version(tmp_path, monkeypatch):
     from backend import hf_client as hf_client_module
+    from backend.jobs import manager as job_manager
 
     async def fake_chat(messages, max_tokens=1000, temperature=0.7):
         return _VALID_EXERCISE_JSON
 
-    async def fake_text_to_speech(text, target_lang, voice_description=None, persona_id=None):
-        return f"WAV:{text}".encode(), "audio/wav", "tts-fake-abc.wav"
+    async def explode_tts(*args, **kwargs):
+        raise AssertionError("build_language_level must never call a TTS provider itself — only enqueue a job")
 
     monkeypatch.setattr(hf_client_module.hf_client, "chat", fake_chat)
-    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", fake_text_to_speech)
+    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", explode_tts)
     # Limit scope to one unit so the test doesn't need one response per unit.
     monkeypatch.setattr(
         "backend.language_library.build.curriculum.units_for_level",
@@ -179,10 +180,22 @@ def test_build_language_level_persists_content_and_flashcards_and_sets_version(t
     unit_id = units_for_level(CEFRLevel.A1)[1].id
     content = store.load_course_asset("English:Spanish", "A1", unit_id, "content")
     assert content[0]["type"] == "vocab_intro"  # teaching intro prepended
-    assert content[0]["audio_url"] == "/api/audio/tts-fake-abc.wav"  # pre-generated, not left for request time
+    assert content[0]["audio_url"] == ""  # not generated inline — see the enqueued job below
     assert content[1]["vocab_key"] == "greetings.hello"
     flashcards = store.load_course_asset("English:Spanish", "A1", unit_id, "flashcards")
     assert flashcards[0]["vocab_key"] == "greetings.hello"
+
+    jobs = job_manager.list_jobs(job_type="audio_unit")
+    assert len(jobs) == 1
+    assert jobs[0].payload == {
+        "pair_key": "English:Spanish", "level": "A1", "unit_id": unit_id, "target_lang": "English",
+    }
+    assert jobs[0].status == "pending"
+
+    # The pair's target_lang/native_lang are recorded for the scanner
+    # (backend/jobs/scanner.py) to read back later — it only ever sees
+    # sanitized directory names on disk, not these original strings.
+    assert build.read_pair_metadata(store, "English:Spanish") == ("English", "Spanish")
 
 
 def test_build_language_level_is_resumable(tmp_path, monkeypatch):
@@ -226,8 +239,9 @@ def test_build_language_level_records_failure_and_does_not_publish(tmp_path, mon
 # ── Audio backfill (content published before audio pre-generation existed) ─
 
 
-def test_backfill_audio_adds_urls_without_touching_version_or_text(tmp_path, monkeypatch):
+def test_backfill_audio_enqueues_a_job_without_touching_version_or_text(tmp_path, monkeypatch):
     from backend import hf_client as hf_client_module
+    from backend.jobs import manager as job_manager
 
     monkeypatch.setattr(
         "backend.language_library.build.curriculum.units_for_level",
@@ -250,15 +264,11 @@ def test_backfill_audio_adds_urls_without_touching_version_or_text(tmp_path, mon
     store.save_course_asset("English:Spanish", "A1", "v1", unit_id, "content", pre_audio_content)
     store.set_latest_version("English:Spanish", "A1", "v1")
 
-    async def fake_text_to_speech(text, target_lang, voice_description=None, persona_id=None):
-        return f"WAV:{text}".encode(), "audio/wav", "tts-fake-backfill.wav"
+    async def explode(*args, **kwargs):
+        raise AssertionError("backfill_audio must never call a TTS provider or regenerate exercise text itself")
 
-    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", fake_text_to_speech)
-
-    async def explode_chat(*args, **kwargs):
-        raise AssertionError("backfill_audio must never regenerate exercise text")
-
-    monkeypatch.setattr(hf_client_module.hf_client, "chat", explode_chat)
+    monkeypatch.setattr(hf_client_module.hf_client, "text_to_speech", explode)
+    monkeypatch.setattr(hf_client_module.hf_client, "chat", explode)
 
     report = asyncio.run(build.backfill_audio(store, "English", "Spanish", CEFRLevel.A1))
     assert report.ok
@@ -267,9 +277,38 @@ def test_backfill_audio_adds_urls_without_touching_version_or_text(tmp_path, mon
     assert store.get_latest_version("English:Spanish", "A1") == "v1"
 
     content = store.load_course_asset("English:Spanish", "A1", unit_id, "content")
-    assert content[0]["audio_url"] == "/api/audio/tts-fake-backfill.wav"
+    assert content[0]["audio_url"] == ""  # not generated inline — see the enqueued job below
     assert content[0]["target_text"] == "hola"  # text untouched
-    assert content[1]["audio_url"] == ""  # multiple_choice was never audible to begin with
+
+    jobs = job_manager.list_jobs(job_type="audio_unit")
+    assert len(jobs) == 1
+    assert jobs[0].payload == {
+        "pair_key": "English:Spanish", "level": "A1", "unit_id": unit_id, "target_lang": "English",
+    }
+
+
+def test_backfill_audio_skips_units_that_already_have_all_their_audio(tmp_path, monkeypatch):
+    from backend.jobs import manager as job_manager
+
+    monkeypatch.setattr(
+        "backend.language_library.build.curriculum.units_for_level",
+        lambda level: units_for_level(level)[0:1],
+    )
+    unit_id = units_for_level(CEFRLevel.A1)[0].id
+    store = FileSystemAcademyStore(str(tmp_path))
+    complete_content = [
+        {
+            "id": "ex-0", "type": "vocab_intro", "prompt": "p", "target_text": "hola", "native_text": "hello",
+            "options": [], "correct_answer": "hola", "image_prompt": "", "audio_text": "hola",
+            "audio_url": "/api/audio/already-done.wav", "vocab_key": "greetings.hello",
+        },
+    ]
+    store.save_course_asset("English:Spanish", "A1", "v1", unit_id, "content", complete_content)
+    store.set_latest_version("English:Spanish", "A1", "v1")
+
+    report = asyncio.run(build.backfill_audio(store, "English", "Spanish", CEFRLevel.A1))
+    assert report.ok
+    assert job_manager.list_jobs(job_type="audio_unit") == []
 
 
 def test_backfill_audio_records_failure_for_unbuilt_level(tmp_path):

@@ -32,16 +32,30 @@ Examples:
         --target-langs English --native-langs Spanish --force
 
     # Content was published before audio pre-generation existed (see
-    # language_library/build.py's _attach_audio): backfill audio_url onto
-    # the *already-published* version in place, without regenerating any
-    # exercise text or bumping the version.
+    # language_library/build.py's _attach_audio): scan the *already-
+    # published* version for units still missing audio_url and enqueue a
+    # repair job for each, without regenerating any exercise text or
+    # bumping the version.
     python scripts/build_languages.py \
         --target-langs English --native-langs Spanish --audio-only
 
 Requires HF_TOKEN (or another configured chat provider — see
-backend/hf_client.py's chat()) to actually generate anything; run this
-from an environment with real AI credentials and budget, not from a CI
-job or a sandbox with LINGUA_TESTING set.
+backend/hf_client.py's chat()) to generate exercise text; run this from
+an environment with real AI credentials and budget, not from a CI job or
+a sandbox with LINGUA_TESTING set.
+
+This script itself never calls a TTS provider — building a unit only
+enqueues an "audio_unit" job (backend/jobs/) for it, and --audio-only
+does nothing but enqueue jobs for gaps it finds. The actual audio
+synthesis happens later, asynchronously, in the deployed app's own
+worker loop (backend/jobs/worker.py, started by main.py's lifespan) —
+this script needs the same database this app's users/progress data lives
+in (SUPABASE_DB_URL, or local SQLite otherwise) to write those job rows,
+but never blocks on how long they take to actually run. This is what
+makes it safe to invoke over a short-lived channel like `flyctl ssh
+console`: even a large model download (which used to be able to exceed
+that channel's patience — see backend/jobs/model_manager.py) can no
+longer happen inside this script's own process lifetime at all.
 """
 
 from __future__ import annotations

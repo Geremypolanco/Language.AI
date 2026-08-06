@@ -9,15 +9,18 @@ permanently persisted, versioned library for a given set of language pairs
           -> validate, retry on failure (language_library.generators)
           -> wrap with the same teaching-intro cards the on-demand path
              has always added (hf_client._with_teaching_intros)
-          -> synthesize + permanently store audio for every vocab_intro/
-             listen_type exercise (see _attach_audio) — the two exercise
-             types with an "Escuchar" button in the frontend — so that
-             button's audio_url is already baked into the persisted
-             exercise and playing it during a lesson never has to call a
-             TTS provider at all, same "never generate during learning"
-             principle already applied to the exercise text itself.
-          -> derive a flashcard set from the un-wrapped exercises
           -> save both to the AcademyStore
+          -> enqueue an "audio_unit" job (see backend/jobs/) if this unit
+             has any vocab_intro/listen_type exercise still missing
+             audio_url — never call the TTS provider inline here. A
+             worker running inside the always-on backend process (see
+             backend/jobs/worker.py) claims and executes that job
+             whenever it gets to it, independent of whatever
+             script/session/SSH-tunnel triggered this build. This is
+             exactly what makes a large model download (e.g. Piper's
+             ~100MB "high" quality English voice) unable to blow up a
+             build run the way it could when audio synthesis used to
+             happen synchronously, inline, right here.
         -> only after every unit at this (pair, level) saves successfully,
            flip that (pair, level)'s "latest" version pointer
 
@@ -36,11 +39,14 @@ lección cambia, regenerar únicamente esa lección."
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from dataclasses import dataclass, field as dataclass_field
 
 from .. import curriculum
-from ..hf_client import hf_client
+from ..academy_library.storage import _safe_component
+from ..jobs import manager as job_manager
 from ..models import CEFRLevel, Exercise, ExerciseType
 from . import generators
 from .generators import GenerationError
@@ -53,17 +59,35 @@ logger = logging.getLogger("lingua.language_library.build")
 # point spending a TTS call+permanent file on a multiple_choice/fill_blank
 # exercise nothing in the UI will ever play back.
 _AUDIBLE_TYPES = {ExerciseType.VOCAB_INTRO, ExerciseType.LISTEN_TYPE}
+_AUDIBLE_TYPE_VALUES = {t.value for t in _AUDIBLE_TYPES}
+
+
+def validate_audio_bytes(data: bytes) -> list[str]:
+    """The Asset Validator for the "audio_unit" job type (see backend/
+    jobs/executors/audio.py, which is the only caller in the queue path —
+    exported from here too since _attach_audio, the pre-queue direct-call
+    convenience some tests still use, applies the same check). A WAV/FLAC/
+    MP3 container's own header is already well past this many bytes; a
+    file this small is a truncated download or an error page saved as if
+    it were audio, not a real clip."""
+    problems = []
+    if len(data) < 64:
+        problems.append(f"audio payload suspiciously small ({len(data)} bytes)")
+    return problems
 
 
 async def _attach_audio(exercises: list[Exercise], target_lang: str, pair_key: str, unit_id: str) -> None:
     """Synthesizes and permanently stores audio for every audible exercise
-    in place (sets .audio_url), skipping any that already has one — same
-    resumability contract as build_language_level's own unit-level skip.
-    A synthesis failure here is logged and left with an empty audio_url
-    rather than failing the whole unit build: a lesson with 8 working
-    audio clips and 1 silent "Escuchar" button is still worth publishing,
-    matching how a single unit's build failure doesn't block every other
-    unit in build_language_level."""
+    in place (sets .audio_url), skipping any that already has one —
+    resumable at exercise granularity: re-running this (e.g. a retried
+    "audio_unit" job) only ever does the remaining work, never redoes
+    what already succeeded. A synthesis failure (including a validation
+    failure — see validate_audio_bytes) is logged and left with an empty
+    audio_url rather than raised; the caller (backend/jobs/executors/
+    audio.py) decides whether "some exercises still missing audio" should
+    fail the job for a retry."""
+    from ..hf_client import hf_client  # deferred import — this module's only use of hf_client
+
     for ex in exercises:
         if ex.type not in _AUDIBLE_TYPES or ex.audio_url:
             continue
@@ -74,8 +98,65 @@ async def _attach_audio(exercises: list[Exercise], target_lang: str, pair_key: s
                 pair_key, unit_id, ex.id, ex.vocab_key,
             )
             continue
-        _audio_bytes, _media_type, filename = result
+        audio_bytes, _media_type, filename = result
+        problems = validate_audio_bytes(audio_bytes)
+        if problems:
+            logger.warning(
+                "Audio synthesis for %s/%s exercise %s failed validation (%s) — publishing without audio_url",
+                pair_key, unit_id, ex.id, "; ".join(problems),
+            )
+            continue
         ex.audio_url = f"/api/audio/{filename}"
+
+
+def _pair_metadata_path(store, pair_key: str) -> str:
+    return os.path.join(store.base_dir, _safe_component(pair_key), "pair_meta.json")
+
+
+def _ensure_pair_metadata(store, pair_key: str, target_lang: str, native_lang: str) -> None:
+    """Writes a small sidecar recording this pair_key's original
+    target_lang/native_lang strings — language_pair_key's ":" separator
+    doesn't survive _safe_component's filesystem-safe sanitization (it
+    becomes "_", indistinguishable from a language name that genuinely
+    contains an underscore), so backend/jobs/scanner.py's startup scan
+    (which only sees sanitized directory names on disk, not the original
+    call that created them) reads this back instead of trying to split
+    the directory name and guess. Keyed off `store.base_dir` rather than
+    settings.language_library_dir directly so tests (which construct
+    their own FileSystemAcademyStore(tmp_path)) stay isolated."""
+    path = _pair_metadata_path(store, pair_key)
+    if os.path.exists(path):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"target_lang": target_lang, "native_lang": native_lang}, f)
+
+
+def read_pair_metadata(store, pair_key: str) -> tuple[str, str] | None:
+    path = _pair_metadata_path(store, pair_key)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+    return meta["target_lang"], meta["native_lang"]
+
+
+def _needs_audio(raw_exercises: list[dict]) -> bool:
+    return any(item.get("type") in _AUDIBLE_TYPE_VALUES and not item.get("audio_url") for item in raw_exercises)
+
+
+def enqueue_audio_job(pair_key: str, level: str, unit_id: str, target_lang: str) -> None:
+    """Queues (or, if a previous attempt for this exact unit exhausted its
+    retries, re-queues — see JobManager.enqueue) the "audio_unit" job.
+    Idempotent by design (dedupe_key): calling this for a unit that
+    already has a pending/running/retrying/completed job for it is a
+    no-op, so both a fresh build and a repair scan can call this
+    unconditionally without needing to coordinate with each other."""
+    job_manager.enqueue(
+        job_type="audio_unit",
+        payload={"pair_key": pair_key, "level": level, "unit_id": unit_id, "target_lang": target_lang},
+        dedupe_key=f"audio_unit:{pair_key}:{level}:{unit_id}",
+    )
 
 
 @dataclass
@@ -96,12 +177,16 @@ async def build_language_level(
     store, target_lang: str, native_lang: str, level: CEFRLevel, version: str, force: bool = False
 ) -> BuildReport:
     pair_key = language_pair_key(target_lang, native_lang)
+    _ensure_pair_metadata(store, pair_key, target_lang, native_lang)
     report = BuildReport(language_pair=pair_key, level=level.value, version=version)
     units = curriculum.units_for_level(level)
     report.units_attempted = len(units)
 
     for unit in units:
-        if not force and store.load_course_asset(pair_key, level.value, unit.id, "content", version=version):
+        existing = store.load_course_asset(pair_key, level.value, unit.id, "content", version=version)
+        if not force and existing:
+            if _needs_audio(existing):
+                enqueue_audio_job(pair_key, level.value, unit.id, target_lang)
             report.units_built += 1
             continue
         try:
@@ -112,10 +197,10 @@ async def build_language_level(
             continue
 
         final_exercises = generators.wrap_with_teaching_intros(raw_exercises)
-        await _attach_audio(final_exercises, target_lang, pair_key, unit.id)
-        store.save_course_asset(
-            pair_key, level.value, version, unit.id, "content", [e.model_dump() for e in final_exercises]
-        )
+        final_dumped = [e.model_dump() for e in final_exercises]
+        store.save_course_asset(pair_key, level.value, version, unit.id, "content", final_dumped)
+        if _needs_audio(final_dumped):
+            enqueue_audio_job(pair_key, level.value, unit.id, target_lang)
         flashcards = generators.build_flashcards(raw_exercises)
         store.save_course_asset(pair_key, level.value, version, unit.id, "flashcards", flashcards)
         report.units_built += 1
@@ -162,15 +247,16 @@ async def build_all(
 
 
 async def backfill_audio(store, target_lang: str, native_lang: str, level: CEFRLevel) -> BuildReport:
-    """One-time migration path for content published before audio pre-
-    generation existed (see _attach_audio): adds audio_url to every
-    vocab_intro/listen_type exercise in the *currently published* version
-    of this (pair, level) that's missing one, re-saving it under that same
-    version — no text is regenerated and no new version is created,
-    because nothing about the exercise content itself changed. A brand-new
-    build never needs this; build_language_level already attaches audio as
-    part of publishing. Returns a BuildReport with a failure recorded for
-    a level that isn't published at all (nothing to backfill onto)."""
+    """Scans the *currently published* version of this (pair, level) for
+    units still missing audio_url and enqueues an "audio_unit" job for
+    each (see enqueue_audio_job) — never calls a TTS provider itself.
+    Existed originally (in an earlier revision of this function) as a
+    synchronous, blocking migration path for content published before
+    audio pre-generation existed at all; rewritten to go through the job
+    queue for the same reason build_language_level does — a scan/backfill
+    trigger should never itself be the thing waiting on a slow model
+    download. Returns a BuildReport with a failure recorded for a level
+    that isn't published at all (nothing to backfill onto)."""
     pair_key = language_pair_key(target_lang, native_lang)
     version = store.get_latest_version(pair_key, level.value)
     report = BuildReport(language_pair=pair_key, level=level.value, version=version or "(unbuilt)")
@@ -185,13 +271,8 @@ async def backfill_audio(store, target_lang: str, native_lang: str, level: CEFRL
         if raw is None:
             report.failures.append((unit.id, "unit not found in published version"))
             continue
-        exercises = [Exercise(**item) for item in raw]
-        before = [e.audio_url for e in exercises]
-        await _attach_audio(exercises, target_lang, pair_key, unit.id)
-        if [e.audio_url for e in exercises] != before:
-            store.save_course_asset(
-                pair_key, level.value, version, unit.id, "content", [e.model_dump() for e in exercises]
-            )
+        if _needs_audio(raw):
+            enqueue_audio_job(pair_key, level.value, unit.id, target_lang)
         report.units_built += 1
     return report
 
@@ -204,6 +285,6 @@ async def backfill_audio_all(
     reports = []
     for target_lang, native_lang in language_pairs:
         for level in levels:
-            logger.info("Backfilling audio for %s:%s / %s...", target_lang, native_lang, level.value)
+            logger.info("Scanning %s:%s / %s for missing audio...", target_lang, native_lang, level.value)
             reports.append(await backfill_audio(store, target_lang, native_lang, level))
     return reports

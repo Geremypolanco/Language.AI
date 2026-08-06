@@ -41,14 +41,11 @@ import re
 import urllib.parse
 import wave
 
-import httpx
-
 from .config import settings
 
 logger = logging.getLogger("lingua.piper_tts")
 
 _VOICES_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
-_http = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
 
 # Splits after a sentence-ending punctuation mark followed by whitespace,
 # keeping the punctuation attached to the sentence before it. Not a real
@@ -153,29 +150,21 @@ async def _download_voice_files(voice_key: str) -> tuple[str, str] | None:
     # traffic would force the next request for that language to pay a fresh
     # ~20-90MB download inline, which is exactly the kind of latency spike
     # that breaks a click-triggered play() (see routers/audio.py's docstring).
+    #
+    # Delegates the actual transfer to jobs/model_manager.py: resumable
+    # (a download interrupted at any point continues from where it left
+    # off on the next call, instead of re-paying for bytes already
+    # received) and verified against Hugging Face's ETag (the LFS object's
+    # sha256 for a binary file like this) rather than trusted blindly.
+    from .jobs import model_manager
+
     url_prefix = _voice_url_prefix(voice_key)
     onnx_path = os.path.join(settings.audio_store_dir, "piper-voices", f"{voice_key}.onnx")
     json_path = os.path.join(settings.audio_store_dir, "piper-voices", f"{voice_key}.onnx.json")
-    os.makedirs(os.path.dirname(onnx_path), exist_ok=True)
 
-    if os.path.exists(onnx_path) and os.path.exists(json_path):
-        return onnx_path, json_path
-
-    try:
-        for rel, dest in ((f"{url_prefix}.onnx", onnx_path), (f"{url_prefix}.onnx.json", json_path)):
-            if os.path.exists(dest):
-                continue
-            resp = await _http.get(f"{_VOICES_BASE}/{rel}")
-            if resp.status_code != 200:
-                logger.warning("Piper voice download HTTP %s for %s", resp.status_code, rel)
-                return None
-            tmp_dest = f"{dest}.part"
-            with open(tmp_dest, "wb") as f:
-                f.write(resp.content)
-            os.replace(tmp_dest, dest)
-    except Exception:
-        logger.exception("Piper voice download failed for %s", voice_key)
-        return None
+    for rel, dest in ((f"{url_prefix}.onnx", onnx_path), (f"{url_prefix}.onnx.json", json_path)):
+        if not await model_manager.ensure_file(f"{_VOICES_BASE}/{rel}", dest):
+            return None
     return onnx_path, json_path
 
 

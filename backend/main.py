@@ -26,6 +26,9 @@ from fastapi.staticfiles import StaticFiles
 from .cache_gc import run_periodic_gc
 from .config import settings
 from .hf_client import hf_client
+from .jobs import bootstrap as jobs_bootstrap
+from .jobs import scanner as jobs_scanner
+from .jobs import worker as jobs_worker
 from .routers import auth as auth_router
 from .routers import (
     academy,
@@ -82,12 +85,33 @@ async def lifespan(app: FastAPI):
     # test asserts on it.
     gc_task = None if settings.testing else asyncio.create_task(run_periodic_gc())
 
+    # The job queue (see backend/jobs/): register every executor, kick off
+    # a one-time startup scan for already-published content missing audio
+    # (backend/jobs/scanner.py — catches gaps from before this pipeline
+    # existed, or a job that previously exhausted its retries), and start
+    # the worker loop that claims and runs whatever's in the queue. All
+    # skipped in tests for the same reason gc_task is — nothing for a
+    # disk/DB-scanning background loop to do against a throwaway test DB,
+    # and tests that do exercise the queue drive it directly (see
+    # tests/test_jobs.py) rather than depending on this loop's timing.
+    scan_task = None
+    worker_task = None
+    if not settings.testing:
+        jobs_bootstrap.register_all()
+        scan_task = asyncio.create_task(jobs_scanner.scan_missing_audio())
+        worker_task = asyncio.create_task(jobs_worker.run_worker_loop(["audio_unit"]))
+
     yield
 
     if gc_task is not None:
         gc_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await gc_task
+    for task in (scan_task, worker_task):
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
     await hf_client.aclose()
 
 
