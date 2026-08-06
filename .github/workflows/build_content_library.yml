@@ -1,0 +1,77 @@
+name: Build Content Library
+
+# Manually-triggered: runs scripts/build_academy.py or build_languages.py
+# (the Phase 1 content pipeline — see routers/academy.py's and
+# routers/lessons.py's module docstrings) directly inside the running Fly
+# machine, via `flyctl ssh console`, so it writes to the same persistent
+# /app/data volume the app itself reads from. Never run this from a fresh
+# CI checkout — the persisted library only exists on the deployed volume.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline:
+        description: Which pipeline to run
+        required: true
+        type: choice
+        options: [language, academy]
+      target_langs:
+        description: "language pipeline only: space-separated target langs, e.g. 'en'"
+        required: false
+        default: ""
+      native_langs:
+        description: "language pipeline only: space-separated native langs, e.g. 'es'"
+        required: false
+        default: ""
+      levels:
+        description: "space-separated CEFR levels, e.g. 'A1 A2'; leave blank for all"
+        required: false
+        default: ""
+      force:
+        description: Regenerate even units that already exist
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-content-library
+  cancel-in-progress: false
+
+env:
+  FLY_APP: language-ai-x90j9w
+
+jobs:
+  build:
+    name: Run content build pipeline on the deployed machine
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run pipeline
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          LEVELS_ARG=""
+          if [ -n "${{ inputs.levels }}" ]; then
+            LEVELS_ARG="--levels ${{ inputs.levels }}"
+          fi
+          FORCE_ARG=""
+          if [ "${{ inputs.force }}" = "true" ]; then
+            FORCE_ARG="--force"
+          fi
+
+          if [ "${{ inputs.pipeline }}" = "language" ]; then
+            if [ -z "${{ inputs.target_langs }}" ] || [ -z "${{ inputs.native_langs }}" ]; then
+              echo "target_langs and native_langs are required for the language pipeline" >&2
+              exit 1
+            fi
+            CMD="python scripts/build_languages.py --target-langs ${{ inputs.target_langs }} --native-langs ${{ inputs.native_langs }} $LEVELS_ARG $FORCE_ARG"
+          else
+            CMD="python scripts/build_academy.py $LEVELS_ARG $FORCE_ARG"
+          fi
+
+          echo "Running: $CMD"
+          flyctl ssh console --app "$FLY_APP" -C "$CMD"

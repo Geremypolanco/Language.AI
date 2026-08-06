@@ -46,6 +46,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ backend/
 COPY public/ public/
 
+# scripts/build_academy.py and build_languages.py run the Phase 1 content
+# pipeline (see routers/academy.py, routers/lessons.py's module docstrings)
+# against this container's own /app/data volume via `fly ssh console` —
+# they need to be reachable from inside the deployed image, not just checked
+# out in CI, since that's the only place the persisted library actually lives.
+COPY scripts/ scripts/
+
 # Copy built frontend from builder stage
 COPY --from=frontend-builder /app/frontend/dist/public ./frontend_dist
 
