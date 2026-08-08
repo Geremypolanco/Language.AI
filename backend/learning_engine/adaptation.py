@@ -1,19 +1,30 @@
 """Adaptation Engine — translates one LearningState into a per-consumer,
 typed decision, so each module gets a representation shaped for what it
 actually needs (a paragraph of prose for Conversation; structured
-priorities/weights for Exercises/Curriculum once those adapters exist)
-instead of every consumer reaching into LearningState and reinterpreting
-it themselves.
+priorities/weights for Curriculum/Exercises) instead of every consumer
+reaching into LearningState and reinterpreting it themselves.
 
-Only the Conversation adapter exists so far. It's deliberately scoped to
-fields Conversation has no other route to: routers/conversation.py
-already derives its tone/pacing from mentor_engine.adaptive_mentor
-(itself built on the same motivation signal LearningState carries) and
-already surfaces due vocabulary via srs directly — repeating either here
-would just produce two overlapping, possibly-contradictory instruction
-blocks in the same prompt. career_goal and Academy frequent_mistakes are
-the two LearningState fields Conversation has no other way to see today,
-so v1 surfaces exactly those two."""
+Conversation adapter: deliberately scoped to fields Conversation has no
+other route to: routers/conversation.py already derives its tone/pacing
+from mentor_engine.adaptive_mentor (itself built on the same motivation
+signal LearningState carries) and already surfaces due vocabulary via srs
+directly — repeating either here would just produce two overlapping,
+possibly-contradictory instruction blocks in the same prompt. career_goal
+and Academy frequent_mistakes are the two LearningState fields
+Conversation has no other way to see today, so it surfaces exactly those
+two.
+
+Curriculum adapter: intentionally narrower than it could look at first —
+Academy's frequent_mistakes is scoped to `course_id` (e.g.
+"software-engineering:BACHELOR:0"), a completely different namespace from
+the language track's `Unit.id` (e.g. "A1-3"); there is no mapping between
+the two, so frequent_mistakes cannot drive a language-unit weight without
+fabricating one. due_review_items is the only LearningState field that
+carries a real language `unit_id` (see srs.due_review_items' content
+snapshot), so it's the only signal for_curriculum uses. Deliberately no
+negative/deprioritization weight for "already mastered" units either —
+that needs unit_mastery data added to LearningState first, not a guessed
+value standing in for it."""
 
 from __future__ import annotations
 
@@ -54,3 +65,32 @@ def for_conversation(state: LearningState) -> ConversationAdaptation:
     if not lines:
         return ConversationAdaptation(instructions="")
     return ConversationAdaptation(instructions="\n".join(f"- {line}" for line in lines))
+
+
+_DUE_REVIEW_WEIGHT = 1.0
+
+
+@dataclass(frozen=True)
+class CurriculumAdaptation:
+    """Per-unit priority weights layered on top of the existing CEFR-ordered
+    skill path — the path itself (order, availability, which units exist)
+    never changes; a consumer uses these only to prioritize *within* that
+    fixed structure. `weight_for` returns 0.0 (no signal, no change in
+    priority) for any unit not in `unit_weights`."""
+
+    unit_weights: dict[str, float]
+
+    def weight_for(self, unit_id: str) -> float:
+        return self.unit_weights.get(unit_id, 0.0)
+
+
+def for_curriculum(state: LearningState) -> CurriculumAdaptation:
+    """See module docstring for why this only reads due_review_items: it's
+    the one LearningState field scoped to a real language Unit.id."""
+    weights: dict[str, float] = {}
+    for item in state.due_review_items:
+        unit_id = item.get("unit_id")
+        if not unit_id:
+            continue
+        weights[unit_id] = weights.get(unit_id, 0.0) + _DUE_REVIEW_WEIGHT
+    return CurriculumAdaptation(unit_weights=weights)

@@ -124,6 +124,16 @@ class LearningStateProvider:
             for key in [k for k in self._cache if k.startswith(prefix)]:
                 del self._cache[key]
 
+    def reset(self) -> None:
+        """Test-only: drops every cached state for every user. The module-
+        level singleton below lives for the whole process, so a test suite
+        whose fixtures give each test a fresh database (see
+        tests/conftest.py) still needs this — without it, a later test
+        reusing a common id like "u1" could silently read an earlier
+        test's stale, already-torn-down state instead of computing its own."""
+        with self._lock:
+            self._cache.clear()
+
 
 # Process-wide singleton — same pattern as hf_client.hf_client (backend/hf_client.py).
 learning_state_provider = LearningStateProvider()

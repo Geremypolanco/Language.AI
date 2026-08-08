@@ -1,6 +1,6 @@
 from backend import db
 from backend.learning_engine import competency
-from backend.learning_engine.adaptation import for_conversation
+from backend.learning_engine.adaptation import for_conversation, for_curriculum
 from backend.learning_engine.learning_state import (
     STATE_VERSION,
     LearningStateProvider,
@@ -36,6 +36,15 @@ def _record_mistake(user_id, field_id, question_text, times=1):
                 "VALUES (?, ?, 'quiz', 0, ?, 0, ?)",
                 (user_id, f"{field_id}:BACHELOR:0", question_text, db.now_iso()),
             )
+
+
+def _insert_due_vocab(user_id, vocab_key, unit_id, target_text="hola"):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO vocab_progress (user_id, vocab_key, due_at, target_text, native_text, unit_id) "
+            "VALUES (?, ?, ?, ?, 'hello', ?)",
+            (user_id, vocab_key, db.now_iso(), target_text, unit_id),
+        )
 
 
 def test_get_enrolled_field_id_none_without_enrollment():
@@ -171,3 +180,55 @@ def test_for_conversation_surfaces_up_to_three_frequent_mistakes():
     state = build_learning_state("u1", field_id="f")
     adaptation = for_conversation(state)
     assert adaptation.instructions.count("question ") == 3
+
+
+# ── CurriculumAdaptation ─────────────────────────────────────────────────
+
+
+def test_for_curriculum_empty_when_nothing_due():
+    _make_user()
+    state = build_learning_state("u1")
+    adaptation = for_curriculum(state)
+    assert adaptation.unit_weights == {}
+    assert adaptation.weight_for("A1-0") == 0.0
+
+
+def test_for_curriculum_weights_units_with_due_review_items():
+    _make_user()
+    _insert_due_vocab("u1", "A1-0.hola", "A1-0")
+    _insert_due_vocab("u1", "A1-3.gracias", "A1-3")
+    _insert_due_vocab("u1", "A1-3.adios", "A1-3")
+
+    state = build_learning_state("u1")
+    adaptation = for_curriculum(state)
+
+    assert adaptation.weight_for("A1-0") == 1.0
+    assert adaptation.weight_for("A1-3") == 2.0  # two due items in the same unit
+    assert adaptation.weight_for("A1-9") == 0.0  # untouched unit stays neutral
+
+
+def test_for_curriculum_ignores_due_items_with_no_unit_id():
+    # unit_id defaults to '' for vocab_progress rows predating that column
+    # (see db.py's migration) — a real case, not just a malformed input.
+    _make_user()
+    _insert_due_vocab("u1", "legacy.hola", unit_id="")
+    state = build_learning_state("u1")
+    adaptation = for_curriculum(state)
+    assert adaptation.unit_weights == {}
+
+
+def test_for_curriculum_ignores_academic_concept_review_items():
+    _make_user()
+    _make_enrollment()
+    # Academic concept review reuses vocab_progress with an "academic:" prefixed
+    # vocab_key and no real language unit_id — build_learning_state's
+    # due_review_items already excludes these (exclude_prefix="academic:").
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO vocab_progress (user_id, vocab_key, due_at, target_text, native_text, unit_id) "
+            "VALUES ('u1', 'academic:f:BACHELOR:0::variables', ?, 'Variables', 'def', '')",
+            (db.now_iso(),),
+        )
+    state = build_learning_state("u1", field_id="f")
+    adaptation = for_curriculum(state)
+    assert adaptation.unit_weights == {}
