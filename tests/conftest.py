@@ -13,13 +13,21 @@ os.environ["LINGUA_TESTING"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from backend import db as db_module  # noqa: E402
+from backend.learning_engine.learning_state import learning_state_provider  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path):
     """Every test gets its own throwaway SQLite file — no shared state, no
-    dependency on ARIA's Supabase/Postgres stack."""
+    dependency on ARIA's Supabase/Postgres stack.
+
+    Also resets learning_state_provider's cache: it's a module-level
+    singleton that outlives any single test (see learning_state.py), so
+    without this a later test reusing a common id like "u1" could read an
+    earlier test's stale state instead of computing its own against this
+    fresh database."""
     db_module.reset_for_tests(str(tmp_path / "test.db"))
+    learning_state_provider.reset()
     yield
 
 

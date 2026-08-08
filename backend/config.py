@@ -91,16 +91,24 @@ class Settings:
         default_factory=lambda: int(os.environ.get("LINGUA_HF_DAILY_TOKEN_BUDGET", "200000"))
     )
 
-    # ── Pollinations.ai — primary provider for chat and images ──────────
+    # ── Groq — chat()'s first tier (see backend/ai_providers/groq.py) ────
+    # Hosted Llama 3.1 70B: free and by far the fastest of the three chat
+    # providers, so it's tried before Pollinations/Hugging Face rather than
+    # after. Unset by default (no required paid dependency); chat() simply
+    # skips this tier when it's empty.
+    groq_api_key: str = field(default_factory=lambda: os.environ.get("GROQ_API_KEY", ""))
+
+    # ── Pollinations.ai — chat()'s second tier, and the provider for images ──
     # Free, keyless, no signup, no billing. Image generation (Flux) is
     # confirmed solid and effectively unlimited. Chat's anonymous tier works
     # but has a small, easily-exhausted per-source request budget (confirmed
     # directly: the first call succeeded, the next got HTTP 402 "budget too
-    # low") — chat() falls back to Hugging Face when that happens, see
-    # above. Pollinations no longer offers keyless TTS (their audio endpoint
-    # now requires a paid API key), so text_to_speech() stays on the
-    # Hugging Face path only. An optional token (POLLINATIONS_API_TOKEN)
-    # raises the chat/image rate limit but nothing here requires one.
+    # low") — chat() falls back to Hugging Face when that happens (and to
+    # Groq first, when configured — see ai_providers/). Pollinations no
+    # longer offers keyless TTS (their audio endpoint now requires a paid
+    # API key), so text_to_speech() stays on the Hugging Face path only. An
+    # optional token (POLLINATIONS_API_TOKEN) raises the chat/image rate
+    # limit but nothing here requires one.
     pollinations_token: str = field(default_factory=lambda: os.environ.get("POLLINATIONS_API_TOKEN", ""))
     pollinations_chat_endpoint: str = "https://text.pollinations.ai/openai"
     pollinations_image_endpoint: str = "https://image.pollinations.ai/prompt"
