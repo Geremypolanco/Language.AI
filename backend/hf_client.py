@@ -82,6 +82,7 @@ from .curriculum import (
     topic_es,
 )
 from .models import Exercise, ExerciseType
+from . import telemetry
 
 if TYPE_CHECKING:
     from .models import BookStub
@@ -345,15 +346,26 @@ class HFClient:
         quality — then Pollinations, then Hugging Face as the last, budget-
         guarded resort) and returns the first one that succeeds. See
         backend/ai_providers/ for each provider's own docstring on exactly
-        why it sits at its position in this order."""
+        why it sits at its position in this order.
+
+        Logs which provider actually resolved the call (and whether that
+        took a fallback) via telemetry.log_provider_resolution — see that
+        function's docstring for why it's scoped to provider/attempt/
+        latency and nothing more."""
         if settings.testing:
             raise HFClientError("AI disabled in test environment")
 
-        for provider in self._chat_providers:
-            result = await provider.chat(messages, max_tokens, temperature)
+        for attempt, provider in enumerate(self._chat_providers, start=1):
+            timing: dict = {}
+            with telemetry.timed(timing):
+                result = await provider.chat(messages, max_tokens, temperature)
             if result is not None:
+                telemetry.log_provider_resolution(
+                    capability="chat", provider=provider.name, attempt=attempt, elapsed_ms=timing["elapsed_ms"]
+                )
                 return result
 
+        telemetry.log_provider_exhausted(capability="chat", providers_tried=len(self._chat_providers))
         raise HFClientError("All AI chat providers failed")
 
     async def stream_chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7):
@@ -944,11 +956,20 @@ class HFClient:
         fallback) and returns the first transcript. Unlike chat(), never
         raises when every tier fails — "" (no transcript) is a normal,
         expected outcome here (the caller already handles it as "couldn't
-        transcribe, ask the learner to try again"), not an error state."""
-        for provider in self._stt_providers:
-            result = await provider.transcribe(audio_bytes, content_type)
+        transcribe, ask the learner to try again"), not an error state.
+
+        Same telemetry as chat() — see log_provider_resolution's docstring."""
+        for attempt, provider in enumerate(self._stt_providers, start=1):
+            timing: dict = {}
+            with telemetry.timed(timing):
+                result = await provider.transcribe(audio_bytes, content_type)
             if result is not None:
+                telemetry.log_provider_resolution(
+                    capability="stt", provider=provider.name, attempt=attempt, elapsed_ms=timing["elapsed_ms"]
+                )
                 return result
+
+        telemetry.log_provider_exhausted(capability="stt", providers_tried=len(self._stt_providers))
         return ""
 
 

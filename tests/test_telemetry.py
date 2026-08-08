@@ -30,3 +30,39 @@ def test_log_tutor_turn_emits_valid_json_with_expected_fields(caplog):
     assert payload["chars_in"] == 10
     assert payload["chars_out"] == 42
     assert payload["sentence_count"] == 3
+
+
+def test_log_provider_resolution_first_attempt_is_not_a_fallback(caplog):
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        telemetry.log_provider_resolution(capability="chat", provider="groq", attempt=1, elapsed_ms=214.0)
+
+    assert len(caplog.records) == 1
+    payload = json.loads(caplog.records[0].message)
+    assert payload == {
+        "event": "provider_resolution",
+        "capability": "chat",
+        "provider": "groq",
+        "attempt": 1,
+        "fallback": False,
+        "elapsed_ms": 214.0,
+    }
+
+
+def test_log_provider_resolution_second_attempt_is_a_fallback(caplog):
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        telemetry.log_provider_resolution(capability="stt", provider="huggingface", attempt=2, elapsed_ms=1240.0)
+
+    payload = json.loads(caplog.records[0].message)
+    assert payload["fallback"] is True
+    assert payload["attempt"] == 2
+    assert payload["capability"] == "stt"
+    assert payload["provider"] == "huggingface"
+
+
+def test_log_provider_exhausted_emits_valid_json_with_expected_fields(caplog):
+    with caplog.at_level(logging.WARNING, logger="lingua.telemetry"):
+        telemetry.log_provider_exhausted(capability="chat", providers_tried=3)
+
+    assert len(caplog.records) == 1
+    payload = json.loads(caplog.records[0].message)
+    assert payload == {"event": "provider_exhausted", "capability": "chat", "providers_tried": 3}

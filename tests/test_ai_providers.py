@@ -13,6 +13,8 @@ same convention as tests/test_hf_client.py."""
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 
 import httpx
 import pytest
@@ -269,6 +271,8 @@ def test_hf_chat_returns_none_on_exception(monkeypatch, settings_field):
 
 
 class _StubProvider:
+    name = "stub"
+
     def __init__(self, result: str | None) -> None:
         self._result = result
 
@@ -303,6 +307,38 @@ def test_hfclient_chat_raises_when_every_provider_fails(monkeypatch, settings_fi
     monkeypatch.setattr(hf_client, "_chat_providers", [_StubProvider(None), _StubProvider(None)])
     with pytest.raises(HFClientError):
         asyncio.run(hf_client.chat(_MESSAGES))
+
+
+def test_hfclient_chat_logs_which_provider_resolved_it_and_the_attempt_number(monkeypatch, settings_field, caplog):
+    from backend.hf_client import hf_client
+
+    settings_field("testing", False)
+    winning = _StubProvider("second wins")
+    winning.name = "second-provider"
+    monkeypatch.setattr(hf_client, "_chat_providers", [_StubProvider(None), winning])
+
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        asyncio.run(hf_client.chat(_MESSAGES))
+
+    payload = json.loads(caplog.records[-1].message)
+    assert payload["event"] == "provider_resolution"
+    assert payload["capability"] == "chat"
+    assert payload["provider"] == "second-provider"
+    assert payload["attempt"] == 2
+    assert payload["fallback"] is True
+
+
+def test_hfclient_chat_logs_exhaustion_when_every_provider_fails(monkeypatch, settings_field, caplog):
+    from backend.hf_client import HFClientError, hf_client
+
+    settings_field("testing", False)
+    monkeypatch.setattr(hf_client, "_chat_providers", [_StubProvider(None), _StubProvider(None)])
+
+    with caplog.at_level(logging.WARNING, logger="lingua.telemetry"), pytest.raises(HFClientError):
+        asyncio.run(hf_client.chat(_MESSAGES))
+
+    payload = json.loads(caplog.records[-1].message)
+    assert payload == {"event": "provider_exhausted", "capability": "chat", "providers_tried": 2}
 
 
 # ── GroqSTTProvider ──────────────────────────────────────────────────────
@@ -433,6 +469,8 @@ def test_hf_stt_returns_none_on_exception(monkeypatch, settings_field):
 
 
 class _StubSTTProvider:
+    name = "stub"
+
     def __init__(self, result: str | None) -> None:
         self._result = result
 
@@ -464,3 +502,30 @@ def test_hfclient_speech_to_text_returns_empty_string_when_every_provider_fails(
 
     monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider(None), _StubSTTProvider(None)])
     assert asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES)) == ""
+
+
+def test_hfclient_speech_to_text_logs_which_provider_resolved_it(monkeypatch, caplog):
+    from backend.hf_client import hf_client
+
+    monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider("hola mundo")])
+
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES))
+
+    payload = json.loads(caplog.records[-1].message)
+    assert payload["event"] == "provider_resolution"
+    assert payload["capability"] == "stt"
+    assert payload["attempt"] == 1
+    assert payload["fallback"] is False
+
+
+def test_hfclient_speech_to_text_logs_exhaustion_when_every_provider_fails(monkeypatch, caplog):
+    from backend.hf_client import hf_client
+
+    monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider(None)])
+
+    with caplog.at_level(logging.WARNING, logger="lingua.telemetry"):
+        asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES))
+
+    payload = json.loads(caplog.records[-1].message)
+    assert payload == {"event": "provider_exhausted", "capability": "stt", "providers_tried": 1}
