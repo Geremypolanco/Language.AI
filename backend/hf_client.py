@@ -67,9 +67,9 @@ from typing import TYPE_CHECKING
 import httpx
 from num2words import num2words
 
-from .ai_providers.base import AIProvider, HFGuard
-from .ai_providers.groq import GroqProvider
-from .ai_providers.huggingface import HFProvider
+from .ai_providers.base import AIProvider, HF_AUDIO_CALL_COST, HF_VIDEO_CALL_COST, HFGuard, STTProvider
+from .ai_providers.groq import GroqProvider, GroqSTTProvider
+from .ai_providers.huggingface import HFProvider, HFSTTProvider
 from .ai_providers.pollinations import PollinationsProvider
 from .config import settings
 from .curriculum import (
@@ -167,13 +167,9 @@ _NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?\b")
 # circuit breaker already proven for ElevenLabs below: any 429/402 opens a
 # cooldown window, and a soft, approximate per-day usage budget closes the
 # tier early on its own even without an explicit rate-limit response.
-# Flat per-call cost estimate for HF calls that aren't plain text-in/text-out
-# (STT reads audio, video's cost isn't proportional to the prompt string) —
-# picked so a handful of video generations (the heaviest call this app makes
-# against HF) meaningfully draws down the daily budget instead of registering
-# as nearly free the way a short text prompt's char-count would.
-_HF_AUDIO_CALL_COST = 500
-_HF_VIDEO_CALL_COST = 4000
+# HF_AUDIO_CALL_COST/HF_VIDEO_CALL_COST (flat per-call cost estimates for
+# non-text-in/text-out HF calls) now live in ai_providers.base — shared
+# with HFSTTProvider, not just this file's own TTS/video tiers.
 
 
 def _preprocess_for_parler(text: str, lang: str) -> str:
@@ -255,6 +251,14 @@ class HFClient:
             GroqProvider(self._http),
             PollinationsProvider(self._http),
             HFProvider(self._http, self._hf_guard),
+        ]
+        # speech_to_text()'s provider cascade — same shape as _chat_providers
+        # above, extracted the same way (see the extraction audit this came
+        # out of), just a different contract (STTProvider) since the
+        # input/output shape differs from chat.
+        self._stt_providers: list[STTProvider] = [
+            GroqSTTProvider(self._http),
+            HFSTTProvider(self._http, self._hf_guard),
         ]
 
     async def aclose(self) -> None:
@@ -724,7 +728,7 @@ class HFClient:
                 timeout=150.0,
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("video"):
-                self._hf_guard.record_usage(_HF_VIDEO_CALL_COST)
+                self._hf_guard.record_usage(HF_VIDEO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content
@@ -833,7 +837,7 @@ class HFClient:
                     json={"inputs": parler_text, "parameters": {"description": voice_description}},
                 )
                 if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                    self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(resp.content)
                     return _resolved("parler", False, resp.content, "audio/flac", parler_cache_path)
@@ -846,7 +850,7 @@ class HFClient:
             try:
                 audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
                 if audio_bytes:
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                    self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)
                     return _resolved("parler-space", False, audio_bytes, "audio/flac", parler_cache_path)
@@ -888,7 +892,7 @@ class HFClient:
                 json={"inputs": text},
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
-                self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return _resolved("hf-mms", False, resp.content, "audio/flac", cache_path)
@@ -935,41 +939,16 @@ class HFClient:
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
-        """Uses Groq Whisper (instant, elite quality) as primary, 
-        falling back to Hugging Face Whisper."""
-        groq_key = os.environ.get("GROQ_API_KEY")
-        if groq_key:
-            try:
-                # Groq requires multipart/form-data for translations/transcriptions
-                files = {"file": ("audio.webm", audio_bytes, content_type), "model": (None, "whisper-large-v3")}
-                resp = await self._http.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    files=files,
-                    timeout=30.0
-                )
-                if resp.status_code == 200:
-                    return resp.json().get("text", "").strip()
-                logger.warning("Groq STT HTTP %s: %s", resp.status_code, resp.text[:200])
-            except Exception as e:
-                logger.warning("Groq STT failed: %s", e)
-
-        # Fallback to Hugging Face — same _HFGuard gating as chat()'s HF tier.
-        if settings.hf_configured and self._hf_guard.allowed():
-            try:
-                resp = await self._post_with_retry(
-                    f"{settings.hf_models_endpoint}/{settings.stt_model}",
-                    headers={**self._hf_headers(), "Content-Type": content_type},
-                    content=audio_bytes,
-                )
-                if resp.status_code == 200:
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
-                    return resp.json().get("text", "").strip()
-                if resp.status_code in (402, 429):
-                    self._hf_guard.record_rate_limited()
-            except Exception:
-                pass
-
+        """Tries self._stt_providers in order (Groq Whisper — instant,
+        elite quality — then Hugging Face Whisper as the budget-guarded
+        fallback) and returns the first transcript. Unlike chat(), never
+        raises when every tier fails — "" (no transcript) is a normal,
+        expected outcome here (the caller already handles it as "couldn't
+        transcribe, ask the learner to try again"), not an error state."""
+        for provider in self._stt_providers:
+            result = await provider.transcribe(audio_bytes, content_type)
+            if result is not None:
+                return result
         return ""
 
 

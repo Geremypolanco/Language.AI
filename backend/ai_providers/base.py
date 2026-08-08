@@ -1,12 +1,11 @@
-"""Contract for a chat-completion provider, extracted from the cascade
-that already lived inside HFClient.chat() (see hf_client.py) rather than
-designed from a blank page. Only `chat` and `configured` are part of this
-contract because those are the only two things any of the three current
-providers (Groq, Pollinations, Hugging Face) actually do today —
-`health_check`/`models`-style methods aren't real behavior anything in
-this app implements yet, so they're not here until a real need for them
-shows up. The next provider (whichever model/vendor that ends up being)
-implements this same contract; nothing else in the app needs to change.
+"""Contracts for the provider cascades extracted from HFClient (see
+hf_client.py), one per modality — not designed from a blank page. Only
+the methods each contract's real implementations actually use are here:
+AIProvider.chat for the three chat providers, STTProvider.transcribe for
+the two speech-to-text providers. No `health_check`/`models`-style
+methods, since nothing in this app implements those today. The next
+provider (whichever model/vendor that ends up being) implements whichever
+of these contracts fits; nothing else in the app needs to change.
 """
 
 from __future__ import annotations
@@ -49,12 +48,45 @@ class AIProvider(ABC):
         raise out of it."""
 
 
+class STTProvider(ABC):
+    """One speech-to-text source in speech_to_text()'s cascade, tried in
+    order until one returns a transcript. A separate contract from
+    AIProvider, not a reuse of it — the input/output shape genuinely
+    differs (audio bytes + content type in, transcript text out), not
+    just the model being called."""
+
+    name: str
+
+    @property
+    @abstractmethod
+    def configured(self) -> bool: ...
+
+    @abstractmethod
+    async def transcribe(self, audio_bytes: bytes, content_type: str) -> str | None:
+        """Returns the transcript — which may legitimately be "" (a real
+        "nothing intelligible was said" result, not a signal to try the
+        next provider) — or None if this provider's call failed or was
+        skipped. Same never-raises-for-ordinary-failure contract as
+        AIProvider.chat."""
+
+
+# Flat per-call cost estimate for HF calls that aren't plain text-in/text-out
+# (STT reads audio, video's cost isn't proportional to the prompt string) —
+# picked so a handful of video generations (the heaviest call this app makes
+# against HF) meaningfully draws down HFGuard's daily budget instead of
+# registering as nearly free the way a short text prompt's char-count would.
+# Shared between HFSTTProvider here and hf_client.py's still-unextracted
+# text_to_speech()/generate_video(), which is why these live here rather
+# than staying private to one module.
+HF_AUDIO_CALL_COST = 500
+HF_VIDEO_CALL_COST = 4000
+
+
 async def post_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
     """One retry on a transient network failure (DNS blip, connection
     reset) before giving up — same policy hf_client.py's own
-    _post_with_retry already applies to its other (TTS/STT/image/video)
-    calls, which stay on that private copy since they're out of scope
-    here; this one is just for chat providers."""
+    _post_with_retry still applies to its other (TTS/image/video) calls,
+    which stay on that private copy since they're out of scope here."""
     for attempt in range(2):
         try:
             return await client.post(url, **kwargs)

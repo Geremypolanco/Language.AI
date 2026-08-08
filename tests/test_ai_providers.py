@@ -19,12 +19,13 @@ import pytest
 
 from backend.ai_providers import base as ai_base
 from backend.ai_providers.base import post_with_retry
-from backend.ai_providers.groq import GroqProvider
-from backend.ai_providers.huggingface import HFProvider
+from backend.ai_providers.groq import GroqProvider, GroqSTTProvider
+from backend.ai_providers.huggingface import HFProvider, HFSTTProvider
 from backend.ai_providers.pollinations import PollinationsProvider
 from backend.config import settings
 
 _MESSAGES = [{"role": "user", "content": "hola"}]
+_AUDIO_BYTES = b"fake-audio-bytes"
 
 
 def _fake_response(status_code: int, body: dict | None = None, text: str = "") -> httpx.Response:
@@ -302,3 +303,164 @@ def test_hfclient_chat_raises_when_every_provider_fails(monkeypatch, settings_fi
     monkeypatch.setattr(hf_client, "_chat_providers", [_StubProvider(None), _StubProvider(None)])
     with pytest.raises(HFClientError):
         asyncio.run(hf_client.chat(_MESSAGES))
+
+
+# ── GroqSTTProvider ──────────────────────────────────────────────────────
+
+
+class _FakeHttpClientPost:
+    """Records every call made through it — used to assert GroqSTTProvider
+    never retries (see its docstring: the original speech_to_text() never
+    wrapped this particular tier in a retry either, preserved as-is)."""
+
+    def __init__(self, response: httpx.Response | None = None, exc: Exception | None = None) -> None:
+        self.calls = 0
+        self._response = response
+        self._exc = exc
+
+    async def post(self, url, **kwargs):
+        self.calls += 1
+        if self._exc is not None:
+            raise self._exc
+        return self._response
+
+
+def test_groq_stt_skips_without_api_key(settings_field):
+    settings_field("groq_api_key", "")
+    provider = GroqSTTProvider(http=object())
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+def test_groq_stt_returns_transcript_on_success(settings_field):
+    settings_field("groq_api_key", "test-key")
+    client = _FakeHttpClientPost(response=_fake_response(200, {"text": " hola mundo "}))
+    provider = GroqSTTProvider(http=client)
+    result = asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm"))
+    assert result == "hola mundo"  # stripped
+
+
+def test_groq_stt_returns_empty_string_on_success_with_no_speech(settings_field):
+    # A 200 with an empty transcript is a real "nothing was said" result,
+    # not a signal to fall through to the next provider — same distinction
+    # STTProvider.transcribe's contract documents.
+    settings_field("groq_api_key", "test-key")
+    client = _FakeHttpClientPost(response=_fake_response(200, {"text": ""}))
+    provider = GroqSTTProvider(http=client)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) == ""
+
+
+def test_groq_stt_returns_none_on_non_200(settings_field):
+    settings_field("groq_api_key", "test-key")
+    client = _FakeHttpClientPost(response=_fake_response(500, text="server error"))
+    provider = GroqSTTProvider(http=client)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+def test_groq_stt_returns_none_on_exception(settings_field):
+    settings_field("groq_api_key", "test-key")
+    client = _FakeHttpClientPost(exc=RuntimeError("network down"))
+    provider = GroqSTTProvider(http=client)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+def test_groq_stt_never_retries(settings_field):
+    # Locks in the documented behavior difference from HFSTTProvider below:
+    # the original speech_to_text() never wrapped Groq's tier in a retry.
+    settings_field("groq_api_key", "test-key")
+    client = _FakeHttpClientPost(exc=httpx.TransportError("blip"))
+    provider = GroqSTTProvider(http=client)
+    asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm"))
+    assert client.calls == 1
+
+
+# ── HFSTTProvider ────────────────────────────────────────────────────────
+
+
+def test_hf_stt_skips_when_not_configured(settings_field):
+    settings_field("hf_token", "")
+    provider = HFSTTProvider(http=object(), hf_guard=ai_base.HFGuard(daily_budget=1000))
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+def test_hf_stt_skips_when_guard_denies(settings_field):
+    settings_field("hf_token", "test-token")
+    guard = ai_base.HFGuard(daily_budget=1000)
+    guard.record_rate_limited()
+    provider = HFSTTProvider(http=object(), hf_guard=guard)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+def test_hf_stt_returns_transcript_and_records_usage_on_success(monkeypatch, settings_field):
+    settings_field("hf_token", "test-token")
+    guard = ai_base.HFGuard(daily_budget=1000)
+    provider = HFSTTProvider(http=object(), hf_guard=guard)
+
+    async def fake_post(client, url, **kwargs):
+        return _fake_response(200, {"text": "hola"})
+
+    monkeypatch.setattr("backend.ai_providers.huggingface.post_with_retry", fake_post)
+    result = asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm"))
+    assert result == "hola"
+    assert guard._used_today == ai_base.HF_AUDIO_CALL_COST
+
+
+def test_hf_stt_opens_circuit_on_rate_limit(monkeypatch, settings_field):
+    settings_field("hf_token", "test-token")
+    guard = ai_base.HFGuard(daily_budget=1000)
+    provider = HFSTTProvider(http=object(), hf_guard=guard)
+
+    async def fake_post(client, url, **kwargs):
+        return _fake_response(429, text="rate limited")
+
+    monkeypatch.setattr("backend.ai_providers.huggingface.post_with_retry", fake_post)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+    assert guard.allowed() is False
+
+
+def test_hf_stt_returns_none_on_exception(monkeypatch, settings_field):
+    settings_field("hf_token", "test-token")
+    guard = ai_base.HFGuard(daily_budget=1000)
+    provider = HFSTTProvider(http=object(), hf_guard=guard)
+
+    async def failing_post(client, url, **kwargs):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("backend.ai_providers.huggingface.post_with_retry", failing_post)
+    assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+
+
+# ── HFClient.speech_to_text() orchestration (fake providers) ─────────────
+
+
+class _StubSTTProvider:
+    def __init__(self, result: str | None) -> None:
+        self._result = result
+
+    async def transcribe(self, audio_bytes, content_type):
+        return self._result
+
+
+def test_hfclient_speech_to_text_returns_first_successful_provider(monkeypatch):
+    from backend.hf_client import hf_client
+
+    monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider(None), _StubSTTProvider("hola mundo")])
+    result = asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES))
+    assert result == "hola mundo"
+
+
+def test_hfclient_speech_to_text_treats_empty_transcript_as_a_real_result(monkeypatch):
+    # A provider succeeding with "" (silence/no speech) must stop the
+    # cascade, not be treated as "try the next provider" — same
+    # distinction STTProvider.transcribe's contract documents.
+    from backend.hf_client import hf_client
+
+    monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider(""), _StubSTTProvider("unreached")])
+    assert asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES)) == ""
+
+
+def test_hfclient_speech_to_text_returns_empty_string_when_every_provider_fails(monkeypatch):
+    # Unlike chat(), never raises — "" is the documented, expected outcome.
+    from backend.hf_client import hf_client
+
+    monkeypatch.setattr(hf_client, "_stt_providers", [_StubSTTProvider(None), _StubSTTProvider(None)])
+    assert asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES)) == ""
