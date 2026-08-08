@@ -24,7 +24,18 @@ carries a real language `unit_id` (see srs.due_review_items' content
 snapshot), so it's the only signal for_curriculum uses. Deliberately no
 negative/deprioritization weight for "already mastered" units either —
 that needs unit_mastery data added to LearningState first, not a guessed
-value standing in for it."""
+value standing in for it.
+
+Convention for the next adapter (Exercises, or a future Writing/Reading/
+Pronunciation/Assessment module): `def for_<consumer>(state: LearningState)
+-> <Consumer>Adaptation`, its own small frozen dataclass shaped for what
+that consumer actually needs — same as for_conversation/for_curriculum
+above. Not codified as a typing.Protocol on purpose: each adapter's return
+type is intentionally its own shape (prose for one, weights for another),
+nothing here calls adapters polymorphically, and a Protocol typed `Any`
+back wouldn't buy real static checking — just unused surface area. The
+convention lives here, in prose, where the two examples that establish it
+already are."""
 
 from __future__ import annotations
 

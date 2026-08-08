@@ -13,7 +13,27 @@ source first, not just a slot in this model.
 
 Consumers should get this through LearningStateProvider below rather than
 calling build_learning_state directly on every request — see its
-docstring for why."""
+docstring for why.
+
+KNOWN GAP, NOT ADDRESSED HERE (see adaptation.py's CurriculumAdaptation
+docstring for a concrete case of it): the domains this state pulls from
+don't yet share a common vocabulary for "the thing being learned."
+Conversation reasons about grammar/vocabulary/career; Curriculum reasons
+about `Unit.id`; SRS reasons about `vocab_key`/review items; Academy
+reasons about `concept_id` (knowledge_graph.py). These are genuinely
+different keys today, not just different field names for the same thing
+— frequent_mistakes' course_id-scoped mistakes have no real mapping to a
+language Unit.id, which is exactly why for_curriculum can't use them (see
+adaptation.py). A future `LearningConcept` entity — one identity able to
+represent "Present Perfect," "Docker," or "Medical Vocabulary" regardless
+of which module is talking about it — could let Conversation, SRS,
+Curriculum, Exercises, and Analytics all reference the same thing instead
+of five module-specific keys. Not designed or built yet: the fields above
+work fine without it, and inventing that entity's shape before at least
+one more real adapter (Exercises) exists to pressure-test it would be
+guessing at requirements this codebase doesn't have evidence for yet.
+Left here as the direction future work in this area should keep in mind,
+not as a task to pick up."""
 
 from __future__ import annotations
 
