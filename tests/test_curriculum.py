@@ -175,3 +175,16 @@ def test_conversation_prompt_adapts_to_level():
     advanced = build_conversation_system_prompt("Spanish", "English", CEFRLevel.C2, [])
     assert "very simple" in beginner
     assert "native pace" in advanced
+
+
+def test_conversation_prompt_omits_adaptation_block_when_empty():
+    prompt = build_conversation_system_prompt("Spanish", "English", CEFRLevel.A1, [])
+    assert "LEARNER ADAPTATION NOTES" not in prompt
+
+
+def test_conversation_prompt_includes_adaptation_block_when_present():
+    prompt = build_conversation_system_prompt(
+        "Spanish", "English", CEFRLevel.A1, [], adaptation="- favor examples about nursing."
+    )
+    assert "LEARNER ADAPTATION NOTES" in prompt
+    assert "favor examples about nursing" in prompt

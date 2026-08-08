@@ -20,6 +20,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .. import auth, db, personas, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
+from ..learning_engine import adaptation as adaptation_engine
+from ..learning_engine import student_profile
+from ..learning_engine.learning_state import learning_state_provider
 from ..mentor_engine import adaptive_mentor, conversation_memory_adapter
 from .users import get_user_by_id_or_404
 
@@ -81,7 +84,18 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     teacher = personas.get_core_teacher(requested_persona_id) or personas.get_core_teacher(_DEFAULT_PERSONA_ID)
     debate = websocket.query_params.get("debate") == "true"
     memory = conversation_memory_adapter.get_memory(user_id)
-    system_prompt = build_conversation_system_prompt(user.target_lang, user.native_lang, user.level, user.interests, memory)
+    # LEARNING STATE / ADAPTATION ENGINE: computed once per socket (not per
+    # turn) — LearningStateProvider's TTL cache means a rapid reconnect
+    # within the practice session reuses this instead of re-running
+    # LearningState's ~6 DB queries, and every turn in this session sees
+    # the same snapshot rather than drifting mid-conversation. See
+    # backend/learning_engine/learning_state.py and adaptation.py.
+    field_id = student_profile.get_enrolled_field_id(user_id)
+    learning_state = learning_state_provider.get(user_id, field_id)
+    conversation_adaptation = adaptation_engine.for_conversation(learning_state)
+    system_prompt = build_conversation_system_prompt(
+        user.target_lang, user.native_lang, user.level, user.interests, memory, conversation_adaptation.instructions
+    )
 
     # Dual-core persona voice: the Instructor Core (system_voice) sets this
     # teacher's specific correction philosophy; the Motivator Core

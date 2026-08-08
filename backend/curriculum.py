@@ -523,10 +523,15 @@ Respond with raw JSON only, no markdown fences, no commentary."""
 
 
 def build_conversation_system_prompt(
-    target_lang: str, native_lang: str, level: CEFRLevel, interests: list[str], memory: str = ""
+    target_lang: str, native_lang: str, level: CEFRLevel, interests: list[str], memory: str = "", adaptation: str = ""
 ) -> str:
     interests_s = ", ".join(interests) if interests else "general topics"
     memory_note = f"LONG-TERM MEMORY OF THIS LEARNER:\n{memory}\n" if memory else ""
+    # `adaptation` comes from learning_engine.adaptation.for_conversation(LearningState) —
+    # see routers/conversation.py. Kept as a separate block from memory_note above:
+    # memory is a free-text summary of past chat turns, this is structured signal
+    # (career goal, repeated mistakes) the tutor otherwise has no way to see.
+    adaptation_note = f"LEARNER ADAPTATION NOTES:\n{adaptation}\n" if adaptation else ""
     level_note = (
         "Use only very simple, high-frequency vocabulary and short sentences. "
         "If the learner writes in their native language, gently reply with the "
@@ -544,6 +549,7 @@ The learner's native language is {native_lang}. Their level is {level.value}.
 Their interests include: {interests_s} — steer small talk toward these when natural.
 
 {memory_note}
+{adaptation_note}
 
 Rules:
 - Reply primarily in {target_lang}.
