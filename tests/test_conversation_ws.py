@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend import db
 from backend import hf_client as hf_client_module
+from backend.learning_engine.learning_state import learning_state_provider
 from backend.learning_engine.student_profile import set_career_goal
 from backend.main import app
 from conftest import dev_login
@@ -102,6 +103,41 @@ def test_conversation_socket_omits_adaptation_block_for_new_learner(monkeypatch)
         with client.websocket_connect(f"/ws/conversation/{user_id}") as ws:
             ws.receive_json()  # ready
             ws.send_json({"type": "text", "data": "Hello"})
+            for _ in range(10):
+                event = ws.receive_json()
+                if event["type"] == "turn_complete":
+                    break
+
+    assert "LEARNER ADAPTATION NOTES" not in captured["system_prompt"]
+
+
+def test_conversation_socket_still_sends_ready_when_learning_state_lookup_fails(monkeypatch):
+    # Regression: LearningState/AdaptationEngine lookup happened before the
+    # socket ever sent `ready` and wasn't guarded — an unexpected DB error
+    # there used to crash the whole connection before the learner got any
+    # response at all, instead of degrading to "no adaptation notes".
+    captured: dict = {}
+
+    async def fake_stream_chat(messages, max_tokens=1000, temperature=0.7):
+        captured["system_prompt"] = messages[0]["content"]
+        yield "Hello!"
+
+    def raising_get(user_id, field_id=None, **kwargs):
+        raise RuntimeError("simulated DB failure")
+
+    monkeypatch.setattr(hf_client_module.hf_client, "stream_chat", fake_stream_chat)
+    monkeypatch.setattr(hf_client_module.hf_client, "stream_speech", _fake_stream_speech)
+    monkeypatch.setattr(learning_state_provider, "get", raising_get)
+
+    with TestClient(app) as client:
+        user = _onboard(client, "talk-lookup-fails@example.com")
+        user_id = user["id"]
+
+        with client.websocket_connect(f"/ws/conversation/{user_id}") as ws:
+            ready = ws.receive_json()
+            assert ready["type"] == "ready"
+
+            ws.send_json({"type": "text", "data": "Hi"})
             for _ in range(10):
                 event = ws.receive_json()
                 if event["type"] == "turn_complete":

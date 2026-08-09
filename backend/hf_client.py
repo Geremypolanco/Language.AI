@@ -351,11 +351,17 @@ class HFClient:
         Logs which provider actually resolved the call (and whether that
         took a fallback) via telemetry.log_provider_resolution — see that
         function's docstring for why it's scoped to provider/attempt/
-        latency and nothing more."""
+        latency and nothing more. Unconfigured providers (no API key) are
+        excluded before counting attempts: they return None instantly
+        without a network call, so counting them would misreport a
+        same-Pollinations-succeeds-first-try call as a "fallback" whenever
+        Groq simply isn't configured (its default state — see config.py's
+        groq_api_key)."""
         if settings.testing:
             raise HFClientError("AI disabled in test environment")
 
-        for attempt, provider in enumerate(self._chat_providers, start=1):
+        configured_providers = [p for p in self._chat_providers if p.configured]
+        for attempt, provider in enumerate(configured_providers, start=1):
             timing: dict = {}
             with telemetry.timed(timing):
                 result = await provider.chat(messages, max_tokens, temperature)
@@ -365,7 +371,7 @@ class HFClient:
                 )
                 return result
 
-        telemetry.log_provider_exhausted(capability="chat", providers_tried=len(self._chat_providers))
+        telemetry.log_provider_exhausted(capability="chat", providers_tried=len(configured_providers))
         raise HFClientError("All AI chat providers failed")
 
     async def stream_chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7):
@@ -381,7 +387,7 @@ class HFClient:
                 "POST",
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}"},
-                json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True},
+                json={"model": settings.groq_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True},
                 timeout=60.0
             ) as resp:
                 if resp.status_code != 200:
@@ -958,8 +964,10 @@ class HFClient:
         expected outcome here (the caller already handles it as "couldn't
         transcribe, ask the learner to try again"), not an error state.
 
-        Same telemetry as chat() — see log_provider_resolution's docstring."""
-        for attempt, provider in enumerate(self._stt_providers, start=1):
+        Same telemetry as chat() — see log_provider_resolution's docstring,
+        including excluding unconfigured providers from the attempt count."""
+        configured_providers = [p for p in self._stt_providers if p.configured]
+        for attempt, provider in enumerate(configured_providers, start=1):
             timing: dict = {}
             with telemetry.timed(timing):
                 result = await provider.transcribe(audio_bytes, content_type)
@@ -969,7 +977,7 @@ class HFClient:
                 )
                 return result
 
-        telemetry.log_provider_exhausted(capability="stt", providers_tried=len(self._stt_providers))
+        telemetry.log_provider_exhausted(capability="stt", providers_tried=len(configured_providers))
         return ""
 
 

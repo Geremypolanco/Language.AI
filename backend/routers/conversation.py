@@ -90,11 +90,20 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     # LearningState's ~6 DB queries, and every turn in this session sees
     # the same snapshot rather than drifting mid-conversation. See
     # backend/learning_engine/learning_state.py and adaptation.py.
-    field_id = student_profile.get_enrolled_field_id(user_id)
-    learning_state = learning_state_provider.get(user_id, field_id)
-    conversation_adaptation = adaptation_engine.for_conversation(learning_state)
+    #
+    # Guarded on its own: this is optional personalization, not a
+    # precondition for the call working at all — a DB hiccup here must
+    # degrade to "no adaptation notes" rather than take down the whole
+    # socket before the learner ever gets a `ready` event.
+    try:
+        field_id = student_profile.get_enrolled_field_id(user_id)
+        learning_state = learning_state_provider.get(user_id, field_id)
+        adaptation_instructions = adaptation_engine.for_conversation(learning_state).instructions
+    except Exception:
+        logger.exception("LearningState/AdaptationEngine lookup failed for user %s — continuing without it", user_id)
+        adaptation_instructions = ""
     system_prompt = build_conversation_system_prompt(
-        user.target_lang, user.native_lang, user.level, user.interests, memory, conversation_adaptation.instructions
+        user.target_lang, user.native_lang, user.level, user.interests, memory, adaptation_instructions
     )
 
     # Dual-core persona voice: the Instructor Core (system_voice) sets this

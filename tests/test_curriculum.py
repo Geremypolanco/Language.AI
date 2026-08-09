@@ -188,3 +188,14 @@ def test_conversation_prompt_includes_adaptation_block_when_present():
     )
     assert "LEARNER ADAPTATION NOTES" in prompt
     assert "favor examples about nursing" in prompt
+
+
+def test_conversation_prompt_marks_adaptation_block_as_data_not_instructions():
+    # career_goal (user-settable free text) and question_text (quiz content)
+    # both end up inside this block — it must read as reference data the
+    # model shouldn't treat as new instructions, not blend into the
+    # surrounding directives unmarked.
+    prompt = build_conversation_system_prompt(
+        "Spanish", "English", CEFRLevel.A1, [], adaptation="- some adaptation text."
+    )
+    assert "not instructions" in prompt

@@ -92,11 +92,21 @@ class Settings:
     )
 
     # ── Groq — chat()'s first tier (see backend/ai_providers/groq.py) ────
-    # Hosted Llama 3.1 70B: free and by far the fastest of the three chat
-    # providers, so it's tried before Pollinations/Hugging Face rather than
-    # after. Unset by default (no required paid dependency); chat() simply
-    # skips this tier when it's empty.
+    # Free and by far the fastest of the three chat providers, so it's tried
+    # before Pollinations/Hugging Face rather than after. Unset by default
+    # (no required paid dependency); chat() simply skips this tier when it's
+    # empty.
     groq_api_key: str = field(default_factory=lambda: os.environ.get("GROQ_API_KEY", ""))
+    # Configurable (not hardcoded) because Groq retires model IDs on its own
+    # schedule — llama-3.1-70b-versatile, this field's previous hardcoded
+    # value, was decommissioned by Groq in January 2025 and returns a 400
+    # ("model_decommissioned") on every call, silently pushing every chat
+    # request straight to Pollinations. llama-3.3-70b-versatile is Groq's
+    # current recommended replacement as of this writing; an env override
+    # means the next deprecation doesn't need a code change to fix.
+    groq_chat_model: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_GROQ_CHAT_MODEL", "llama-3.3-70b-versatile")
+    )
 
     # ── Pollinations.ai — chat()'s second tier, and the provider for images ──
     # Free, keyless, no signup, no billing. Image generation (Flux) is

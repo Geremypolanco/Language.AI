@@ -135,6 +135,23 @@ def test_groq_chat_returns_content_on_success(monkeypatch, settings_field):
     assert asyncio.run(provider.chat(_MESSAGES, 100, 0.5)) == "hola!"
 
 
+def test_groq_chat_uses_configured_model_not_a_hardcoded_one(monkeypatch, settings_field):
+    # Regression: the model ID used to be a hardcoded module constant
+    # (llama-3.1-70b-versatile) that Groq quietly decommissioned, silently
+    # failing every Groq chat call. It must come from settings so a future
+    # Groq deprecation is an env var change, not a code change.
+    settings_field("groq_api_key", "test-key")
+    settings_field("groq_chat_model", "some-other-model")
+    provider = GroqProvider(http=object())
+
+    async def fake_post(client, url, **kwargs):
+        assert kwargs["json"]["model"] == "some-other-model"
+        return _fake_response(200, {"choices": [{"message": {"content": "hola!"}}]})
+
+    monkeypatch.setattr("backend.ai_providers.groq.post_with_retry", fake_post)
+    assert asyncio.run(provider.chat(_MESSAGES, 100, 0.5)) == "hola!"
+
+
 def test_groq_chat_returns_none_on_non_200(monkeypatch, settings_field):
     settings_field("groq_api_key", "test-key")
     provider = GroqProvider(http=object())
@@ -255,6 +272,21 @@ def test_hf_chat_opens_circuit_on_rate_limit(monkeypatch, settings_field):
     assert guard.allowed() is False
 
 
+def test_hf_chat_logs_non_200_statuses_other_than_rate_limit(monkeypatch, settings_field, caplog):
+    # Regression: only 402/429 used to be logged; a 404 (wrong model path)
+    # or 500 failed completely silently.
+    settings_field("hf_token", "test-token")
+    provider = HFProvider(http=object(), hf_guard=ai_base.HFGuard(daily_budget=1000))
+
+    async def fake_post(client, url, **kwargs):
+        return _fake_response(500, text="server error")
+
+    monkeypatch.setattr("backend.ai_providers.huggingface.post_with_retry", fake_post)
+    with caplog.at_level(logging.WARNING, logger="lingua.ai_providers.huggingface"):
+        assert asyncio.run(provider.chat(_MESSAGES, 100, 0.5)) is None
+    assert any("500" in r.message for r in caplog.records)
+
+
 def test_hf_chat_returns_none_on_exception(monkeypatch, settings_field):
     settings_field("hf_token", "test-token")
     guard = ai_base.HFGuard(daily_budget=1000)
@@ -273,8 +305,9 @@ def test_hf_chat_returns_none_on_exception(monkeypatch, settings_field):
 class _StubProvider:
     name = "stub"
 
-    def __init__(self, result: str | None) -> None:
+    def __init__(self, result: str | None, configured: bool = True) -> None:
         self._result = result
+        self.configured = configured
 
     async def chat(self, messages, max_tokens, temperature):
         return self._result
@@ -326,6 +359,27 @@ def test_hfclient_chat_logs_which_provider_resolved_it_and_the_attempt_number(mo
     assert payload["provider"] == "second-provider"
     assert payload["attempt"] == 2
     assert payload["fallback"] is True
+
+
+def test_hfclient_chat_excludes_unconfigured_providers_from_attempt_count(monkeypatch, settings_field, caplog):
+    # Regression: an unconfigured provider (e.g. Groq with no API key, the
+    # default deployment state) used to still count as "attempt 1" even
+    # though it never made a network call — misreporting the very next,
+    # actually-first-tried provider's success as a fallback.
+    from backend.hf_client import hf_client
+
+    settings_field("testing", False)
+    winning = _StubProvider("resolved", configured=True)
+    winning.name = "second-provider"
+    monkeypatch.setattr(hf_client, "_chat_providers", [_StubProvider(None, configured=False), winning])
+
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        asyncio.run(hf_client.chat(_MESSAGES))
+
+    payload = json.loads(caplog.records[-1].message)
+    assert payload["provider"] == "second-provider"
+    assert payload["attempt"] == 1  # the unconfigured provider was never counted
+    assert payload["fallback"] is False
 
 
 def test_hfclient_chat_logs_exhaustion_when_every_provider_fails(monkeypatch, settings_field, caplog):
@@ -453,6 +507,19 @@ def test_hf_stt_opens_circuit_on_rate_limit(monkeypatch, settings_field):
     assert guard.allowed() is False
 
 
+def test_hf_stt_logs_non_200_statuses_other_than_rate_limit(monkeypatch, settings_field, caplog):
+    settings_field("hf_token", "test-token")
+    provider = HFSTTProvider(http=object(), hf_guard=ai_base.HFGuard(daily_budget=1000))
+
+    async def fake_post(client, url, **kwargs):
+        return _fake_response(500, text="server error")
+
+    monkeypatch.setattr("backend.ai_providers.huggingface.post_with_retry", fake_post)
+    with caplog.at_level(logging.WARNING, logger="lingua.ai_providers.huggingface"):
+        assert asyncio.run(provider.transcribe(_AUDIO_BYTES, "audio/webm")) is None
+    assert any("500" in r.message for r in caplog.records)
+
+
 def test_hf_stt_returns_none_on_exception(monkeypatch, settings_field):
     settings_field("hf_token", "test-token")
     guard = ai_base.HFGuard(daily_budget=1000)
@@ -471,8 +538,9 @@ def test_hf_stt_returns_none_on_exception(monkeypatch, settings_field):
 class _StubSTTProvider:
     name = "stub"
 
-    def __init__(self, result: str | None) -> None:
+    def __init__(self, result: str | None, configured: bool = True) -> None:
         self._result = result
+        self.configured = configured
 
     async def transcribe(self, audio_bytes, content_type):
         return self._result
@@ -515,6 +583,22 @@ def test_hfclient_speech_to_text_logs_which_provider_resolved_it(monkeypatch, ca
     payload = json.loads(caplog.records[-1].message)
     assert payload["event"] == "provider_resolution"
     assert payload["capability"] == "stt"
+    assert payload["attempt"] == 1
+    assert payload["fallback"] is False
+
+
+def test_hfclient_speech_to_text_excludes_unconfigured_providers_from_attempt_count(monkeypatch, caplog):
+    from backend.hf_client import hf_client
+
+    winning = _StubSTTProvider("hola mundo", configured=True)
+    monkeypatch.setattr(
+        hf_client, "_stt_providers", [_StubSTTProvider(None, configured=False), winning]
+    )
+
+    with caplog.at_level(logging.INFO, logger="lingua.telemetry"):
+        asyncio.run(hf_client.speech_to_text(_AUDIO_BYTES))
+
+    payload = json.loads(caplog.records[-1].message)
     assert payload["attempt"] == 1
     assert payload["fallback"] is False
 

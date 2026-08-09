@@ -1,10 +1,11 @@
-"""Groq — hosted Llama 3.1 70B for chat, hosted Whisper for speech-to-text.
-Both are chat()'s/speech_to_text()'s primary tier (elite free speed and
-quality, tried before Pollinations/Hugging Face). Needs GROQ_API_KEY;
-unset means `configured` is False and the caller skips straight to the
-next provider without a network call. Logic moved verbatim from
-hf_client.py's old chat()/speech_to_text() bodies — see AIProvider/
-STTProvider for why each contract is narrow."""
+"""Groq — hosted Llama for chat (model configurable via
+settings.groq_chat_model — see config.py for why it isn't hardcoded),
+hosted Whisper for speech-to-text. Both are chat()'s/speech_to_text()'s
+primary tier (elite free speed and quality, tried before Pollinations/
+Hugging Face). Needs GROQ_API_KEY; unset means `configured` is False and
+the caller skips straight to the next provider without a network call.
+Logic moved verbatim from hf_client.py's old chat()/speech_to_text()
+bodies — see AIProvider/STTProvider for why each contract is narrow."""
 
 from __future__ import annotations
 
@@ -18,7 +19,6 @@ from .base import AIProvider, STTProvider, post_with_retry
 logger = logging.getLogger("lingua.ai_providers.groq")
 
 _CHAT_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
-_CHAT_MODEL = "llama-3.1-70b-versatile"
 _STT_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
 _STT_MODEL = "whisper-large-v3"
 
@@ -42,7 +42,7 @@ class GroqProvider(AIProvider):
                 _CHAT_ENDPOINT,
                 headers={"Authorization": f"Bearer {settings.groq_api_key}"},
                 json={
-                    "model": _CHAT_MODEL,
+                    "model": settings.groq_chat_model,
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": temperature,

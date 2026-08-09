@@ -50,6 +50,8 @@ class HFProvider(AIProvider):
                 return content
             if resp.status_code in (402, 429):
                 self._hf_guard.record_rate_limited()
+            else:
+                logger.warning("Hugging Face chat HTTP %s: %s", resp.status_code, resp.text[:300])
         except Exception as e:
             logger.warning("Hugging Face chat failed: %s", e)
         return None
@@ -81,6 +83,8 @@ class HFSTTProvider(STTProvider):
                 return resp.json().get("text", "").strip()
             if resp.status_code in (402, 429):
                 self._hf_guard.record_rate_limited()
+            else:
+                logger.warning("Hugging Face STT HTTP %s: %s", resp.status_code, resp.text[:200])
         except Exception as e:
             logger.warning("Hugging Face STT failed: %s", e)
         return None
