@@ -1,6 +1,6 @@
 from backend import db
 from backend.learning_engine import competency
-from backend.learning_engine.adaptation import for_conversation, for_curriculum
+from backend.learning_engine.adaptation import for_conversation, for_curriculum, for_exercises
 from backend.learning_engine.learning_state import (
     STATE_VERSION,
     LearningStateProvider,
@@ -232,3 +232,68 @@ def test_for_curriculum_ignores_academic_concept_review_items():
     state = build_learning_state("u1", field_id="f")
     adaptation = for_curriculum(state)
     assert adaptation.unit_weights == {}
+
+
+# ── ExerciseAdaptation ───────────────────────────────────────────────────
+
+
+def test_for_exercises_empty_when_nothing_due():
+    _make_user()
+    state = build_learning_state("u1")
+    adaptation = for_exercises(state)
+    assert adaptation.exercise_priorities == {}
+    assert adaptation.priority_for("greetings.hello") == 0.0
+
+
+def test_for_exercises_prioritizes_by_vocab_key_not_unit():
+    _make_user()
+    _insert_due_vocab("u1", "greetings.hello", "A1-0")
+    _insert_due_vocab("u1", "greetings.bye", "A1-0")  # same unit, different vocab_key
+
+    state = build_learning_state("u1")
+    adaptation = for_exercises(state)
+
+    # Two due items in the same unit still get their own, separate priority —
+    # the whole point of joining on vocab_key instead of unit_id (see
+    # CurriculumAdaptation, which can only weight at the unit level).
+    assert adaptation.priority_for("greetings.hello") == 1.0
+    assert adaptation.priority_for("greetings.bye") == 1.0
+    assert adaptation.priority_for("food.bread") == 0.0  # untouched word stays neutral
+
+
+def test_for_exercises_priority_for_empty_vocab_key_is_always_zero():
+    # An exercise with no vocab_key (e.g. free_conversation_prompt) never
+    # has a signal to look up, even in the pathological case where "" ended
+    # up as a dict key somehow.
+    _make_user()
+    adaptation = for_exercises(build_learning_state("u1"))
+    assert adaptation.priority_for("") == 0.0
+
+
+def test_for_exercises_ignores_due_items_with_no_vocab_key():
+    # Defensive guard mirroring for_curriculum's unit_id one — vocab_key is
+    # part of vocab_progress' primary key so this shouldn't happen in
+    # practice, but the loop must not fabricate a "" priority entry if it
+    # ever does.
+    _make_user()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO vocab_progress (user_id, vocab_key, due_at, target_text, native_text, unit_id) "
+            "VALUES ('u1', '', ?, 'hola', 'hello', 'A1-0')",
+            (db.now_iso(),),
+        )
+    adaptation = for_exercises(build_learning_state("u1"))
+    assert adaptation.exercise_priorities == {}
+
+
+def test_for_exercises_ignores_academic_concept_review_items():
+    _make_user()
+    _make_enrollment()
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO vocab_progress (user_id, vocab_key, due_at, target_text, native_text, unit_id) "
+            "VALUES ('u1', 'academic:f:BACHELOR:0::variables', ?, 'Variables', 'def', '')",
+            (db.now_iso(),),
+        )
+    adaptation = for_exercises(build_learning_state("u1", field_id="f"))
+    assert adaptation.exercise_priorities == {}

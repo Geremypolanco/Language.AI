@@ -107,7 +107,16 @@ def get_lesson_exercises(user_id: str, unit_id: str, session: dict = Depends(aut
     persisted = get_default_store().load_course_asset(pair_key, unit.level.value, unit.id, "content")
     if persisted is None:
         raise HTTPException(status_code=404, detail="Esta unidad aún no está disponible en este idioma")
-    return [Exercise(**item) for item in persisted]
+    exercises = [Exercise(**item) for item in persisted]
+
+    # See learning_engine.adaptation.for_exercises' docstring for exactly
+    # what this signals on (due SRS review only) and why nothing else does
+    # yet — purely additive, the list itself (content, order, count) is
+    # unchanged.
+    exercise_adaptation = adaptation_engine.for_exercises(learning_state_provider.get(user_id))
+    for exercise in exercises:
+        exercise.priority = exercise_adaptation.priority_for(exercise.vocab_key)
+    return exercises
 
 
 PRACTICE_UNIT_PREFIX = "practice"

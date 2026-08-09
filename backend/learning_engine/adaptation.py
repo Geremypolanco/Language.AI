@@ -26,15 +26,44 @@ negative/deprioritization weight for "already mastered" units either —
 that needs unit_mastery data added to LearningState first, not a guessed
 value standing in for it.
 
-Convention for the next adapter (Exercises, or a future Writing/Reading/
-Pronunciation/Assessment module): `def for_<consumer>(state: LearningState)
--> <Consumer>Adaptation`, its own small frozen dataclass shaped for what
-that consumer actually needs — same as for_conversation/for_curriculum
-above. Not codified as a typing.Protocol on purpose: each adapter's return
-type is intentionally its own shape (prose for one, weights for another),
+Exercises adapter: an audit of Exercise's real fields (id, type, prompt,
+target_text, native_text, options, correct_answer, image_prompt,
+audio_text, audio_url, vocab_key — see models.py) found exactly one join
+to LearningState: `vocab_key`, matching due_review_items' vocab_key
+byte-for-byte (both come from vocab_progress via srs.py) — more precise
+than Curriculum's unit_id join, since it targets one exercise, not a
+whole unit. Nothing else audited (hint visibility, recommended attempt
+count, recommended time, a motivation_signal-driven adjustment) has a
+real backing signal in this app's data model today; guessing one for any
+of them would repeat the fatigue/confidence mistake this file has
+avoided everywhere else, so v1 is exactly the one join with evidence,
+nothing broader. Presentation-only, same as Curriculum: never reorders
+or regenerates the exercise list, never touches generate_exercises()'s
+cache_key or prompt (see hf_client.py's generate_exercises docstring for
+exactly why that cache_key is deliberately not per-user) — it only
+annotates already-resolved Exercise objects with a priority signal a
+caller may use to highlight or sort, the content itself is unaffected
+either way.
+
+Only one adaptation rule exists today (the vocab_key join above), so
+there's one ExerciseAdaptation, not per-pedagogical-mode variants
+(Lesson/Practice/Review) — those three delivery paths do have genuinely
+different constraints (see routers/lessons.py: Lessons read pre-built
+library content with no cache_key at all, Practice is AI-generated and
+cached, Review is already fully personalized and never cached), worth
+documenting here for whoever extends this, but splitting the
+*implementation* into three now would be premature: nothing has forced a
+second rule to diverge from the first yet. Split when it does, not before.
+
+Convention for the next adapter (Writing/Reading/Pronunciation/Assessment,
+or a second Exercises rule that genuinely needs its own type): `def
+for_<consumer>(state: LearningState) -> <Consumer>Adaptation`, its own
+small frozen dataclass shaped for what that consumer actually needs —
+same as the three examples above. Not codified as a typing.Protocol on
+purpose: each adapter's return type is intentionally its own shape,
 nothing here calls adapters polymorphically, and a Protocol typed `Any`
 back wouldn't buy real static checking — just unused surface area. The
-convention lives here, in prose, where the two examples that establish it
+convention lives here, in prose, where the examples that establish it
 already are."""
 
 from __future__ import annotations
@@ -105,3 +134,33 @@ def for_curriculum(state: LearningState) -> CurriculumAdaptation:
             continue
         weights[unit_id] = weights.get(unit_id, 0.0) + _DUE_REVIEW_WEIGHT
     return CurriculumAdaptation(unit_weights=weights)
+
+
+@dataclass(frozen=True)
+class ExerciseAdaptation:
+    """Per-exercise priority signal, keyed by `vocab_key` — the exercise
+    list itself (content, order, count) never changes; a consumer uses
+    this only to annotate or sort *within* that fixed list. `priority_for`
+    returns 0.0 (no signal) for any vocab_key not in `exercise_priorities`,
+    including "" (an exercise with no vocab_key, e.g. free_conversation_
+    prompt, never has a signal to look up)."""
+
+    exercise_priorities: dict[str, float]
+
+    def priority_for(self, vocab_key: str) -> float:
+        if not vocab_key:
+            return 0.0
+        return self.exercise_priorities.get(vocab_key, 0.0)
+
+
+def for_exercises(state: LearningState) -> ExerciseAdaptation:
+    """See module docstring for why this is the only rule in v1: due_
+    review_items' vocab_key is the one real, audited join between
+    LearningState and Exercise."""
+    priorities: dict[str, float] = {}
+    for item in state.due_review_items:
+        vocab_key = item.get("vocab_key")
+        if not vocab_key:
+            continue
+        priorities[vocab_key] = priorities.get(vocab_key, 0.0) + _DUE_REVIEW_WEIGHT
+    return ExerciseAdaptation(exercise_priorities=priorities)

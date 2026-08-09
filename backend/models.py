@@ -76,6 +76,11 @@ class Exercise(BaseModel):
     audio_text: str = ""
     audio_url: str = ""
     vocab_key: str = ""
+    # Presentation-only signal from learning_engine.adaptation.for_exercises
+    # (see its docstring) — 0.0 means no signal. Never influences what this
+    # exercise's content actually is; a caller may use it to highlight or
+    # sort a returned list, nothing here reorders that list itself.
+    priority: float = 0.0
 
 
 class Unit(BaseModel):
