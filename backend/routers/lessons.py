@@ -20,6 +20,8 @@ from .. import auth, db, srs
 from ..curriculum import ALPHABET_TOPIC, LessonRequest, all_units, get_unit, topic_es, units_for_level
 from ..hf_client import hf_client
 from ..language_library.storage import get_default_store, language_pair_key
+from ..learning_engine import adaptation as adaptation_engine
+from ..learning_engine.learning_state import learning_state_provider
 from ..models import CEFRLevel, Exercise, ExerciseType
 from .users import get_user_by_id_or_404
 
@@ -41,6 +43,13 @@ class UnitNode(BaseModel):
     # learner decides what to practice first, the level/order is only a
     # suggested default ordering, not a gate.
     best_score: float = 0.0
+    # From learning_engine.adaptation.for_curriculum — purely additive
+    # priority signal layered on top of the fixed CEFR order above (see
+    # `order`), never a replacement for it. 0.0 means no signal for this
+    # unit; a positive value means this unit currently has vocabulary due
+    # for spaced-repetition review (see CurriculumAdaptation's docstring
+    # for why nothing else drives this yet).
+    priority_weight: float = 0.0
 
 
 @router.get("/{user_id}/path", response_model=list[UnitNode])
@@ -49,6 +58,10 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
     with db.cursor() as cur:
         cur.execute("SELECT unit_id, best_score, mastered FROM unit_mastery WHERE user_id=?", (user_id,))
         mastery = {r["unit_id"]: r for r in cur.fetchall()}
+
+    # See learning_engine.adaptation.for_curriculum's docstring for exactly
+    # what this weights on (due SRS review only) and why nothing else does yet.
+    curriculum_adaptation = adaptation_engine.for_curriculum(learning_state_provider.get(user_id))
 
     nodes: list[UnitNode] = []
     for unit in all_units():
@@ -64,6 +77,7 @@ def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[
                 order=unit.order,
                 state=state,
                 best_score=best,
+                priority_weight=curriculum_adaptation.weight_for(unit.id),
             )
         )
     return nodes
@@ -93,7 +107,16 @@ def get_lesson_exercises(user_id: str, unit_id: str, session: dict = Depends(aut
     persisted = get_default_store().load_course_asset(pair_key, unit.level.value, unit.id, "content")
     if persisted is None:
         raise HTTPException(status_code=404, detail="Esta unidad aún no está disponible en este idioma")
-    return [Exercise(**item) for item in persisted]
+    exercises = [Exercise(**item) for item in persisted]
+
+    # See learning_engine.adaptation.for_exercises' docstring for exactly
+    # what this signals on (due SRS review only) and why nothing else does
+    # yet — purely additive, the list itself (content, order, count) is
+    # unchanged.
+    exercise_adaptation = adaptation_engine.for_exercises(learning_state_provider.get(user_id))
+    for exercise in exercises:
+        exercise.priority = exercise_adaptation.priority_for(exercise.vocab_key)
+    return exercises
 
 
 PRACTICE_UNIT_PREFIX = "practice"

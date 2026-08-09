@@ -38,6 +38,19 @@ def get_career_goal(user_id: str) -> str:
         return row["career_goal"] if row else ""
 
 
+def get_enrolled_field_id(user_id: str) -> str | None:
+    """This student's current Academy field, if any — the `field_id` scope
+    every Academy-specific function in this module (and LearningState, see
+    learning_state.py) needs. None for a student who has never enrolled in
+    Academy (a purely language-track learner), which every caller already
+    treats as "no Academy data yet" rather than an error — see
+    profile_summary's own field_id-optional handling below."""
+    with db.cursor() as cur:
+        cur.execute("SELECT field_id FROM academy_enrollment WHERE user_id=?", (user_id,))
+        row = cur.fetchone()
+        return row["field_id"] if row else None
+
+
 def frequent_mistakes(user_id: str, field_id: str, top_n: int = 5) -> list[dict]:
     """This student's own most-repeated wrong answers — distinct from
     analytics.field_summary's most_failed_questions, which aggregates

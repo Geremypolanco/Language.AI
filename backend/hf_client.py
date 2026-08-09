@@ -38,10 +38,18 @@ also guess at content on its own.
 
 Hugging Face is also the one tier in this rotation with a real, credit-
 limited budget behind it (unlike Pollinations' free/keyless tier or a
-self-hosted engine like Piper) — see _HFGuard below for how every HF call
-site in this file is rate/budget-guarded so a traffic burst can't quietly
-exhaust that budget or pile up slow doomed requests against an already
-rate-limited account.
+self-hosted engine like Piper) — see ai_providers.base.HFGuard for how
+every HF call site in this file is rate/budget-guarded so a traffic burst
+can't quietly exhaust that budget or pile up slow doomed requests against
+an already rate-limited account.
+
+chat()'s three providers (Groq/Pollinations/Hugging Face) live in
+backend/ai_providers/ as small AIProvider implementations tried in order
+— extracted so a new chat provider is one more class implementing that
+contract, not another branch inside this file. Every other modality here
+(TTS/STT/image/video) still lives directly in this client; that split is
+deliberate for now; see ai_providers/base.py's module docstring for why
+it's scoped to chat only so far.
 """
 
 from __future__ import annotations
@@ -59,6 +67,10 @@ from typing import TYPE_CHECKING
 import httpx
 from num2words import num2words
 
+from .ai_providers.base import AIProvider, HF_AUDIO_CALL_COST, HF_VIDEO_CALL_COST, HFGuard, STTProvider
+from .ai_providers.groq import GroqProvider, GroqSTTProvider
+from .ai_providers.huggingface import HFProvider, HFSTTProvider
+from .ai_providers.pollinations import PollinationsProvider
 from .config import settings
 from .curriculum import (
     ALPHABET_PROMPT_VERSION,
@@ -70,6 +82,7 @@ from .curriculum import (
     topic_es,
 )
 from .models import Exercise, ExerciseType
+from . import telemetry
 
 if TYPE_CHECKING:
     from .models import BookStub
@@ -151,53 +164,13 @@ _NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?\b")
 #      any single process actually crashed.
 #   2. Nothing capped how much of a credit-limited HF plan one bad traffic
 #      spike could burn through in minutes.
-# _HFGuard fixes both with the same shape of circuit breaker already proven
-# for ElevenLabs below: any 429/402 opens a cooldown window, and a soft,
-# approximate per-day usage budget closes the tier early on its own even
-# without an explicit rate-limit response.
-_HF_CIRCUIT_COOLDOWN_S = 120.0
-# Flat per-call cost estimate for HF calls that aren't plain text-in/text-out
-# (STT reads audio, video's cost isn't proportional to the prompt string) —
-# picked so a handful of video generations (the heaviest call this app makes
-# against HF) meaningfully draws down the daily budget instead of registering
-# as nearly free the way a short text prompt's char-count would.
-_HF_AUDIO_CALL_COST = 500
-_HF_VIDEO_CALL_COST = 4000
-
-
-class _HFGuard:
-    """Tracks whether it's currently safe to spend more Hugging Face
-    quota — see the module comment above for why this exists. Not a real
-    token-accurate meter (there's no tokenizer here, just chars/4 and flat
-    per-modality estimates); it only needs to be a safety margin, not a
-    billing reconciliation."""
-
-    def __init__(self, daily_budget: int, cooldown_s: float = _HF_CIRCUIT_COOLDOWN_S) -> None:
-        self._daily_budget = daily_budget
-        self._cooldown_s = cooldown_s
-        self._circuit_open_until = 0.0
-        self._budget_day: str | None = None
-        self._used_today = 0
-
-    def _roll_window_if_new_day(self) -> None:
-        today = time.strftime("%Y-%m-%d", time.gmtime())
-        if today != self._budget_day:
-            self._budget_day = today
-            self._used_today = 0
-
-    def allowed(self) -> bool:
-        if time.monotonic() < self._circuit_open_until:
-            return False
-        self._roll_window_if_new_day()
-        return self._used_today < self._daily_budget
-
-    def record_usage(self, units: int) -> None:
-        self._roll_window_if_new_day()
-        self._used_today += max(0, units)
-
-    def record_rate_limited(self) -> None:
-        self._circuit_open_until = time.monotonic() + self._cooldown_s
-        logger.warning("Hugging Face rate-limited/budget exhausted — pausing that tier for %.0fs", self._cooldown_s)
+# HFGuard (backend/ai_providers/base.py) fixes both with the same shape of
+# circuit breaker already proven for ElevenLabs below: any 429/402 opens a
+# cooldown window, and a soft, approximate per-day usage budget closes the
+# tier early on its own even without an explicit rate-limit response.
+# HF_AUDIO_CALL_COST/HF_VIDEO_CALL_COST (flat per-call cost estimates for
+# non-text-in/text-out HF calls) now live in ai_providers.base — shared
+# with HFSTTProvider, not just this file's own TTS/video tiers.
 
 
 def _preprocess_for_parler(text: str, lang: str) -> str:
@@ -261,7 +234,6 @@ class HFClientError(RuntimeError):
 class HFClient:
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=settings.request_timeout_s)
-        self._groq_api_key = os.environ.get("GROQ_API_KEY")
         os.makedirs(settings.cache_dir, exist_ok=True)
         # Circuit breaker state for the ElevenLabs tier — a monotonic
         # timestamp; while time.monotonic() is before it, _call_elevenlabs
@@ -271,8 +243,24 @@ class HFClient:
         self._elevenlabs_circuit_open_until: float = 0.0
         # Same idea, generalized to every Hugging Face call this client
         # makes (chat fallback, STT fallback, TTS's MMS/Parler branches,
-        # video) — see the _HFGuard class above.
-        self._hf_guard = _HFGuard(settings.hf_daily_token_budget)
+        # video) — see ai_providers.base.HFGuard.
+        self._hf_guard = HFGuard(settings.hf_daily_token_budget)
+        # chat()'s provider cascade, tried in this order — see
+        # ai_providers/ for why each is its own small class instead of a
+        # branch inside chat() below.
+        self._chat_providers: list[AIProvider] = [
+            GroqProvider(self._http),
+            PollinationsProvider(self._http),
+            HFProvider(self._http, self._hf_guard),
+        ]
+        # speech_to_text()'s provider cascade — same shape as _chat_providers
+        # above, extracted the same way (see the extraction audit this came
+        # out of), just a different contract (STTProvider) since the
+        # input/output shape differs from chat.
+        self._stt_providers: list[STTProvider] = [
+            GroqSTTProvider(self._http),
+            HFSTTProvider(self._http, self._hf_guard),
+        ]
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -354,57 +342,36 @@ class HFClient:
         raise AssertionError("unreachable")
 
     async def chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7) -> str:
-        """Uses Groq as the primary elite free provider (Llama 3.1 70B), 
-        falling back to Pollinations/HF if Groq is unavailable."""
+        """Tries self._chat_providers in order (Groq — elite free speed and
+        quality — then Pollinations, then Hugging Face as the last, budget-
+        guarded resort) and returns the first one that succeeds. See
+        backend/ai_providers/ for each provider's own docstring on exactly
+        why it sits at its position in this order.
+
+        Logs which provider actually resolved the call (and whether that
+        took a fallback) via telemetry.log_provider_resolution — see that
+        function's docstring for why it's scoped to provider/attempt/
+        latency and nothing more. Unconfigured providers (no API key) are
+        excluded before counting attempts: they return None instantly
+        without a network call, so counting them would misreport a
+        same-Pollinations-succeeds-first-try call as a "fallback" whenever
+        Groq simply isn't configured (its default state — see config.py's
+        groq_api_key)."""
         if settings.testing:
             raise HFClientError("AI disabled in test environment")
-            
-        # Try Groq first (Elite speed and quality)
-        groq_key = os.environ.get("GROQ_API_KEY")
-        if groq_key:
-            try:
-                resp = await self._post_with_retry(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": False},
+
+        configured_providers = [p for p in self._chat_providers if p.configured]
+        for attempt, provider in enumerate(configured_providers, start=1):
+            timing: dict = {}
+            with telemetry.timed(timing):
+                result = await provider.chat(messages, max_tokens, temperature)
+            if result is not None:
+                telemetry.log_provider_resolution(
+                    capability="chat", provider=provider.name, attempt=attempt, elapsed_ms=timing["elapsed_ms"]
                 )
-                if resp.status_code == 200:
-                    return resp.json()["choices"][0]["message"]["content"]
-                logger.warning("Groq chat HTTP %s: %s", resp.status_code, resp.text[:300])
-            except Exception as e:
-                logger.warning("Groq chat failed: %s", e)
+                return result
 
-        # Fallback to Pollinations
-        try:
-            resp = await self._post_with_retry(
-                settings.pollinations_chat_endpoint,
-                headers=self._pollinations_headers(),
-                json={"model": settings.chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"]
-        except Exception:
-            pass
-
-        # Final fallback to Hugging Face — gated by _HFGuard so a burst that
-        # already exhausted Groq/Pollinations doesn't also hammer a rate-
-        # limited or budget-exhausted HF account (see _HFGuard docstring).
-        if settings.hf_configured and self._hf_guard.allowed():
-            try:
-                resp = await self._post_with_retry(
-                    settings.hf_chat_endpoint,
-                    headers=self._hf_headers(),
-                    json={"model": settings.hf_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-                )
-                if resp.status_code == 200:
-                    content = resp.json()["choices"][0]["message"]["content"]
-                    self._hf_guard.record_usage((sum(len(m.get("content", "")) for m in messages) + len(content)) // 4)
-                    return content
-                if resp.status_code in (402, 429):
-                    self._hf_guard.record_rate_limited()
-            except Exception:
-                pass
-
+        telemetry.log_provider_exhausted(capability="chat", providers_tried=len(configured_providers))
         raise HFClientError("All AI chat providers failed")
 
     async def stream_chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7):
@@ -420,7 +387,7 @@ class HFClient:
                 "POST",
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}"},
-                json={"model": "llama-3.1-70b-versatile", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True},
+                json={"model": settings.groq_chat_model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True},
                 timeout=60.0
             ) as resp:
                 if resp.status_code != 200:
@@ -779,7 +746,7 @@ class HFClient:
                 timeout=150.0,
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("video"):
-                self._hf_guard.record_usage(_HF_VIDEO_CALL_COST)
+                self._hf_guard.record_usage(HF_VIDEO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return resp.content
@@ -888,7 +855,7 @@ class HFClient:
                     json={"inputs": parler_text, "parameters": {"description": voice_description}},
                 )
                 if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                    self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(resp.content)
                     return _resolved("parler", False, resp.content, "audio/flac", parler_cache_path)
@@ -901,7 +868,7 @@ class HFClient:
             try:
                 audio_bytes = await asyncio.to_thread(_call_parler_space, parler_text, voice_description)
                 if audio_bytes:
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                    self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                     with open(parler_cache_path, "wb") as f:
                         f.write(audio_bytes)
                     return _resolved("parler-space", False, audio_bytes, "audio/flac", parler_cache_path)
@@ -943,7 +910,7 @@ class HFClient:
                 json={"inputs": text},
             )
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("audio"):
-                self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
+                self._hf_guard.record_usage(HF_AUDIO_CALL_COST)
                 with open(cache_path, "wb") as f:
                     f.write(resp.content)
                 return _resolved("hf-mms", False, resp.content, "audio/flac", cache_path)
@@ -990,41 +957,27 @@ class HFClient:
     # ── Speech-to-text ───────────────────────────────────────────────────
 
     async def speech_to_text(self, audio_bytes: bytes, content_type: str = "audio/webm") -> str:
-        """Uses Groq Whisper (instant, elite quality) as primary, 
-        falling back to Hugging Face Whisper."""
-        groq_key = os.environ.get("GROQ_API_KEY")
-        if groq_key:
-            try:
-                # Groq requires multipart/form-data for translations/transcriptions
-                files = {"file": ("audio.webm", audio_bytes, content_type), "model": (None, "whisper-large-v3")}
-                resp = await self._http.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    files=files,
-                    timeout=30.0
-                )
-                if resp.status_code == 200:
-                    return resp.json().get("text", "").strip()
-                logger.warning("Groq STT HTTP %s: %s", resp.status_code, resp.text[:200])
-            except Exception as e:
-                logger.warning("Groq STT failed: %s", e)
+        """Tries self._stt_providers in order (Groq Whisper — instant,
+        elite quality — then Hugging Face Whisper as the budget-guarded
+        fallback) and returns the first transcript. Unlike chat(), never
+        raises when every tier fails — "" (no transcript) is a normal,
+        expected outcome here (the caller already handles it as "couldn't
+        transcribe, ask the learner to try again"), not an error state.
 
-        # Fallback to Hugging Face — same _HFGuard gating as chat()'s HF tier.
-        if settings.hf_configured and self._hf_guard.allowed():
-            try:
-                resp = await self._post_with_retry(
-                    f"{settings.hf_models_endpoint}/{settings.stt_model}",
-                    headers={**self._hf_headers(), "Content-Type": content_type},
-                    content=audio_bytes,
+        Same telemetry as chat() — see log_provider_resolution's docstring,
+        including excluding unconfigured providers from the attempt count."""
+        configured_providers = [p for p in self._stt_providers if p.configured]
+        for attempt, provider in enumerate(configured_providers, start=1):
+            timing: dict = {}
+            with telemetry.timed(timing):
+                result = await provider.transcribe(audio_bytes, content_type)
+            if result is not None:
+                telemetry.log_provider_resolution(
+                    capability="stt", provider=provider.name, attempt=attempt, elapsed_ms=timing["elapsed_ms"]
                 )
-                if resp.status_code == 200:
-                    self._hf_guard.record_usage(_HF_AUDIO_CALL_COST)
-                    return resp.json().get("text", "").strip()
-                if resp.status_code in (402, 429):
-                    self._hf_guard.record_rate_limited()
-            except Exception:
-                pass
+                return result
 
+        telemetry.log_provider_exhausted(capability="stt", providers_tried=len(configured_providers))
         return ""
 
 
