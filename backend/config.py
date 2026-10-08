@@ -225,12 +225,29 @@ class Settings:
     # startup so it's visible in production logs instead of failing silently.
     session_secret_is_ephemeral: bool = field(default_factory=lambda: not os.environ.get("LINGUA_SESSION_SECRET"))
 
-    # Lets you sign in locally/in tests without real Google credentials —
-    # mirrors this app's "runs without HF_TOKEN too" demo-mode philosophy.
-    # Auto-disabled the moment real Google credentials are configured, unless
-    # explicitly re-enabled (a real deploy shouldn't ship an auth bypass by
-    # accident).
+    # Emergency escape hatch for local development and tests — lets you sign
+    # in without real Google credentials. SECURE BY DEFAULT: dev-login is
+    # DISABLED unless LINGUA_ALLOW_DEV_LOGIN is explicitly set to "1" (local
+    # dev, CI). It is NEVER auto-enabled by "no Google credentials" anymore.
+    # main.py calls assert_security_policy() at startup: if this flag is on
+    # in a production-looking environment, the server REFUSES TO START.
     _dev_login_override: str = field(default_factory=lambda: os.environ.get("LINGUA_ALLOW_DEV_LOGIN", ""))
+
+    @property
+    def is_production(self) -> bool:
+        """Best-effort production detection. Errs on the side of caution:
+        if ANY signal says production, it is production."""
+        env = os.environ.get("LINGUA_ENV", "").lower()
+        if env == "production":
+            return True
+        for var in ("ENV", "APP_ENV"):
+            if os.environ.get(var, "").lower() == "production":
+                return True
+        # Fly.io injects FLY_APP_NAME into every machine — a deploy there is
+        # production by definition.
+        if os.environ.get("FLY_APP_NAME"):
+            return True
+        return False
 
     @property
     def hf_configured(self) -> bool:
@@ -262,9 +279,25 @@ class Settings:
 
     @property
     def dev_login_enabled(self) -> bool:
-        if self._dev_login_override:
-            return self._dev_login_override == "1"
-        return not self.google_configured
+        # Secure default: OFF. Only an explicit LINGUA_ALLOW_DEV_LOGIN=1
+        # turns it on. "No Google credentials configured" no longer enables
+        # it — that was the hole that left the bypass open in production.
+        return self._dev_login_override == "1"
+
+    def assert_security_policy(self) -> None:
+        """Refuse to run in production with the dev-login auth bypass
+        enabled. Called at server startup (see backend/main.py lifespan) —
+        a production deploy with the bypass on must crash LOUDLY at boot,
+        never serve silently insecure."""
+        if self.dev_login_enabled and self.is_production:
+            raise RuntimeError(
+                "SECURITY: LINGUA_ALLOW_DEV_LOGIN=1 is set but this looks "
+                "like a production environment (LINGUA_ENV/ENV/APP_ENV="
+                "production or FLY_APP_NAME is set). Refusing to start with "
+                "the /auth/dev-login auth bypass enabled — an attacker "
+                "could create sessions for any email address. Unset "
+                "LINGUA_ALLOW_DEV_LOGIN (or set it to 0) before deploying."
+            )
 
 
 settings = Settings()

@@ -32,6 +32,11 @@ export interface SessionData {
   native_lang?: string;
   target_lang?: string;
   level?: CEFRLevel;
+  // Set by GET /api/session — true only when the server explicitly enabled
+  // the dev-login bypass (LINGUA_ALLOW_DEV_LOGIN=1). The dev form in
+  // Login.tsx renders only when this is true, so production users never
+  // see it.
+  dev_login_enabled?: boolean;
 }
 
 export interface User {

@@ -313,7 +313,10 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Dev Login */}
+          {/* Dev Login — only rendered when the backend explicitly allows the
+              dev-login bypass (local dev / CI). In production this flag is
+              false and the form (and its link) never appears. */}
+          {session?.dev_login_enabled && (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground text-center">
               {t("login.devNote")}
@@ -343,6 +346,7 @@ export default function Login() {
               {t("login.devLogin")}
             </Button>
           </div>
+          )}
         </div>
       </div>
 

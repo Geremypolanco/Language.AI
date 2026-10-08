@@ -2,8 +2,9 @@
 expose the current session to the frontend, and sign out.
 
 Also ships a `/auth/dev-login` escape hatch for running/testing without real
-Google credentials — see `config.Settings.dev_login_enabled` for exactly when
-it's available (off by default the moment real credentials are configured).
+Google credentials — OFF BY DEFAULT, only reachable when the operator
+explicitly sets LINGUA_ALLOW_DEV_LOGIN=1 (local dev/CI). In production the
+server refuses to start with the flag on (see config.Settings).
 """
 
 from __future__ import annotations
@@ -116,11 +117,13 @@ def logout() -> Response:
 @router.get("/auth/dev-login")
 def dev_login(email: str = Query(...), name: str = Query("")) -> RedirectResponse:
     """Simulates a completed Google login for local development/tests. Only
-    reachable when `settings.dev_login_enabled` is true (see config.py) —
-    disabled automatically once real GOOGLE_CLIENT_ID/SECRET are set, unless
-    explicitly re-enabled via LINGUA_ALLOW_DEV_LOGIN=1."""
+    reachable when LINGUA_ALLOW_DEV_LOGIN=1 is explicitly set (see
+    config.py) — disabled by default, and the server refuses to start in
+    production with the flag on."""
     if not settings.dev_login_enabled:
-        raise HTTPException(status_code=404, detail="No encontrado")
+        # 403, not 404: without Google OAuth configured there is simply no
+        # legitimate way to log in — the bypass must not create a session.
+        raise HTTPException(status_code=403, detail="El inicio de sesión no está disponible")
 
     email = email.strip().lower()
     with db.cursor() as cur:

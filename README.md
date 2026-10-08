@@ -26,7 +26,7 @@ Lingua is a high-performance, mobile-first language learning application that le
 ## 🛠️ Technical Architecture
 
 - **Backend**: FastAPI (Python 3.11) + WebSocket streaming.
-- **Frontend**: High-performance Vanilla JS (ES6+) with zero-dependency architecture.
+- **Frontend**: React 19 + TypeScript (Vite) with a mobile-first design.
 - **Visuals**: Dynamic discovery via YouTube/Google APIs with AI fallback.
 - **Voice**: Hybrid architecture using self-hosted Piper TTS and Hugging Face MMS.
 

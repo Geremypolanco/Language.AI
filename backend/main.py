@@ -58,6 +58,11 @@ _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend_dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Security gate FIRST: a production boot with the dev-login auth bypass
+    # enabled must fail loudly here, never serve. See
+    # config.Settings.assert_security_policy.
+    settings.assert_security_policy()
+
     redirect_uri = f"{settings.public_base_url}/auth/google/callback"
     if settings.google_configured:
         logger.info("Google Sign-In enabled. Redirect URI: %s", redirect_uri)
@@ -65,7 +70,8 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "Google Sign-In not configured (GOOGLE_CLIENT_ID/SECRET unset). "
             "Register this exact redirect URI in Google Cloud Console once you set them: %s "
-            "— dev-login fallback is %s.",
+            "— dev-login fallback is %s (enable only for local dev via "
+            "LINGUA_ALLOW_DEV_LOGIN=1; it is refused in production).",
             redirect_uri,
             "enabled" if settings.dev_login_enabled else "disabled",
         )
