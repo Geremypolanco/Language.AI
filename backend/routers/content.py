@@ -4,6 +4,8 @@ and short topic-explainer videos."""
 
 from __future__ import annotations
 
+import json
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -12,6 +14,7 @@ from pydantic import BaseModel, Field
 from .. import auth, image_search, youtube_search
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
+from ..llm_contracts import NEWS_LIST, NON_EMPTY_TEXT, validate_or_retry
 from ..models import CEFRLevel, Recommendation
 from .users import get_user_by_id_or_404
 
@@ -207,20 +210,25 @@ async def get_daily_news(request: Request) -> dict:
 Topics: {interests}.
 Level: {user.level.value}.
 Format: Return ONLY a JSON array of objects: [{{"title": "...", "content": "...", "translation": "..."}}]"""
-    
-    try:
-        import json
-        import re
+
+    # U2: the article list must satisfy the NewsArticle contract — bounded
+    # fields, no silent tolerance of malformed items. Persistent failure is
+    # dead-lettered and degrades to the endpoint's honest fallback, never
+    # a fabricated news list.
+    async def _fetch() -> list[dict]:
         news_raw = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=800)
         cleaned = re.sub(r"^```(json)?|```$", "", news_raw.strip(), flags=re.MULTILINE).strip()
-        news = json.loads(cleaned)
-        return {"news": news}
-    except Exception:
-        # hf_client.chat can itself raise (all providers down, or disabled
-        # in tests) — that used to happen outside this try/except, before
-        # it only wrapped the JSON parsing, so it 500'd instead of using
-        # this endpoint's own intended fallback below.
-        return {"news": [{"title": "News Unavailable", "content": "The AI news anchor is sleeping. Try again later.", "translation": ""}]}
+        return json.loads(cleaned)
+
+    ok, articles = await validate_or_retry(
+        _fetch,
+        NEWS_LIST,
+        schema_name="NewsArticleList",
+        context={"user_id": user.id},
+    )
+    if ok and articles is not None:
+        return {"news": [a.model_dump() for a in articles]}
+    return {"news": [{"title": "News Unavailable", "content": "The AI news anchor is sleeping. Try again later.", "translation": ""}]}
 
 
 @router.post("/explain")
@@ -234,5 +242,13 @@ Provide:
 3. A brief grammatical note if applicable.
 Respond in {payload.native_lang} with a professional, encouraging tone."""
     
-    explanation = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=500)
-    return {"explanation": explanation}
+    # U2: free-text gate — an empty/garbage explanation is retried, then
+    # dead-lettered, instead of returning nothing or 500ing.
+    ok, text = await validate_or_retry(
+        lambda: hf_client.chat([{"role": "user", "content": prompt}], max_tokens=500),
+        NON_EMPTY_TEXT,
+        schema_name="MagicLensExplanation",
+    )
+    if ok and text is not None:
+        return {"explanation": text.root}
+    return {"explanation": "(No se pudo generar la explicación en este momento — inténtalo de nuevo.)"}

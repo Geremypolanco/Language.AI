@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from .. import curriculum
 from ..hf_client import _parse_exercises, _with_teaching_intros, hf_client
+from ..llm_contracts import DeadLetterEntry, dead_letters
 from ..models import Exercise
 from . import validators
 
@@ -60,6 +61,17 @@ async def generate_unit_exercises(unit: "Unit", target_lang: str, native_lang: s
         if not problems:
             return exercises
         last_problems = problems
+    # U2: the build stays loud (GenerationError), but the failure is also
+    # triage-visible in the dead-letter queue instead of living only in a
+    # build log nobody re-reads.
+    dead_letters.push(
+        DeadLetterEntry.new(
+            schema="LanguageUnitExercises",
+            errors=last_problems,
+            attempts=_MAX_ATTEMPTS,
+            context={"unit": unit.id, "target_lang": target_lang, "native_lang": native_lang},
+        )
+    )
     raise GenerationError(f"failed after {_MAX_ATTEMPTS} attempts: {'; '.join(last_problems)}")
 
 

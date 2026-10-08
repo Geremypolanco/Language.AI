@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,11 @@ import pytest
 # suite offline and deterministic even though Pollinations itself needs no
 # token and would otherwise happily make a real network call.
 os.environ["LINGUA_TESTING"] = "1"
+
+# Dead-letter triage writes go to a throwaway dir during tests — the
+# llm_contracts singleton reads this env var once at import, which happens
+# after this file runs, so no test ever touches the real data/dead_letters/.
+os.environ["LINGUA_DEAD_LETTER_DIR"] = tempfile.mkdtemp(prefix="lingua-test-dead-letters-")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

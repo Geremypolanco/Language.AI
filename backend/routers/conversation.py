@@ -20,6 +20,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .. import auth, db, personas, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
+from ..llm_contracts import NON_EMPTY_TEXT, validate_or_retry
 from ..mentor_engine import adaptive_mentor, conversation_memory_adapter
 from .users import get_user_by_id_or_404
 
@@ -262,7 +263,17 @@ updated long-term memory of this learner (their progress, mistakes, interests, a
 Old Memory: {old_memory}
 History: {history_str}
 New Memory (max 200 words):"""
-        new_memory = await hf_client.chat([{"role": "user", "content": prompt}], max_tokens=300)
-        _update_user_memory(user_id, new_memory)
+        # U2: gate the memory write on validated non-empty text — a garbage
+        # or empty summary must never poison the learner's long-term memory
+        # that all future prompts build on. Failure is dead-lettered and
+        # the old memory simply stays, same as before.
+        ok, text = await validate_or_retry(
+            lambda: hf_client.chat([{"role": "user", "content": prompt}], max_tokens=300),
+            NON_EMPTY_TEXT,
+            schema_name="ConversationMemory",
+            context={"user_id": user_id},
+        )
+        if ok and text is not None:
+            _update_user_memory(user_id, text.root)
     except Exception:
         pass

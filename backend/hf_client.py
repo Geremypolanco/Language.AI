@@ -54,7 +54,7 @@ import os
 import re
 import time
 import urllib.parse
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from num2words import num2words
@@ -68,6 +68,17 @@ from .curriculum import (
     build_exercise_generation_prompt,
     build_review_exercise_prompt,
     topic_es,
+)
+from .llm_contracts import (
+    EXERCISE_LIST,
+    NON_EMPTY_TEXT,
+    RECOMMENDATION_LIST,
+    REVIEW_EXERCISE_LIST,
+    AssignmentGrade,
+    ExerciseJSON,
+    OpenAnswerGrade,
+    ReviewExerciseJSON,
+    validate_or_retry,
 )
 from .models import Exercise, ExerciseType
 
@@ -353,6 +364,26 @@ class HFClient:
                 await asyncio.sleep(0.5)
         raise AssertionError("unreachable")
 
+    async def _chat_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int,
+        temperature: float = 0.7,
+        system: str = "You output only valid JSON, nothing else.",
+    ) -> Any:
+        """chat() + strip markdown code fences + json.loads. Raises on
+        provider failure or unparsable JSON — callers route the result
+        through llm_contracts.validate_or_retry, which counts either as a
+        failed attempt (retry → dead-letter), never as data to show."""
+        raw = await self.chat(
+            [{"role": "system", "content": system}, *messages],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+        return json.loads(cleaned)
+
     async def chat(self, messages: list[dict[str, str]], max_tokens: int = 1000, temperature: float = 0.7) -> str:
         """Uses Groq as the primary elite free provider (Llama 3.1 70B), 
         falling back to Pollinations/HF if Groq is unavailable."""
@@ -478,21 +509,38 @@ class HFClient:
                 return [Exercise(**item) for item in json.load(f)]
 
         prompt = build_exercise_generation_prompt(req, mix_override)
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1500,
+
+        async def _fetch() -> Any:
+            return await self._chat_json(
+                [{"role": "user", "content": prompt}], max_tokens=1500
             )
-            exercises = _with_teaching_intros(_parse_exercises(raw))
+
+        # U2: the raw model output must satisfy the ExerciseList contract.
+        # Retry with backoff; persistent failure is dead-lettered and we
+        # serve the honest offline fallback — same as a provider outage.
+        ok, items = await validate_or_retry(
+            _fetch,
+            EXERCISE_LIST,
+            schema_name="ExerciseList",
+            context={
+                "unit": req.unit.id,
+                "target_lang": req.target_lang,
+                "native_lang": req.native_lang,
+            },
+        )
+        if not ok or items is None:
+            logger.warning("AI exercise generation dead-lettered, using offline fallback content")
+            return _with_teaching_intros(_fallback_exercises(req, mix_override))
+        try:
+            exercises = _with_teaching_intros(
+                [_exercise_from_contract(item, i) for i, item in enumerate(items)]
+            )
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump([e.model_dump() for e in exercises], f)
             return exercises
         except Exception:
-            logger.exception("AI exercise generation failed, using offline fallback content")
-        return _with_teaching_intros(_fallback_exercises(req, mix_override))
+            logger.exception("validated exercises failed to convert/cache, using offline fallback content")
+            return _with_teaching_intros(_fallback_exercises(req, mix_override))
 
     async def generate_review_exercises(
         self, items: list[dict], native_lang: str, target_lang: str
@@ -510,26 +558,49 @@ class HFClient:
         if not items:
             return []
         prompt = build_review_exercise_prompt(items, native_lang, target_lang)
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=1200,
+
+        async def _fetch() -> Any:
+            return await self._chat_json(
+                [{"role": "user", "content": prompt}], max_tokens=1200
             )
-            return _parse_review_exercises(raw, items)
-        except Exception:
-            logger.exception("AI review-exercise generation failed, using content-snapshot fallback")
-        return _fallback_review_exercises(items)
+
+        # U2: contract-validated like generate_exercises. An empty or
+        # malformed batch is retried, then dead-lettered — the
+        # content-snapshot fallback below is genuinely correct content,
+        # not a guess.
+        ok, generated = await validate_or_retry(
+            _fetch,
+            REVIEW_EXERCISE_LIST,
+            schema_name="ReviewExerciseList",
+            context={
+                "target_lang": target_lang,
+                "native_lang": native_lang,
+                "item_count": len(items),
+            },
+        )
+        if not ok or generated is None:
+            logger.warning("AI review-exercise generation dead-lettered, using content-snapshot fallback")
+            return _fallback_review_exercises(items)
+        # Zip to the shorter length, as _parse_review_exercises always
+        # did: the model must never invent vocab identity, and a short
+        # batch is a partial batch — not an error to paper over.
+        return [
+            _review_exercise_from_contract(gen, src)
+            for gen, src in zip(generated, items, strict=False)
+        ]
 
     async def conversation_reply(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         messages = [{"role": "system", "content": system_prompt}, *history]
-        try:
-            return await self.chat(messages, max_tokens=300, temperature=0.8)
-        except Exception:
-            logger.exception("AI conversation reply failed")
-            return "(no se pudo generar una respuesta en este momento — inténtalo de nuevo) ¡Qué bien, cuéntame más!"
+        # U2: even free text is gated — an empty/garbage reply is retried,
+        # then dead-lettered, instead of being shown as the tutor's voice.
+        ok, text = await validate_or_retry(
+            lambda: self.chat(messages, max_tokens=300, temperature=0.8),
+            NON_EMPTY_TEXT,
+            schema_name="TutorReply",
+        )
+        if ok and text is not None:
+            return text.root
+        return "(no se pudo generar una respuesta en este momento — inténtalo de nuevo) ¡Qué bien, cuéntame más!"
 
     # ── Library (on-demand AI-generated books) ──────────────────────────
 
@@ -583,15 +654,20 @@ class HFClient:
             f"Give short, constructive feedback in {native_lang} (3-5 sentences): what they got right, what to "
             f"improve, and one concrete tip. Be encouraging but honest."
         )
-        try:
-            return await self.chat(
+        # U2: free-text gate — garbage/empty feedback is retried, then
+        # dead-lettered, instead of being persisted to the portfolio.
+        ok, text = await validate_or_retry(
+            lambda: self.chat(
                 [{"role": "user", "content": prompt}],
                 max_tokens=300,
                 temperature=0.7,
-            )
-        except Exception:
-            logger.exception("AI scenario feedback failed")
-            return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
+            ),
+            NON_EMPTY_TEXT,
+            schema_name="PracticeFeedback",
+        )
+        if ok and text is not None:
+            return text.root
+        return "No se pudo generar retroalimentación en este momento — inténtalo de nuevo."
 
     async def grade_assignment_submission(
         self, assignment_title: str, instructions: str, response: str, native_lang: str
@@ -608,21 +684,21 @@ class HFClient:
             f'{{"grade": "a short qualitative grade, e.g. Excelente / Bien / Necesita mejorar", '
             f'"feedback": "3-5 sentences: what they did well, what to improve, one concrete next step"}}'
         )
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
+        # U2: the grade must satisfy the AssignmentGrade contract — no more
+        # silently tolerating a malformed {"grade": …} payload. Persistent
+        # failure is dead-lettered and degrades to the honest fallback.
+        ok, graded = await validate_or_retry(
+            lambda: self._chat_json(
+                [{"role": "user", "content": prompt}],
                 max_tokens=350,
                 temperature=0.6,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            data = json.loads(cleaned)
-            return {"grade": data.get("grade", ""), "feedback": data.get("feedback", "")}
-        except Exception:
-            logger.exception("AI assignment grading failed")
-            return {"grade": "", "feedback": "No se pudo calificar la entrega en este momento — inténtalo de nuevo."}
+            ),
+            AssignmentGrade,
+            schema_name="AssignmentGrade",
+        )
+        if ok and graded is not None:
+            return {"grade": graded.grade, "feedback": graded.feedback}
+        return {"grade": "", "feedback": "No se pudo calificar la entrega en este momento — inténtalo de nuevo."}
 
     async def grade_open_answer(
         self, question: str, rubric_note: str, student_answer: str, native_lang: str
@@ -642,20 +718,21 @@ class HFClient:
             f"Does their answer adequately cover the rubric? Respond with ONLY a JSON object, no other text: "
             f'{{"passed": true or false, "feedback": "one short sentence in {native_lang} explaining why"}}'
         )
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=200,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            data = json.loads(cleaned)
-            return bool(data.get("passed")), data.get("feedback", "")
-        except Exception:
-            logger.exception("AI open-answer grading failed")
-            return False, "No se pudo calificar esta respuesta automáticamente en este momento."
+        # U2: OpenAnswerGrade requires `passed` to be a REAL bool — this
+        # kills the old `bool(data.get("passed"))` bug where the string
+        # "false" was truthy and graded the answer as PASSED. Persistent
+        # failure stays fail-closed (wrong + honest note), never silently
+        # correct.
+        ok, graded = await validate_or_retry(
+            lambda: self._chat_json(
+                [{"role": "user", "content": prompt}], max_tokens=200
+            ),
+            OpenAnswerGrade,
+            schema_name="OpenAnswerGrade",
+        )
+        if ok and graded is not None:
+            return graded.passed, graded.feedback
+        return False, "No se pudo calificar esta respuesta automáticamente en este momento."
 
     # ── Recommendations (books, songs, and other media) ─────────────────
 
@@ -680,28 +757,22 @@ class HFClient:
             f'{{"kind": "book|song|podcast|show", "title": "...", "creator": "author or artist name", '
             f'"reason": "one short sentence on why it fits this level/interest"}}'
         )
-        try:
-            raw = await self.chat(
-                [
-                    {"role": "system", "content": "You output only valid JSON, nothing else."},
-                    {"role": "user", "content": prompt},
-                ],
+        # U2: every recommended item must satisfy the RecommendationItem
+        # contract (closed kind vocabulary, bounded title/creator/reason).
+        # Persistent failure is dead-lettered; the fallback item is honest
+        # about being a fallback, never a fabricated "real" title.
+        ok, validated = await validate_or_retry(
+            lambda: self._chat_json(
+                [{"role": "user", "content": prompt}],
                 max_tokens=900,
                 temperature=0.6,
-            )
-            cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-            items = json.loads(cleaned)
-            recommendations = [
-                {
-                    "kind": item.get("kind", "book"),
-                    "title": item.get("title", ""),
-                    "creator": item.get("creator", ""),
-                    "reason": item.get("reason", ""),
-                }
-                for item in items
-            ]
-        except Exception:
-            logger.exception("AI recommendations generation failed, using offline fallback content")
+            ),
+            RECOMMENDATION_LIST,
+            schema_name="RecommendationList",
+            context={"target_lang": target_lang, "level": level},
+        )
+        if not ok or validated is None:
+            logger.warning("AI recommendations generation dead-lettered, using offline fallback content")
             return [
                 {
                     "kind": "book",
@@ -710,6 +781,15 @@ class HFClient:
                     "reason": "No se pudieron generar recomendaciones personalizadas en este momento.",
                 }
             ]
+        recommendations = [
+            {
+                "kind": item.kind.value,
+                "title": item.title,
+                "creator": item.creator,
+                "reason": item.reason,
+            }
+            for item in validated
+        ]
 
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(recommendations, f)
@@ -1079,6 +1159,46 @@ def _parse_review_exercises(raw: str, items: list[dict]) -> list[Exercise]:
     if not exercises:
         raise ValueError("Review generation returned no usable items")
     return exercises
+
+
+def _exercise_from_contract(item: ExerciseJSON, index: int) -> Exercise:
+    """Pure, deterministic converter (U3): a *validated* contract item
+    becomes an Exercise. Applies exactly the defaults _parse_exercises
+    always applied. The `id` is assigned by the caller — never trusted
+    from the model."""
+    return Exercise(
+        id=f"ex-{index}-{item.vocab_key}",
+        type=item.type,
+        prompt=item.prompt,
+        target_text=item.target_text,
+        native_text=item.native_text,
+        options=list(item.options),
+        correct_answer=item.correct_answer or item.target_text,
+        image_prompt=item.image_prompt,
+        audio_text=item.audio_text or item.target_text,
+        vocab_key=item.vocab_key,
+    )
+
+
+def _review_exercise_from_contract(item: ReviewExerciseJSON, src: dict) -> Exercise:
+    """Same idea for review items: identity (id/vocab_key) is
+    force-assigned from the caller's own due-item snapshot — the model is
+    never trusted with it. Missing content fields fall back to the
+    snapshot's known-good values."""
+    target_text = item.target_text or src["target_text"]
+    native_text = item.native_text or src["native_text"]
+    return Exercise(
+        id=f"review-{src['vocab_key']}",
+        type=item.type,
+        prompt=item.prompt,
+        target_text=target_text,
+        native_text=native_text,
+        options=[],
+        correct_answer=item.correct_answer or native_text or target_text,
+        image_prompt="",
+        audio_text=item.audio_text or target_text,
+        vocab_key=src["vocab_key"],
+    )
 
 
 def _fallback_review_exercises(items: list[dict]) -> list[Exercise]:

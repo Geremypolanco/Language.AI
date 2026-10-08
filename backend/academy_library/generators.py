@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from .. import academy, rag
 from ..hf_client import hf_client
+from ..llm_contracts import DeadLetterEntry, dead_letters, grounding_citations
 from . import validators
 
 if TYPE_CHECKING:
@@ -51,12 +52,16 @@ async def _generate_validated(
     *,
     max_tokens: int,
     temperature: float = 0.6,
+    dead_letter_schema: str = "AcademyContent",
+    dead_letter_context: dict | None = None,
 ) -> Any:
     """Shared retry loop: calls the model, hands the raw text to
     `parse_and_validate` (which must return (data, problems) — problems
     empty means success), and retries up to _MAX_ATTEMPTS times on either a
     parse exception or a non-empty problems list. Raises GenerationError
-    with the last attempt's problems once every attempt is exhausted."""
+    with the last attempt's problems once every attempt is exhausted —
+    and, U2, pushes the failure to the dead-letter queue first so it is
+    triage-visible instead of living only in a build log."""
     last_problems: list[str] = ["no attempt made"]
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
@@ -74,6 +79,14 @@ async def _generate_validated(
         if not problems:
             return data
         last_problems = problems
+    dead_letters.push(
+        DeadLetterEntry.new(
+            schema=dead_letter_schema,
+            errors=last_problems,
+            attempts=_MAX_ATTEMPTS,
+            context=dead_letter_context or {},
+        )
+    )
     raise GenerationError(f"failed after {_MAX_ATTEMPTS} attempts: {'; '.join(last_problems)}")
 
 
@@ -98,7 +111,32 @@ async def generate_curriculum(field: "AcademicField", level: "AcademicLevel", na
         }
         return data, validators.validate_curriculum(data, min_courses=max(1, course_count // 2))
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=1600, temperature=0.5)
+    data = await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=1600,
+        temperature=0.5,
+        dead_letter_schema="AcademyCurriculum",
+        dead_letter_context={"field": field.id, "level": level.value},
+    )
+    # U5: provenance is COMPUTED from the retrieval step, never extracted
+    # from the LLM's own output (which would just fabricate citations).
+    # If grounding text was injected into the prompt but no citation could
+    # be derived from it, the content is unattributable — refuse to persist
+    # it (loud + dead-lettered) rather than serve facts with no provenance.
+    sources = grounding_citations(arxiv_context, "arxiv") + grounding_citations(wiki_context, "wikipedia")
+    if context and not sources:
+        dead_letters.push(
+            DeadLetterEntry.new(
+                schema="AcademyCurriculumSources",
+                errors=["RAG grounding text was present but no source citations could be derived from it"],
+                attempts=0,
+                context={"field": field.id, "level": level.value},
+            )
+        )
+        raise GenerationError("curriculum grounding present but unattributable — refusing to persist")
+    data["sources"] = sources
+    return data
 
 
 async def generate_course_content(
@@ -123,7 +161,14 @@ async def generate_course_content(
         }
         return data, validators.validate_course_content(data)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=1800, temperature=0.6)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=1800,
+        temperature=0.6,
+        dead_letter_schema="AcademyCourseContent",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_glossary(
@@ -135,7 +180,13 @@ async def generate_glossary(
         data = _clean_json(raw)
         return data, validators.validate_glossary(data)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=900)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=900,
+        dead_letter_schema="AcademyGlossary",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_quiz(
@@ -147,7 +198,13 @@ async def generate_quiz(
         data = _clean_json(raw)
         return data, validators.validate_quiz(data)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=1400)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=1400,
+        dead_letter_schema="AcademyQuiz",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_exam(
@@ -160,7 +217,13 @@ async def generate_exam(
         data = _clean_json(raw)
         return data, validators.validate_exam(data)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=2200)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=2200,
+        dead_letter_schema="AcademyExam",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_assignments(
@@ -183,7 +246,14 @@ async def generate_assignments(
         ]
         return data, validators.validate_assignments(data)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=1800, temperature=0.6)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=1800,
+        temperature=0.6,
+        dead_letter_schema="AcademyAssignments",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_scenario(
@@ -194,7 +264,14 @@ async def generate_scenario(
     def parse_and_validate(raw: str) -> tuple[str, list[str]]:
         return raw, validators.validate_scenario(raw)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=500, temperature=0.8)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=500,
+        temperature=0.8,
+        dead_letter_schema="AcademyScenario",
+        dead_letter_context={"field": field.id, "level": level.value, "course": course_title},
+    )
 
 
 async def generate_concept_relations(
@@ -215,4 +292,11 @@ async def generate_concept_relations(
         data = _clean_json(raw)
         return data, validators.validate_concept_relations(data, new_ids, known_ids)
 
-    return await _generate_validated(prompt, parse_and_validate, max_tokens=600, temperature=0.3)
+    return await _generate_validated(
+        prompt,
+        parse_and_validate,
+        max_tokens=600,
+        temperature=0.3,
+        dead_letter_schema="AcademyConceptRelations",
+        dead_letter_context={"course": course_title},
+    )
