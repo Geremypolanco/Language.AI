@@ -52,7 +52,22 @@ CREATE TABLE IF NOT EXISTS users (
     daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL,
-    tutor_persona_id TEXT NOT NULL DEFAULT ''
+    tutor_persona_id TEXT NOT NULL DEFAULT '',
+    plan TEXT NOT NULL DEFAULT 'free',
+    stripe_customer_id TEXT NOT NULL DEFAULT '',
+    plan_updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- Lingua Pro billing (backend/billing.py): `plan` is 'free' or 'pro'
+-- (one-time lifetime payment via Stripe Checkout). `usage_daily` counts AI
+-- conversation turns per user per day — the Talk Live websocket is the
+-- costliest path in the app (one streaming chat call + TTS per turn), so
+-- free accounts get a daily turn budget and Pro is unlimited.
+CREATE TABLE IF NOT EXISTS usage_daily (
+    user_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    convo_turns INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
 );
 
 CREATE TABLE IF NOT EXISTS vocab_progress (
@@ -264,9 +279,23 @@ CREATE TABLE IF NOT EXISTS users (
     daily_goal_minutes INTEGER NOT NULL DEFAULT 15,
     created_at TEXT NOT NULL,
     last_active_date TEXT NOT NULL,
-    tutor_persona_id TEXT NOT NULL DEFAULT ''
+    tutor_persona_id TEXT NOT NULL DEFAULT '',
+    plan TEXT NOT NULL DEFAULT 'free',
+    stripe_customer_id TEXT NOT NULL DEFAULT '',
+    plan_updated_at TEXT NOT NULL DEFAULT ''
 );
 
+-- Lingua Pro billing (backend/billing.py): `plan` is 'free' or 'pro'
+-- (one-time lifetime payment via Stripe Checkout). `usage_daily` counts AI
+-- conversation turns per user per day — the Talk Live websocket is the
+-- costliest path in the app (one streaming chat call + TTS per turn), so
+-- free accounts get a daily turn budget and Pro is unlimited.
+CREATE TABLE IF NOT EXISTS usage_daily (
+    user_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    convo_turns INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);
 CREATE TABLE IF NOT EXISTS vocab_progress (
     user_id TEXT NOT NULL,
     vocab_key TEXT NOT NULL,
@@ -516,7 +545,21 @@ def _migrate_sqlite(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
     if "tutor_persona_id" not in existing_cols:
         conn.execute("ALTER TABLE users ADD COLUMN tutor_persona_id TEXT NOT NULL DEFAULT ''")
+    # Lingua Pro billing (backend/billing.py)
+    if "plan" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'")
+    if "stripe_customer_id" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT NOT NULL DEFAULT ''")
+    if "plan_updated_at" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN plan_updated_at TEXT NOT NULL DEFAULT ''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS usage_daily (
+               user_id TEXT NOT NULL,
+               day TEXT NOT NULL,
+               convo_turns INTEGER NOT NULL DEFAULT 0,
+               PRIMARY KEY (user_id, day))"""
+    )
 
     lesson_cols = {row[1] for row in conn.execute("PRAGMA table_info(lesson_history)").fetchall()}
     if "elapsed_seconds" not in lesson_cols:
@@ -557,6 +600,17 @@ def _migrate_postgres(conn: Any) -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freezes INTEGER NOT NULL DEFAULT 0")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_goal_minutes INTEGER NOT NULL DEFAULT 15")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tutor_persona_id TEXT NOT NULL DEFAULT ''")
+        # Lingua Pro billing (backend/billing.py)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free'")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT NOT NULL DEFAULT ''")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_updated_at TEXT NOT NULL DEFAULT ''")
+        cur.execute(
+            """CREATE TABLE IF NOT EXISTS usage_daily (
+                   user_id TEXT NOT NULL,
+                   day TEXT NOT NULL,
+                   convo_turns INTEGER NOT NULL DEFAULT 0,
+                   PRIMARY KEY (user_id, day))"""
+        )
         cur.execute("ALTER TABLE lesson_history ADD COLUMN IF NOT EXISTS elapsed_seconds INTEGER NOT NULL DEFAULT 0")
         cur.execute(
             "ALTER TABLE academy_enrollment ADD COLUMN IF NOT EXISTS content_lang TEXT NOT NULL DEFAULT ''"

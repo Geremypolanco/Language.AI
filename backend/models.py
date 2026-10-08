@@ -102,6 +102,8 @@ class UserProfile(BaseModel):
     created_at: str = ""
     last_active_date: str = ""
     tutor_persona_id: str = ""
+    # Lingua Pro billing: 'free' or 'pro' (one-time lifetime payment).
+    plan: str = "free"
 
 
 class PersonaInfo(BaseModel):

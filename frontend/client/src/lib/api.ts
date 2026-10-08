@@ -51,6 +51,19 @@ export interface User {
   streak_days: number;
   gems: number;
   tutor_persona_id: string;
+  // Lingua Pro billing: "free" or "pro".
+  plan: string;
+}
+
+export interface BillingStatus {
+  plan: string;
+  is_pro: boolean;
+  stripe_configured: boolean;
+  pro_price_usd: number;
+  free_daily_turns: number;
+  turns_used_today: number;
+  turns_remaining_today: number;
+  turn_allowed_now: boolean;
 }
 
 // Public view of a backend.personas.TeacherPersona (see backend/personas.py)
@@ -327,6 +340,15 @@ class ApiClient {
 
   async logout() {
     return this.request("/auth/logout", { method: "POST" });
+  }
+
+  // ===== BILLING (Lingua Pro) =====
+  async getBillingStatus(): Promise<BillingStatus> {
+    return this.request<BillingStatus>("/api/billing/status");
+  }
+
+  async createCheckout(): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/api/billing/checkout", { method: "POST" });
   }
 
   // ===== USER =====

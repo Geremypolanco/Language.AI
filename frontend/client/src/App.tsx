@@ -6,6 +6,7 @@ import Path from "@/pages/Path";
 import University from "@/pages/University";
 import Practice from "@/pages/Practice";
 import Talk from "@/pages/Talk";
+import Pro from "@/pages/Pro";
 import Progress from "@/pages/Progress";
 import Library from "@/pages/Library";
 import Settings from "@/pages/Settings";
@@ -44,6 +45,11 @@ function Router() {
       <Route path={"/talk"}>
         <RequireAuth>
           <Talk />
+        </RequireAuth>
+      </Route>
+      <Route path={"/pro"}>
+        <RequireAuth>
+          <Pro />
         </RequireAuth>
       </Route>
       <Route path={"/progress"}>

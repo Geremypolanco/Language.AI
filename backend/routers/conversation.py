@@ -17,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import auth, db, personas, srs, telemetry
+from .. import auth, billing, db, personas, srs, telemetry
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
 from ..llm_contracts import NON_EMPTY_TEXT, validate_or_retry
@@ -75,6 +75,25 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     except Exception:
         await websocket.send_json({"type": "error", "message": "Usuario desconocido"})
         await websocket.close()
+        return
+
+    # Lingua Pro gate: Talk Live is the costliest path in the app (one
+    # streaming chat call + TTS per turn), so free accounts get a daily turn
+    # budget and Pro is unlimited. Refusing the socket here (not mid-turn)
+    # keeps the failure mode obvious to the frontend.
+    allowed, remaining = billing.can_start_turn(user_id)
+    if not allowed:
+        await websocket.send_json(
+            {
+                "type": "quota_exhausted",
+                "message": (
+                    f"Alcanzaste tu límite diario de {billing.FREE_DAILY_TURNS} turnos de "
+                    "conversación — vuelve mañana o pásate a Pro para conversar sin límites."
+                ),
+                "limit": billing.FREE_DAILY_TURNS,
+            }
+        )
+        await websocket.close(code=4403)
         return
 
     mission = websocket.query_params.get("mission")
@@ -141,6 +160,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             "type": "ready",
             "message": f"Conversación lista — nivel {user.level.value} ({user.target_lang.upper()}).",
             "persona": personas.to_persona_info(teacher).model_dump(),
+            # The frontend shows a remaining-turns hint for free accounts.
+            "is_pro": billing.is_pro(user_id),
+            "turns_remaining": remaining,
+            "daily_turn_limit": billing.FREE_DAILY_TURNS,
         }
     )
 
@@ -177,6 +200,23 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
                 await websocket.send_json({"type": "error", "message": f"Tipo de mensaje desconocido: {msg_type}"})
                 continue
 
+            # Per-turn gate: a long-lived socket must not outlive the daily
+            # budget. Refusing before any STT/chat/TTS work burns money.
+            turn_allowed, _ = billing.can_start_turn(user_id)
+            if not turn_allowed:
+                await websocket.send_json(
+                    {
+                        "type": "quota_exhausted",
+                        "message": (
+                            f"Alcanzaste tu límite diario de {billing.FREE_DAILY_TURNS} turnos de "
+                            "conversación — vuelve mañana o pásate a Pro para conversar sin límites."
+                        ),
+                        "limit": billing.FREE_DAILY_TURNS,
+                    }
+                )
+                await websocket.close(code=4403)
+                return
+
             await websocket.send_json({"type": "transcript", "text": transcript})
             _log_turn(user_id, "user", transcript)
             history.append({"role": "user", "content": transcript})
@@ -210,6 +250,10 @@ async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
             _log_turn(user_id, "assistant", reply_text)
             history.append({"role": "assistant", "content": reply_text})
             history = history[-_MAX_HISTORY_TURNS:]
+            # One completed assistant turn = one unit of the daily budget.
+            # Failed turns (the except path above, which `continue`s before
+            # reaching here) never count.
+            billing.record_convo_turn(user_id)
 
             # Stream audio in parallel (or after text starts)
             tts_timing: dict = {}

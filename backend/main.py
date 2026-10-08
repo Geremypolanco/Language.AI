@@ -33,6 +33,7 @@ from .routers import auth as auth_router
 from .routers import (
     academy,
     audio,
+    billing as billing_router,
     content,
     conversation,
     feedback,
@@ -133,6 +134,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth_router.router)
 app.include_router(users.router)
+app.include_router(billing_router.router)
 app.include_router(lessons.router)
 app.include_router(content.router)
 app.include_router(audio.router)

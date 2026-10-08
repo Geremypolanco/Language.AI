@@ -8,6 +8,7 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { api, PersonaInfo } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 interface Message {
   id: string;
@@ -17,8 +18,9 @@ interface Message {
 
 // Mirrors backend/routers/conversation.py's websocket message contract.
 type ServerEvent =
-  | { type: "ready"; message: string; persona: PersonaInfo }
+  | { type: "ready"; message: string; persona: PersonaInfo; is_pro?: boolean; turns_remaining?: number; daily_turn_limit?: number }
   | { type: "error"; message: string }
+  | { type: "quota_exhausted"; message: string; limit?: number }
   | { type: "transcript"; text: string }
   | { type: "reply_start" }
   | { type: "reply_chunk"; text: string }
@@ -82,6 +84,11 @@ export default function Talk() {
   const [connected, setConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  // Lingua Pro quota state: set when the server closes the socket with
+  // quota_exhausted (free daily budget spent). Shows the upgrade banner
+  // instead of a dead chat window.
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
+  const [turnsRemaining, setTurnsRemaining] = useState<number | null>(null);
   // Hands-free mode: listens continuously, auto-detects when the learner
   // stops talking (voice activity detection, no manual "stop" tap needed),
   // and automatically starts listening again once the tutor's spoken reply
@@ -148,9 +155,18 @@ export default function Talk() {
         case "ready":
           setActivePersona(msg.persona);
           setMessages([{ id: "greeting", role: "tutor", text: msg.message }]);
+          setQuotaExhausted(false);
+          // Free accounts see how many Talk Live turns they have left today;
+          // Pro accounts get no counter (unlimited).
+          setTurnsRemaining(msg.is_pro ? null : (msg.turns_remaining ?? null));
           // The greeting is text-only (no spoken audio turn), so there's no
           // turn_complete to wait for here — just start listening directly.
           if (handsFreeRef.current) startListening();
+          break;
+        case "quota_exhausted":
+          setQuotaExhausted(true);
+          setConnected(false);
+          ws.close();
           break;
         case "error":
           toast.error(msg.message);
@@ -397,6 +413,11 @@ export default function Talk() {
               <p className="text-sm text-muted-foreground">
                 {activePersona?.title || (!connected && t("talk.connecting"))}
               </p>
+              {turnsRemaining !== null && !quotaExhausted && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t("talk.turnsLeft", { n: String(turnsRemaining) })}
+                </p>
+              )}
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => setSelectedPersonaId(null)}>
@@ -404,7 +425,22 @@ export default function Talk() {
           </Button>
         </div>
 
-        {connectionLost && (
+        {quotaExhausted && (
+          <div className="mb-4 rounded-lg border border-primary/40 bg-primary/5 px-4 py-4 text-sm">
+            <p className="font-semibold">⭐ {t("talk.quotaExhausted")}</p>
+            <p className="text-muted-foreground mt-1 mb-3">{t("talk.quotaCta")}</p>
+            <div className="flex gap-2">
+              <Link href="/pro">
+                <Button size="sm">{t("pro.upgrade")}</Button>
+              </Link>
+              <Button size="sm" variant="outline" onClick={() => setReconnectKey((k) => k + 1)}>
+                {t("talk.reconnect")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {connectionLost && !quotaExhausted && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             <span>{t("talk.connectionLost")}</span>
             <Button size="sm" variant="outline" onClick={() => setReconnectKey((k) => k + 1)}>

@@ -10,6 +10,7 @@ interface AuthContextType {
   devLogin: (email: string, name: string) => void;
   createProfile: (data: any) => Promise<void>;
   updateUser: (data: Parameters<typeof api.updateProfile>[1]) => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -82,6 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Re-fetch the profile (e.g. after a Pro purchase, so the plan badge
+  // flips without forcing the user through a full logout/login cycle).
+  const handleRefreshUser = async () => {
+    const userData = await api.getMe();
+    setUser(userData);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -93,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         devLogin: handleDevLogin,
         createProfile: handleCreateProfile,
         updateUser: handleUpdateUser,
+        refreshUser: handleRefreshUser,
         logout: handleLogout,
       }}
     >

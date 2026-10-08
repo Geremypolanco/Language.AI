@@ -205,6 +205,18 @@ class Settings:
     google_cse_api_key: str = field(default_factory=lambda: os.environ.get("GOOGLE_CSE_API_KEY", ""))
     google_cse_cx: str = field(default_factory=lambda: os.environ.get("GOOGLE_CSE_CX", ""))
 
+    # ── Lingua Pro billing (Stripe) ──────────────────────────────────
+    # One-time payment via Stripe Checkout; the app is fully free without
+    # these. See backend/billing.py. LINGUA_STRIPE_PRICE_ID is optional: when
+    # set, Checkout uses that dashboard-managed Price; otherwise the price is
+    # built inline from LINGUA_PRO_PRICE_USD (one less dashboard step).
+    stripe_secret_key: str = field(default_factory=lambda: os.environ.get("LINGUA_STRIPE_SECRET_KEY", ""))
+    stripe_webhook_secret: str = field(
+        default_factory=lambda: os.environ.get("LINGUA_STRIPE_WEBHOOK_SECRET", "")
+    )
+    stripe_price_id: str = field(default_factory=lambda: os.environ.get("LINGUA_STRIPE_PRICE_ID", ""))
+    pro_price_usd: int = field(default_factory=lambda: int(os.environ.get("LINGUA_PRO_PRICE_USD", "39")))
+
     # Public origin this app is served from — drives the OAuth redirect_uri.
     # Defaults to the Fly domain declared in fly.toml; override for local dev
     # (e.g. http://localhost:8100) or a custom domain.
@@ -272,6 +284,18 @@ class Settings:
     @property
     def google_images_configured(self) -> bool:
         return bool(self.google_cse_api_key and self.google_cse_cx)
+
+    @property
+    def stripe_configured(self) -> bool:
+        """Both halves of the billing loop are present: the secret key (to
+        create Checkout sessions) and the webhook signing secret (to trust
+        Stripe's event callbacks). Without both, /api/billing/* answers 503
+        and the app stays entirely free — nothing half-wired."""
+        return bool(self.stripe_secret_key and self.stripe_webhook_secret)
+
+    @property
+    def pro_price_cents(self) -> int:
+        return max(1, self.pro_price_usd) * 100
 
     @property
     def cookie_secure(self) -> bool:

@@ -24,3 +24,9 @@ num2words==0.5.14
 
 # Test suite
 pytest==8.3.3
+
+# Real-money billing for Lingua Pro (backend/billing.py, routers/billing.py):
+# Stripe Checkout (one-time payment) + signature-verified webhooks. Only
+# exercised when LINGUA_STRIPE_SECRET_KEY is set; the app runs fully free
+# without it.
+stripe==12.5.1

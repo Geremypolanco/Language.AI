@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "nav.university", icon: "🎓", path: "/university" },
   { key: "nav.talk", icon: "🎤", path: "/talk" },
   { key: "nav.progress", icon: "📊", path: "/progress" },
+  { key: "nav.pro", icon: "⭐", path: "/pro" },
 ];
 
 interface DashboardLayoutProps {
@@ -30,8 +31,9 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { logout } = useAuth();
+  const { logout, user: authUser } = useAuth();
   const { t } = useLocale();
+  const isPro = authUser?.plan === "pro";
 
   return (
     <div className="flex h-dvh bg-background">
@@ -54,8 +56,22 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
         {/* User Info */}
         {user && (
           <div className="p-4 mx-4 mt-4 rounded-lg bg-muted/50 border border-sidebar-border">
-            <p className="text-sm font-medium text-sidebar-foreground">{user.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-sidebar-foreground">{user.name}</p>
+              {isPro && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary text-primary-foreground">
+                  {t("pro.badge")}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">{t("common.level", { level: user.level })}</p>
+            {!isPro && (
+              <Link href="/pro">
+                <a onClick={() => setSidebarOpen(false)} className="text-xs font-semibold text-primary hover:underline">
+                  ⭐ {t("pro.upgrade")}
+                </a>
+              </Link>
+            )}
           </div>
         )}
 
