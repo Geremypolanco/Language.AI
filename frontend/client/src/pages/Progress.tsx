@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, DashboardData } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ const HEATMAP_COLORS = ["bg-muted", "bg-green-100", "bg-green-300", "bg-green-50
 
 export default function Progress() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,7 +23,7 @@ export default function Progress() {
         const dashboard = await api.getProgressDashboard(user.id);
         setData(dashboard);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error loading progress");
+        toast.error(err instanceof Error ? err.message : t("progress.loadError"));
       } finally {
         setLoading(false);
       }
@@ -32,9 +34,9 @@ export default function Progress() {
 
   if (loading || !data) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={{ name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" }}>
         <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Loading progress...</p>
+          <p className="text-muted-foreground">{t("progress.loading")}</p>
         </div>
       </DashboardLayout>
     );
@@ -43,21 +45,21 @@ export default function Progress() {
   const maxLessons = Math.max(1, ...data.activity.map((d) => d.lessons_completed));
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={{ name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" }}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Your Progress</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">{t("progress.title")}</h1>
           <p className="text-lg text-muted-foreground">
-            Track your learning journey and celebrate milestones
+            {t("progress.subtitle")}
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           {[
-            { label: "Current Level", value: data.level, icon: "🎯" },
-            { label: "Total XP", value: data.xp, icon: "⭐" },
-            { label: "Streak", value: `${data.streak_days} days`, icon: "🔥" },
-            { label: "Due Reviews", value: data.due_reviews, icon: "📋" },
+            { label: t("progress.currentLevel"), value: data.level, icon: "🎯" },
+            { label: t("progress.totalXp"), value: data.xp, icon: "⭐" },
+            { label: t("progress.streak"), value: t("progress.days", { n: data.streak_days }), icon: "🔥" },
+            { label: t("progress.dueReviews"), value: data.due_reviews, icon: "📋" },
           ].map((metric, i) => (
             <Card key={i} className="p-4 text-center">
               <p className="text-2xl mb-2">{metric.icon}</p>
@@ -69,14 +71,14 @@ export default function Progress() {
 
         <Tabs defaultValue="weekly" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="weekly">Activity</TabsTrigger>
-            <TabsTrigger value="knowledge">Knowledge Map</TabsTrigger>
-            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+            <TabsTrigger value="weekly">{t("progress.tab.activity")}</TabsTrigger>
+            <TabsTrigger value="knowledge">{t("progress.tab.knowledge")}</TabsTrigger>
+            <TabsTrigger value="leaderboard">{t("progress.tab.leaderboard")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="weekly">
             <Card className="p-8">
-              <h3 className="text-xl font-bold text-foreground mb-6">Last 14 Days</h3>
+              <h3 className="text-xl font-bold text-foreground mb-6">{t("progress.last14")}</h3>
               <div className="flex items-end justify-around h-64 gap-1">
                 {data.activity.map((day, i) => (
                   <div key={i} className="flex flex-col items-center gap-2 flex-1">
@@ -85,7 +87,7 @@ export default function Progress() {
                       style={{
                         height: `${Math.max(4, (day.lessons_completed / maxLessons) * 200)}px`,
                       }}
-                      title={`${day.lessons_completed} lessons on ${day.date}`}
+                      title={t("progress.lessonsOn", { n: day.lessons_completed, d: day.date })}
                     />
                     <span className="text-[10px] text-muted-foreground">{day.date.slice(5)}</span>
                   </div>
@@ -93,7 +95,7 @@ export default function Progress() {
               </div>
               {data.recent_lessons.length > 0 && (
                 <div className="mt-8 space-y-2">
-                  <h4 className="font-semibold text-foreground">Lecciones recientes</h4>
+                  <h4 className="font-semibold text-foreground">{t("progress.recentLessons")}</h4>
                   {data.recent_lessons.map((lesson, i) => (
                     <div key={i} className="flex items-center justify-between text-sm py-2 border-b border-border">
                       <span className="text-foreground">{lesson.topic_es}</span>
@@ -107,7 +109,7 @@ export default function Progress() {
 
           <TabsContent value="knowledge">
             <Card className="p-8">
-              <h3 className="text-xl font-bold text-foreground mb-2">Mastery by Level</h3>
+              <h3 className="text-xl font-bold text-foreground mb-2">{t("progress.masteryByLevel")}</h3>
               <div className="space-y-3 mb-8">
                 {data.mastery_by_level.map((lvl) => (
                   <div key={lvl.level}>
@@ -127,7 +129,7 @@ export default function Progress() {
                 ))}
               </div>
 
-              <h3 className="text-xl font-bold text-foreground mb-4">Topic Heatmap</h3>
+              <h3 className="text-xl font-bold text-foreground mb-4">{t("progress.topicHeatmap")}</h3>
               <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
                 {data.topic_mastery.map((cell, i) => (
                   <div
@@ -143,12 +145,12 @@ export default function Progress() {
           <TabsContent value="leaderboard">
             <Card className="p-6">
               <p className="text-sm text-muted-foreground mb-4">
-                Your weekly XP: <strong className="text-foreground">{data.your_weekly_xp}</strong>
-                {data.your_rank && <> — Rank #{data.your_rank}</>}
+                {t("progress.yourWeeklyXp")} <strong className="text-foreground">{data.your_weekly_xp}</strong>
+                {data.your_rank && <> — {t("progress.rank", { n: data.your_rank })}</>}
               </p>
               <div className="space-y-2">
                 {data.leaderboard.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No leaderboard activity yet this week.</p>
+                  <p className="text-muted-foreground text-sm">{t("progress.noLeaderboard")}</p>
                 ) : (
                   data.leaderboard.map((entry) => (
                     <div

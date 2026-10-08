@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
 import ExercisePlayer from "@/components/ExercisePlayer";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, CEFRLevel, Exercise } from "@/lib/api";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,22 +18,23 @@ function shiftLevel(level: CEFRLevel, delta: number): CEFRLevel {
 
 // Maps each UI-facing skill to the closest real ExerciseType the backend supports.
 const PRACTICE_MODES = [
-  { id: "listening", title: "Listening", icon: "👂", description: "Train your ear with native speakers", exerciseType: "listen_type" },
-  { id: "speaking", title: "Speaking", icon: "🗣️", description: "Practice pronunciation and fluency", exerciseType: "speak_repeat" },
-  { id: "reading", title: "Reading", icon: "📖", description: "Improve comprehension with texts", exerciseType: "translate_to_native" },
-  { id: "writing", title: "Writing", icon: "✍️", description: "Enhance written expression", exerciseType: "fill_blank" },
-  { id: "grammar", title: "Grammar", icon: "📝", description: "Master grammar rules and structures", exerciseType: "multiple_choice" },
-  { id: "vocabulary", title: "Vocabulary", icon: "📚", description: "Expand your word bank", exerciseType: "translate_to_target" },
+  { id: "listening", titleKey: "practice.mode.listening", descKey: "practice.mode.listening.desc", icon: "👂", exerciseType: "listen_type" },
+  { id: "speaking", titleKey: "practice.mode.speaking", descKey: "practice.mode.speaking.desc", icon: "🗣️", exerciseType: "speak_repeat" },
+  { id: "reading", titleKey: "practice.mode.reading", descKey: "practice.mode.reading.desc", icon: "📖", exerciseType: "translate_to_native" },
+  { id: "writing", titleKey: "practice.mode.writing", descKey: "practice.mode.writing.desc", icon: "✍️", exerciseType: "fill_blank" },
+  { id: "grammar", titleKey: "practice.mode.grammar", descKey: "practice.mode.grammar.desc", icon: "📝", exerciseType: "multiple_choice" },
+  { id: "vocabulary", titleKey: "practice.mode.vocabulary", descKey: "practice.mode.vocabulary.desc", icon: "📚", exerciseType: "translate_to_target" },
 ];
 
-const DIFFICULTIES: { label: string; delta: number }[] = [
-  { label: "Easy", delta: -1 },
-  { label: "Medium", delta: 0 },
-  { label: "Hard", delta: 1 },
+const DIFFICULTIES: { key: string; delta: number }[] = [
+  { key: "practice.difficulty.easy", delta: -1 },
+  { key: "practice.difficulty.medium", delta: 0 },
+  { key: "practice.difficulty.hard", delta: 1 },
 ];
 
 export default function Practice() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [loadingMode, setLoadingMode] = useState<string | null>(null);
   const [active, setActive] = useState<{ unitId: string; exercises: Exercise[] } | null>(null);
 
@@ -45,15 +47,17 @@ export default function Practice() {
       const { unit_id, exercises } = await api.practiceLessonSkill(user.id, exerciseType, level);
       setActive({ unitId: unit_id, exercises });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo cargar la práctica");
+      toast.error(err instanceof Error ? err.message : t("practice.loadError"));
     } finally {
       setLoadingMode(null);
     }
   };
 
+  const userBadge = { name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" };
+
   if (active) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="px-4 py-8">
           <ExercisePlayer
             userId={user!.id}
@@ -67,12 +71,12 @@ export default function Practice() {
   }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={userBadge}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Practice</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">{t("practice.title")}</h1>
           <p className="text-lg text-muted-foreground">
-            Choose a skill to practice. No fixed order, no limits.
+            {t("practice.subtitle")}
           </p>
         </div>
 
@@ -80,9 +84,9 @@ export default function Practice() {
           <div className="flex gap-4">
             <div className="text-3xl">🤖</div>
             <div>
-              <p className="font-semibold text-foreground mb-1">Your AI Tutor</p>
+              <p className="font-semibold text-foreground mb-1">{t("practice.tutorTitle")}</p>
               <p className="text-muted-foreground">
-                Want to focus on a specific skill? Pick any mode below and practice as much as you want. The difficulty adjusts to your level.
+                {t("practice.tutorBody")}
               </p>
             </div>
           </div>
@@ -96,24 +100,24 @@ export default function Practice() {
                   <span className="text-4xl">{mode.icon}</span>
                 </div>
 
-                <h3 className="text-xl font-bold text-foreground mb-2">{mode.title}</h3>
-                <p className="text-muted-foreground text-sm mb-6">{mode.description}</p>
+                <h3 className="text-xl font-bold text-foreground mb-2">{t(mode.titleKey)}</h3>
+                <p className="text-muted-foreground text-sm mb-6">{t(mode.descKey)}</p>
 
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">Choose difficulty:</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase">{t("practice.chooseDifficulty")}</p>
                   <div className="flex gap-2">
                     {DIFFICULTIES.map((d) => {
                       const key = `${mode.exerciseType}-${d.delta}`;
                       return (
                         <Button
-                          key={d.label}
+                          key={d.key}
                           size="sm"
                           variant="outline"
                           className="flex-1 text-xs"
                           disabled={loadingMode === key}
                           onClick={() => startPractice(mode.exerciseType, d.delta)}
                         >
-                          {loadingMode === key ? "..." : d.label}
+                          {loadingMode === key ? "..." : t(d.key)}
                         </Button>
                       );
                     })}

@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, BookStub, BookContent } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,8 +13,16 @@ const LEVEL_GROUPS: Record<string, string[]> = {
   Advanced: ["C1", "C2", "NATIVE"],
 };
 
+const FILTER_KEYS = [
+  { id: "All", key: "library.filter.all" },
+  { id: "Beginner", key: "library.filter.beginner" },
+  { id: "Intermediate", key: "library.filter.intermediate" },
+  { id: "Advanced", key: "library.filter.advanced" },
+];
+
 export default function Library() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [stories, setStories] = useState<BookStub[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("All");
@@ -28,7 +37,7 @@ export default function Library() {
         const data = await api.getLibraryCatalog(user.id);
         setStories(data);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error loading library");
+        toast.error(err instanceof Error ? err.message : t("library.loadError"));
       } finally {
         setLoading(false);
       }
@@ -44,7 +53,7 @@ export default function Library() {
       const content = await api.getLibraryBook(user.id, bookId);
       setOpenBook(content);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo cargar la historia");
+      toast.error(err instanceof Error ? err.message : t("library.openError"));
     } finally {
       setOpeningId(null);
     }
@@ -53,12 +62,14 @@ export default function Library() {
   const visibleStories =
     filter === "All" ? stories : stories.filter((s) => LEVEL_GROUPS[filter]?.includes(s.level));
 
+  const userBadge = { name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" };
+
   if (openBook) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="max-w-3xl mx-auto px-4 py-8">
           <Button variant="ghost" className="mb-4" onClick={() => setOpenBook(null)}>
-            ← Back to Library
+            {t("library.back")}
           </Button>
           <Card className="p-8">
             <h1 className="text-3xl font-bold text-foreground mb-2">{openBook.title}</h1>
@@ -73,37 +84,37 @@ export default function Library() {
   }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={userBadge}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Library</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">{t("library.title")}</h1>
           <p className="text-lg text-muted-foreground">
-            AI-generated stories tailored to your level. Each one is unique.
+            {t("library.subtitle")}
           </p>
         </div>
 
         <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
-          {["All", "Beginner", "Intermediate", "Advanced"].map((f) => (
+          {FILTER_KEYS.map((f) => (
             <Button
-              key={f}
-              variant={filter === f ? "default" : "outline"}
+              key={f.id}
+              variant={filter === f.id ? "default" : "outline"}
               className="whitespace-nowrap"
-              onClick={() => setFilter(f)}
+              onClick={() => setFilter(f.id)}
             >
-              {f}
+              {t(f.key)}
             </Button>
           ))}
         </div>
 
         {loading ? (
           <Card className="p-6 text-center">
-            <p className="text-muted-foreground">Loading stories...</p>
+            <p className="text-muted-foreground">{t("library.loading")}</p>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {visibleStories.length === 0 ? (
               <Card className="p-6 text-center col-span-full">
-                <p className="text-muted-foreground">No stories available for this level yet</p>
+                <p className="text-muted-foreground">{t("library.empty")}</p>
               </Card>
             ) : (
               visibleStories.map((story) => (
@@ -117,13 +128,13 @@ export default function Library() {
 
                   <div className="space-y-2 mb-4 text-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Level:</span>
+                      <span className="text-muted-foreground">{t("library.level")}</span>
                       <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">
                         {story.level}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Genre:</span>
+                      <span className="text-muted-foreground">{t("library.genre")}</span>
                       <span className="font-medium">{story.genre_label}</span>
                     </div>
                   </div>
@@ -133,7 +144,7 @@ export default function Library() {
                     disabled={openingId === story.id}
                     onClick={() => handleRead(story.id)}
                   >
-                    {openingId === story.id ? "Loading..." : "Read Story"}
+                    {openingId === story.id ? t("common.loading") : t("library.read")}
                   </Button>
                 </Card>
               ))

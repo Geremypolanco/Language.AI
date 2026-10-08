@@ -4,11 +4,13 @@ import { Card } from "@/components/ui/card";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
+import LanguageToggle from "@/components/LanguageToggle";
 import { LANGUAGES } from "@/lib/languages";
 
 /**
  * Login Page - Google OAuth + Onboarding
- * 
+ *
  * Flow:
  * 1. Usuario hace click en "Continuar con Google"
  * 2. Redirige a /auth/google/login
@@ -20,9 +22,21 @@ import { LANGUAGES } from "@/lib/languages";
  * 8. Redirige a /path
  */
 
+const CEFR_OPTIONS = [
+  { value: "A1", key: "login.level.a1" },
+  { value: "A2", key: "login.level.a2" },
+  { value: "B1", key: "login.level.b1" },
+  { value: "B2", key: "login.level.b2" },
+  { value: "C1", key: "login.level.c1" },
+  { value: "C2", key: "login.level.c2" },
+] as const;
+
+const DAILY_GOAL_OPTIONS = [5, 10, 15, 20, 30, 60];
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const { session, loading, login, devLogin, createProfile } = useAuth();
+  const { t } = useLocale();
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [formData, setFormData] = useState({
     display_name: session?.name || "",
@@ -71,15 +85,21 @@ export default function Login() {
       });
       setLocation("/path");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error creating profile");
+      setError(err instanceof Error ? err.message : t("login.profileError"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const selectClass =
+    "w-full px-3 py-2 border border-border rounded-md bg-background text-foreground";
+
   if (isOnboarding) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-background">
+        <div className="absolute top-4 right-4">
+          <LanguageToggle compact />
+        </div>
         <Card className="w-full max-w-md p-8">
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
@@ -88,16 +108,16 @@ export default function Login() {
               </div>
               <h1 className="text-2xl font-bold">Language.AI</h1>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Complete Your Profile</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">{t("login.onboarding.title")}</h2>
             <p className="text-muted-foreground">
-              Welcome, {session?.name}! Let's set up your learning preferences.
+              {t("login.onboarding.subtitle", { name: session?.name || "" })}
             </p>
           </div>
 
           <form onSubmit={handleSubmitOnboarding} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
-                Display Name
+                {t("login.displayName")}
               </label>
               <Input
                 value={formData.display_name}
@@ -111,14 +131,14 @@ export default function Login() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Native Language
+                  {t("login.nativeLang")}
                 </label>
                 <select
                   value={formData.native_lang}
                   onChange={(e) =>
                     setFormData({ ...formData, native_lang: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  className={selectClass}
                 >
                   {LANGUAGES.map(([code, name]) => (
                     <option key={code} value={code}>
@@ -130,14 +150,14 @@ export default function Login() {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">
-                  Target Language
+                  {t("login.targetLang")}
                 </label>
                 <select
                   value={formData.target_lang}
                   onChange={(e) =>
                     setFormData({ ...formData, target_lang: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  className={selectClass}
                 >
                   {LANGUAGES.map(([code, name]) => (
                     <option key={code} value={code}>
@@ -150,30 +170,29 @@ export default function Login() {
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
-                Starting Level
+                {t("login.startingLevel")}
               </label>
               <select
                 value={formData.level}
                 onChange={(e) =>
                   setFormData({ ...formData, level: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                className={selectClass}
               >
-                <option value="A1">Beginner (A1)</option>
-                <option value="A2">Elementary (A2)</option>
-                <option value="B1">Intermediate (B1)</option>
-                <option value="B2">Upper-Intermediate (B2)</option>
-                <option value="C1">Advanced (C1)</option>
-                <option value="C2">Fluent (C2)</option>
+                {CEFR_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {t(o.key)}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
-                Interests (comma-separated)
+                {t("login.interests")}
               </label>
               <Input
-                placeholder="e.g., travel, cooking, movies"
+                placeholder={t("login.interestsPh")}
                 value={formData.interests}
                 onChange={(e) =>
                   setFormData({ ...formData, interests: e.target.value })
@@ -183,7 +202,7 @@ export default function Login() {
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
-                Daily Goal (minutes)
+                {t("login.dailyGoal")}
               </label>
               <select
                 value={formData.daily_goal_minutes}
@@ -193,14 +212,13 @@ export default function Login() {
                     daily_goal_minutes: parseInt(e.target.value),
                   })
                 }
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                className={selectClass}
               >
-                <option value={5}>5 minutes</option>
-                <option value={10}>10 minutes</option>
-                <option value={15}>15 minutes</option>
-                <option value={20}>20 minutes</option>
-                <option value={30}>30 minutes</option>
-                <option value={60}>60 minutes</option>
+                {DAILY_GOAL_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {t("login.minutes", { n: m })}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -215,7 +233,7 @@ export default function Login() {
               className="w-full bg-primary hover:bg-primary/90"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Setting up..." : "Start Learning"}
+              {isSubmitting ? t("login.settingUp") : t("login.start")}
             </Button>
           </form>
         </Card>
@@ -228,7 +246,7 @@ export default function Login() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{t("common.loading")}</p>
         </div>
       </div>
     );
@@ -237,7 +255,10 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-stretch">
       {/* Left: Form */}
-      <div className="w-full md:w-1/2 flex flex-col justify-center px-6 md:px-12 py-12 bg-background">
+      <div className="w-full md:w-1/2 flex flex-col justify-center px-6 md:px-12 py-12 bg-background relative">
+        <div className="absolute top-4 right-4">
+          <LanguageToggle compact />
+        </div>
         <div className="max-w-sm mx-auto w-full">
           {/* Logo */}
           <div className="mb-12 flex items-center gap-3">
@@ -249,9 +270,9 @@ export default function Login() {
 
           {/* Heading */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-foreground mb-2">Welcome</h2>
+            <h2 className="text-3xl font-bold text-foreground mb-2">{t("login.welcome")}</h2>
             <p className="text-muted-foreground text-base">
-              Master any language with AI tutoring
+              {t("login.tagline")}
             </p>
           </div>
 
@@ -279,7 +300,7 @@ export default function Login() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            Continue with Google
+            {t("login.continueGoogle")}
           </Button>
 
           {/* Divider */}
@@ -288,14 +309,14 @@ export default function Login() {
               <div className="w-full border-t border-border"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-background text-muted-foreground">or</span>
+              <span className="px-2 bg-background text-muted-foreground">{t("login.or")}</span>
             </div>
           </div>
 
           {/* Dev Login */}
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground text-center">
-              Development: Quick login without Google
+              {t("login.devNote")}
             </p>
             <div className="flex gap-2">
               <Input
@@ -306,7 +327,7 @@ export default function Login() {
                 className="h-10"
               />
               <Input
-                placeholder="Name"
+                placeholder={t("login.displayName")}
                 value={devName}
                 onChange={(e) => setDevName(e.target.value)}
                 className="h-10"
@@ -319,7 +340,7 @@ export default function Login() {
               onClick={() => devLogin(devEmail, devName)}
               disabled={!devEmail || !devName}
             >
-              Dev Login
+              {t("login.devLogin")}
             </Button>
           </div>
         </div>
@@ -335,21 +356,21 @@ export default function Login() {
 
         {/* Content */}
         <div className="relative z-10 text-center max-w-md">
-          <h2 className="text-4xl font-bold text-white mb-4">Speak like a native</h2>
+          <h2 className="text-4xl font-bold text-white mb-4">{t("login.hero.title")}</h2>
           <p className="text-lg text-white/90 mb-8">
-            Master any language with AI tutoring that adapts to your pace. Conversational fluency meets academic rigor.
+            {t("login.hero.subtitle")}
           </p>
 
           {/* Feature list */}
           <div className="space-y-4 text-left">
             {[
-              { icon: "🎯", text: "Personalized lessons" },
-              { icon: "🗣️", text: "Real-time speech feedback" },
-              { icon: "📈", text: "Track your progress" },
+              { icon: "🎯", key: "login.hero.f1" },
+              { icon: "🗣️", key: "login.hero.f2" },
+              { icon: "📈", key: "login.hero.f3" },
             ].map((feature, i) => (
               <div key={i} className="flex items-center gap-3 text-white">
                 <span className="text-2xl">{feature.icon}</span>
-                <span className="font-medium">{feature.text}</span>
+                <span className="font-medium">{t(feature.key)}</span>
               </div>
             ))}
           </div>

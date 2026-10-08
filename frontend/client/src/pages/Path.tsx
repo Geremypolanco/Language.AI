@@ -4,12 +4,14 @@ import { Progress } from "@/components/ui/progress";
 import DashboardLayout from "@/components/DashboardLayout";
 import ExercisePlayer from "@/components/ExercisePlayer";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, Exercise, Lesson } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export default function Path() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,7 +26,7 @@ export default function Path() {
       const data = await api.getLessonsPath(user.id);
       setLessons(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las lecciones");
+      setError(err instanceof Error ? err.message : t("path.loadError"));
     } finally {
       setLoading(false);
     }
@@ -53,7 +55,7 @@ export default function Path() {
       const exercises = await api.getLesson(user.id, unitId);
       setActiveUnit({ unitId, exercises });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudieron cargar los ejercicios");
+      toast.error(err instanceof Error ? err.message : t("path.exercisesError"));
     } finally {
       setStartingUnitId(null);
     }
@@ -65,12 +67,12 @@ export default function Path() {
     try {
       const { unit_id, exercises } = await api.getReviewSession(user.id);
       if (exercises.length === 0) {
-        toast("No tienes repasos pendientes ahora mismo. ¡Vuelve más tarde!");
+        toast(t("path.reviewEmpty"));
         return;
       }
       setActiveUnit({ unitId: unit_id, exercises });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo cargar el repaso");
+      toast.error(err instanceof Error ? err.message : t("path.reviewError"));
     } finally {
       setStartingReview(false);
     }
@@ -78,12 +80,13 @@ export default function Path() {
 
   const masteredCount = lessons.filter((l) => l.state === "mastered").length;
   const progressPercent = lessons.length > 0 ? (masteredCount / lessons.length) * 100 : 0;
+  const userBadge = { name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" };
 
   if (loading) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Cargando lecciones...</p>
+          <p className="text-muted-foreground">{t("path.loading")}</p>
         </div>
       </DashboardLayout>
     );
@@ -91,7 +94,7 @@ export default function Path() {
 
   if (activeUnit) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="px-4 py-8">
           <ExercisePlayer
             userId={user!.id}
@@ -109,12 +112,12 @@ export default function Path() {
   }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={userBadge}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Tu ruta de aprendizaje</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">{t("path.title")}</h1>
           <p className="text-lg text-muted-foreground">
-            Avanza por lecciones estructuradas a tu propio ritmo
+            {t("path.subtitle")}
           </p>
         </div>
 
@@ -127,33 +130,33 @@ export default function Path() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card className="p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Progreso general</h3>
+              <h3 className="font-semibold text-foreground">{t("path.overallProgress")}</h3>
               <span className="text-2xl">📈</span>
             </div>
             <div className="space-y-2">
               <Progress value={progressPercent} className="h-2" />
               <p className="text-sm text-muted-foreground">
-                {masteredCount} de {lessons.length} unidades dominadas
+                {t("path.unitsMastered", { a: masteredCount, b: lessons.length })}
               </p>
             </div>
           </Card>
 
           <Card className="p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Puntos de experiencia</h3>
+              <h3 className="font-semibold text-foreground">{t("path.xp")}</h3>
               <span className="text-2xl">⭐</span>
             </div>
             <p className="text-3xl font-bold text-primary mb-1">{user?.xp ?? 0}</p>
-            <p className="text-sm text-muted-foreground">Sigue aprendiendo para ganar más</p>
+            <p className="text-sm text-muted-foreground">{t("path.xpHint")}</p>
           </Card>
 
           <Card className="p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-foreground">Racha actual</h3>
+              <h3 className="font-semibold text-foreground">{t("path.streak")}</h3>
               <span className="text-2xl">🔥</span>
             </div>
-            <p className="text-3xl font-bold text-orange-500 mb-1">{user?.streak_days ?? 0} días</p>
-            <p className="text-sm text-muted-foreground">¡Sigue así!</p>
+            <p className="text-3xl font-bold text-orange-500 mb-1">{t("path.days", { n: user?.streak_days ?? 0 })}</p>
+            <p className="text-sm text-muted-foreground">{t("path.streakHint")}</p>
           </Card>
         </div>
 
@@ -162,12 +165,12 @@ export default function Path() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-2xl">🔁</span>
-                <h3 className="text-lg font-semibold text-foreground">Repaso</h3>
+                <h3 className="text-lg font-semibold text-foreground">{t("path.review")}</h3>
               </div>
               <p className="text-sm text-muted-foreground">
                 {dueReviews > 0
-                  ? `${dueReviews} palabra${dueReviews === 1 ? "" : "s"} lista${dueReviews === 1 ? "" : "s"} para repasar ahora`
-                  : "Palabras que ya aprendiste, para no olvidarlas — te avisamos cuando toque repasar"}
+                  ? t(dueReviews === 1 ? "path.reviewDue.one" : "path.reviewDue.other", { n: dueReviews })
+                  : t("path.reviewHint")}
               </p>
             </div>
             <Button
@@ -175,17 +178,17 @@ export default function Path() {
               disabled={startingReview}
               onClick={handleStartReview}
             >
-              {startingReview ? "Cargando..." : "Repasar ahora"}
+              {startingReview ? t("path.reviewLoading") : t("path.reviewNow")}
             </Button>
           </div>
         </Card>
 
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-foreground">Lecciones</h2>
+          <h2 className="text-2xl font-bold text-foreground">{t("path.lessons")}</h2>
           <div className="grid gap-4">
             {lessons.length === 0 ? (
               <Card className="p-6 text-center">
-                <p className="text-muted-foreground">Aún no hay lecciones disponibles</p>
+                <p className="text-muted-foreground">{t("path.noLessons")}</p>
               </Card>
             ) : (
               lessons.map((lesson, index) => (
@@ -208,7 +211,7 @@ export default function Path() {
                         </span>
                         {lesson.best_score > 0 && (
                           <span className="text-sm text-muted-foreground">
-                            Mejor puntaje: {Math.round(lesson.best_score * 100)}%
+                            {t("path.bestScore", { p: Math.round(lesson.best_score * 100) })}
                           </span>
                         )}
                       </div>
@@ -220,7 +223,7 @@ export default function Path() {
                       disabled={startingUnitId === lesson.id}
                       onClick={() => handleStart(lesson.id)}
                     >
-                      {startingUnitId === lesson.id ? "Cargando..." : lesson.state === "mastered" ? "Repasar" : "Comenzar"}
+                      {startingUnitId === lesson.id ? t("common.loading") : lesson.state === "mastered" ? t("path.reviewLesson") : t("path.start")}
                     </Button>
                   </div>
                 </Card>

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, PersonaInfo } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { toast } from "sonner";
@@ -71,6 +72,7 @@ function TeacherAvatar({ persona, className }: { persona: PersonaInfo; className
 
 export default function Talk() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [activePersona, setActivePersona] = useState<PersonaInfo | null>(null);
@@ -118,7 +120,7 @@ export default function Talk() {
     api
       .getPersonas()
       .then(setPersonas)
-      .catch((err) => toast.error(err instanceof Error ? err.message : "No se pudieron cargar los maestros"));
+      .catch((err) => toast.error(err instanceof Error ? err.message : t("talk.loadTeachersError")));
   }, []);
 
   useEffect(() => {
@@ -138,7 +140,7 @@ export default function Talk() {
       setConnected(false);
       setConnectionLost(true);
     };
-    ws.onerror = () => toast.error("Conexión con el tutor interrumpida");
+    ws.onerror = () => toast.error(t("talk.connectionInterrupted"));
 
     ws.onmessage = (event) => {
       const msg: ServerEvent = JSON.parse(event.data);
@@ -258,7 +260,7 @@ export default function Talk() {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "audio", data: base64, content_type: "audio/webm" }));
         } else {
-          toast.error("Se perdió la conexión — tu grabación no se envió. Reconecta e intenta de nuevo.");
+          toast.error(t("talk.recordingLost"));
         }
       };
 
@@ -314,7 +316,7 @@ export default function Talk() {
         vadFrameRef.current = requestAnimationFrame(tick);
       }
     } catch {
-      toast.error("No se pudo acceder al micrófono");
+      toast.error(t("talk.micError"));
     }
   };
 
@@ -353,14 +355,14 @@ export default function Talk() {
 
   if (!selectedPersonaId) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={{ name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" }}>
         <div className="max-w-4xl mx-auto px-4 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">Elige tu maestro</h1>
-            <p className="text-muted-foreground">Cada uno tiene un estilo de enseñanza y una voz diferentes.</p>
+            <h1 className="text-3xl font-bold text-foreground mb-2">{t("talk.chooseTitle")}</h1>
+            <p className="text-muted-foreground">{t("talk.chooseSubtitle")}</p>
           </div>
           {personas.length === 0 ? (
-            <p className="text-muted-foreground">Cargando maestros...</p>
+            <p className="text-muted-foreground">{t("talk.loadingTeachers")}</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {personas.map((p) => (
@@ -385,28 +387,28 @@ export default function Talk() {
   }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={{ name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" }}>
       <div className="max-w-4xl mx-auto px-4 py-8 h-full flex flex-col">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {activePersona && <TeacherAvatar persona={activePersona} className="w-12 h-12" />}
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{activePersona?.name || "Talk Live"}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{activePersona?.name || t("talk.talkLive")}</h1>
               <p className="text-sm text-muted-foreground">
-                {activePersona?.title || (!connected && "conectando...")}
+                {activePersona?.title || (!connected && t("talk.connecting"))}
               </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => setSelectedPersonaId(null)}>
-            Cambiar de maestro
+            {t("talk.changeTeacher")}
           </Button>
         </div>
 
         {connectionLost && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <span>Se perdió la conexión con el tutor.</span>
+            <span>{t("talk.connectionLost")}</span>
             <Button size="sm" variant="outline" onClick={() => setReconnectKey((k) => k + 1)}>
-              Reconectar
+              {t("talk.reconnect")}
             </Button>
           </div>
         )}
@@ -434,9 +436,9 @@ export default function Talk() {
           >
             {isRecording
               ? handsFree
-                ? "🎙️ Escuchando... (toca para enviar)"
-                : "🛑 Detener grabación"
-              : "🎤 Hablar"}
+                ? t("talk.listening")
+                : t("talk.stopRecording")
+              : t("talk.speak")}
           </Button>
 
           <button
@@ -444,14 +446,12 @@ export default function Talk() {
             className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-smooth"
             onClick={() => setHandsFree((v) => !v)}
           >
-            {handsFree
-              ? "🔊 Modo manos libres activado — el tutor te escuchará de nuevo automáticamente. Desactivar"
-              : "Modo manos libres desactivado — activar para conversar sin tocar botones"}
+            {handsFree ? t("talk.handsFreeOn") : t("talk.handsFreeOff")}
           </button>
 
           <div className="flex gap-2">
             <Input
-              placeholder="O escribe..."
+              placeholder={t("talk.typePlaceholder")}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
@@ -459,7 +459,7 @@ export default function Talk() {
               disabled={!connected}
             />
             <Button onClick={handleSendMessage} disabled={!input.trim() || !connected}>
-              Enviar
+              {t("talk.send")}
             </Button>
           </div>
         </div>

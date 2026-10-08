@@ -3,6 +3,8 @@
  * Todos los endpoints requieren credentials: "include" para enviar cookies de sesión
  */
 
+import { getEffectiveLocale } from "./i18n";
+
 // FastAPI's 422 validation errors put a list of {loc, msg, type} under
 // `detail` instead of a string; a plain HTTPException(detail="...") is a
 // string. Both shapes have to render as readable text, not "[object Object]".
@@ -272,6 +274,11 @@ class ApiClient {
       ...options,
       headers: {
         "Content-Type": "application/json",
+        // UI locale of the learner (saved choice > browser > default — see
+        // lib/i18n.ts). The backend generates *learning content* from the
+        // explicit target_lang/native_lang request fields; this header is
+        // the contract for any future backend UI-string localization.
+        "Accept-Language": getEffectiveLocale(),
         ...options.headers,
       },
       credentials: "include", // Enviar cookies de sesión

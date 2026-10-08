@@ -3,21 +3,23 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
+import LanguageToggle from "@/components/LanguageToggle";
 
 interface NavItem {
-  label: string;
+  key: string;
   icon: string;
   path: string;
   badge?: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Path", icon: "🛤️", path: "/path" },
-  { label: "Practice", icon: "⚡", path: "/practice" },
-  { label: "Library", icon: "📚", path: "/library" },
-  { label: "University", icon: "🎓", path: "/university" },
-  { label: "Talk Live", icon: "🎤", path: "/talk" },
-  { label: "Progress", icon: "📊", path: "/progress" },
+  { key: "nav.path", icon: "🛤️", path: "/path" },
+  { key: "nav.practice", icon: "⚡", path: "/practice" },
+  { key: "nav.library", icon: "📚", path: "/library" },
+  { key: "nav.university", icon: "🎓", path: "/university" },
+  { key: "nav.talk", icon: "🎤", path: "/talk" },
+  { key: "nav.progress", icon: "📊", path: "/progress" },
 ];
 
 interface DashboardLayoutProps {
@@ -29,6 +31,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { logout } = useAuth();
+  const { t } = useLocale();
 
   return (
     <div className="flex h-dvh bg-background">
@@ -52,7 +55,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
         {user && (
           <div className="p-4 mx-4 mt-4 rounded-lg bg-muted/50 border border-sidebar-border">
             <p className="text-sm font-medium text-sidebar-foreground">{user.name}</p>
-            <p className="text-xs text-muted-foreground mt-1">Level {user.level}</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("common.level", { level: user.level })}</p>
           </div>
         )}
 
@@ -71,7 +74,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
                   onClick={() => setSidebarOpen(false)}
                 >
                   <span className="text-lg">{item.icon}</span>
-                  <span>{item.label}</span>
+                  <span>{t(item.key)}</span>
                   {item.badge && (
                     <span className="ml-auto bg-primary text-primary-foreground text-xs font-bold px-2 py-1 rounded-full">
                       {item.badge}
@@ -85,10 +88,13 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
 
         {/* Footer */}
         <div className="p-4 border-t border-sidebar-border space-y-2">
+          <div className="flex justify-center pb-1">
+            <LanguageToggle compact />
+          </div>
           <Link href="/settings">
             <a onClick={() => setSidebarOpen(false)}>
               <Button variant="outline" className="w-full justify-start">
-                ⚙️ Settings
+                ⚙️ {t("nav.settings")}
               </Button>
             </a>
           </Link>
@@ -97,7 +103,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
             className="w-full justify-start"
             onClick={() => logout()}
           >
-            🚪 Sign out
+            🚪 {t("nav.signOut")}
           </Button>
         </div>
       </aside>
@@ -107,14 +113,17 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
         {/* Mobile Header */}
         <div className="md:hidden flex items-center justify-between px-4 py-4 bg-card border-b border-border">
           <h2 className="font-bold text-foreground">Language.AI</h2>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <LanguageToggle compact />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label={sidebarOpen ? t("nav.menu.close") : t("nav.menu.open")}
+            >
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </Button>
+          </div>
         </div>
 
         {/* Content */}

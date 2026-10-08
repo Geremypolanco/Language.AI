@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { api, Exercise } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +51,7 @@ function acceptableTextAnswers(exercise: { target_text: string; native_text: str
 
 export default function ExercisePlayer({ userId, unitId, exercises, onExit }: ExercisePlayerProps) {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [index, setIndex] = useState(0);
   const [textAnswer, setTextAnswer] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -249,14 +251,14 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     handleNext();
   };
 
-  // The "Escuchar"/"Escuchar pronunciación" button's click handler — the
+  // The "Escuchar"/"{t("exercise.listenPronunciation")}" button's click handler — the
   // one call site where a real user gesture is available, so this is
   // exactly where play() has to happen (see loadAndPlay's docstring).
   const replayAudio = async () => {
     if (!user) return;
     const played = await loadAndPlay();
     if (!played) {
-      toast.error("No se pudo reproducir el audio");
+      toast.error(t("exercise.audioError"));
     }
   };
 
@@ -281,7 +283,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           const said = normalize(text);
           const target = normalize(exercise.target_text);
           const matched = said.includes(target) || target.includes(said);
-          recordAnswer(matched, `Escuchamos: "${text}"`);
+          recordAnswer(matched, t("exercise.heardAs", { t: text }));
         } catch {
           setSttUnavailable(true);
         } finally {
@@ -291,7 +293,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
       mediaRecorder.start();
       setIsRecording(true);
     } catch {
-      toast.error("No se pudo acceder al micrófono");
+      toast.error(t("exercise.micError"));
     }
   };
 
@@ -343,7 +345,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
       const result = await api.completeLesson(userId, unitId, score, elapsedSeconds);
       setSummary(result as typeof summary);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo guardar el resultado de la lección");
+      toast.error(err instanceof Error ? err.message : t("exercise.saveError"));
       onExit();
     } finally {
       setSubmitting(false);
@@ -354,7 +356,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
     return (
       <Card className="max-w-lg mx-auto p-8 text-center space-y-4">
         <div className="text-5xl">🎉</div>
-        <h2 className="text-2xl font-bold text-foreground">¡Lección completada!</h2>
+        <h2 className="text-2xl font-bold text-foreground">{t("exercise.completed")}</h2>
         <div className="grid grid-cols-3 gap-4 py-4">
           <div>
             <p className="text-2xl font-bold text-primary">+{summary.xp_gained}</p>
@@ -362,18 +364,18 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           </div>
           <div>
             <p className="text-2xl font-bold text-primary">+{summary.gems_gained}</p>
-            <p className="text-xs text-muted-foreground">Gemas</p>
+            <p className="text-xs text-muted-foreground">{t("exercise.gems")}</p>
           </div>
           <div>
             <p className="text-2xl font-bold text-orange-500">{summary.streak_days}</p>
-            <p className="text-xs text-muted-foreground">Racha (días)</p>
+            <p className="text-xs text-muted-foreground">{t("exercise.streakDays")}</p>
           </div>
         </div>
         {summary.leveled_up && (
-          <p className="text-primary font-semibold">¡Subiste a nivel {summary.leveled_up}!</p>
+          <p className="text-primary font-semibold">{t("exercise.leveledUp", { l: summary.leveled_up })}</p>
         )}
         <Button className="w-full" onClick={onExit}>
-          Continuar
+          {t("exercise.continue")}
         </Button>
       </Card>
     );
@@ -396,16 +398,16 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
       <div>
         <div className="flex justify-between text-sm text-muted-foreground mb-2">
           <span>
-            Ejercicio {index + 1} de {exercises.length}
+            {t("exercise.count", { i: index + 1, n: exercises.length })}
           </span>
-          <span>{correctCount} correctas</span>
+          <span>{t("exercise.correct", { n: correctCount })}</span>
         </div>
         <Progress value={(index / exercises.length) * 100} className="h-2" />
       </div>
 
       <div>
         <p className="text-lg font-semibold text-foreground mb-1">
-          {exercise.type === "vocab_intro" ? "📖 Aprende esta palabra antes de practicar" : exercise.prompt}
+          {exercise.type === "vocab_intro" ? t("exercise.learnWord") : exercise.prompt}
         </p>
         {exercise.target_text && !targetTextIsAnswer && (
           <p className="text-2xl font-bold text-primary mb-2">{exercise.target_text}</p>
@@ -423,7 +425,7 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           {imageUrl ? (
             <img src={imageUrl} alt="" className="max-h-48 rounded-lg object-cover" />
           ) : imageFailed ? (
-            <p className="text-sm text-muted-foreground italic">(Imagen no disponible en este momento)</p>
+            <p className="text-sm text-muted-foreground italic">{t("exercise.imageUnavailable")}</p>
           ) : (
             <div className="h-48 w-48 rounded-lg bg-muted animate-pulse" />
           )}
@@ -434,10 +436,10 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
         <div className="flex flex-col items-center gap-2">
           <Button type="button" variant="outline" size="lg" onClick={replayAudio} disabled={!user}>
             <Volume2 className="w-5 h-5 mr-2" />
-            Escuchar pronunciación
+            {t("exercise.listenPronunciation")}
           </Button>
           {audioFailed && (
-            <p className="text-sm text-muted-foreground italic">(Audio no disponible en este momento)</p>
+            <p className="text-sm text-muted-foreground italic">{t("exercise.audioUnavailable")}</p>
           )}
         </div>
       )}
@@ -446,10 +448,10 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
         <div className="flex items-center justify-center">
           <Button type="button" variant="outline" size="lg" onClick={replayAudio} disabled={!user}>
             <Volume2 className="w-5 h-5 mr-2" />
-            Escuchar
+            {t("exercise.listen")}
           </Button>
           {audioFailed && (
-            <p className="text-sm text-muted-foreground italic ml-3">(Audio no disponible en este momento)</p>
+            <p className="text-sm text-muted-foreground italic ml-3">{t("exercise.audioUnavailable")}</p>
           )}
         </div>
       )}
@@ -486,10 +488,10 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
             onChange={(e) => setTextAnswer(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleTextSubmit()}
             disabled={revealed}
-            placeholder="Tu respuesta..."
+            placeholder={t("exercise.answerPlaceholder")}
           />
           <Button onClick={handleTextSubmit} disabled={revealed || !textAnswer.trim()}>
-            Verificar
+            {t("exercise.verify")}
           </Button>
         </div>
       )}
@@ -504,20 +506,20 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
               onClick={isRecording ? stopSpeakRecording : startSpeakRecording}
               disabled={transcribing}
             >
-              {isRecording ? "🛑 Detener" : transcribing ? "Escuchando..." : "🎤 Grabar mi pronunciación"}
+              {isRecording ? t("exercise.stop") : transcribing ? t("exercise.listening") : t("exercise.record")}
             </Button>
           </div>
           {sttUnavailable && (
             <div className="space-y-2 text-center">
               <p className="text-sm text-muted-foreground italic">
-                (No se pudo transcribir el audio en este momento — evalúate tú mismo)
+                {t("exercise.sttFallback")}
               </p>
               <div className="flex gap-2 justify-center">
                 <Button variant="outline" onClick={() => handleSelfAssess(true)}>
-                  ✅ Lo logré
+                  {t("exercise.nailedIt")}
                 </Button>
                 <Button variant="outline" onClick={() => handleSelfAssess(false)}>
-                  🔁 Necesito practicar más
+                  {t("exercise.needPractice")}
                 </Button>
               </div>
             </div>
@@ -532,10 +534,10 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
             onChange={(e) => setConversationAnswer(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submitConversationAnswer()}
             disabled={tutorReplying}
-            placeholder="Responde en el idioma que estás practicando..."
+            placeholder={t("exercise.conversationPh")}
           />
           <Button onClick={submitConversationAnswer} disabled={tutorReplying || !conversationAnswer.trim()}>
-            {tutorReplying ? "..." : "Enviar"}
+            {tutorReplying ? "..." : t("exercise.send")}
           </Button>
         </div>
       )}
@@ -549,20 +551,20 @@ export default function ExercisePlayer({ userId, unitId, exercises, onExit }: Ex
           {feedbackText ? (
             <p>{feedbackText}</p>
           ) : wasCorrect ? (
-            "¡Correcto! 🎉"
+            t("exercise.correctBanner")
           ) : (
-            `Casi. La forma natural de decirlo es: "${exercise.correct_answer}" — no pasa nada, así se aprende. Sigamos.`
+            t("exercise.almost", { a: exercise.correct_answer })
           )}
         </div>
       )}
 
       <div className="flex justify-between">
         <Button variant="ghost" onClick={onExit}>
-          Salir
+          {t("exercise.exit")}
         </Button>
         {(revealed || exercise.type === "vocab_intro") && (
           <Button onClick={exercise.type === "vocab_intro" ? handleContinueTeaching : handleNext} disabled={submitting}>
-            {submitting ? "Guardando..." : isLast ? "Terminar" : exercise.type === "vocab_intro" ? "Entendido, practicar" : "Siguiente"}
+            {submitting ? t("exercise.saving") : isLast ? t("exercise.finish") : exercise.type === "vocab_intro" ? t("exercise.understood") : t("exercise.next")}
           </Button>
         )}
       </div>

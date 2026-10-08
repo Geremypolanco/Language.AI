@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardLayout from "@/components/DashboardLayout";
 import CourseViewer from "@/components/CourseViewer";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocale } from "@/contexts/LocaleContext";
 import { api, AcademicField, AcademyProgress, Curriculum, CourseStub } from "@/lib/api";
 import { LANGUAGES } from "@/lib/languages";
 import { useEffect, useState } from "react";
@@ -56,16 +57,17 @@ function languageName(code: string): string {
 
 // Course counts per depth — mirrors AcademicLevel.course_count in backend/models.py
 // (not returned by GET /api/academy/fields, which lists fields only).
-const LEVEL_TABS: { value: "ASSOCIATE" | "BACHELOR" | "MASTER"; label: string; courseCount: number }[] = [
-  { value: "ASSOCIATE", label: "Técnico", courseCount: 12 },
-  { value: "BACHELOR", label: "Profesional", courseCount: 24 },
-  { value: "MASTER", label: "Avanzado", courseCount: 10 },
+const LEVEL_TABS: { value: "ASSOCIATE" | "BACHELOR" | "MASTER"; labelKey: string; courseCount: number }[] = [
+  { value: "ASSOCIATE", labelKey: "university.tab.associate", courseCount: 12 },
+  { value: "BACHELOR", labelKey: "university.tab.bachelor", courseCount: 24 },
+  { value: "MASTER", labelKey: "university.tab.master", courseCount: 10 },
 ];
 
 type View = "fields" | "curriculum" | "course";
 
 export default function University() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [fields, setFields] = useState<AcademicField[]>([]);
   const [progress, setProgress] = useState<AcademyProgress | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +102,7 @@ export default function University() {
         const data = await api.getAcademyFields();
         setFields(data);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "No se pudieron cargar las áreas de estudio");
+        toast.error(err instanceof Error ? err.message : t("university.loadError"));
       } finally {
         setLoading(false);
       }
@@ -115,10 +117,10 @@ export default function University() {
     setEnrollingFieldId(fieldId);
     try {
       const enrollment = await api.enrollAcademyCareer(user.id, fieldId, level, contentLang || undefined);
-      toast.success(`Inscrito en ${enrollment.field_name} (${enrollment.level_label})`);
+      toast.success(t("university.enrolledToast", { field: enrollment.field_name, level: enrollment.level_label }));
       await refreshProgress();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo completar la inscripción");
+      toast.error(err instanceof Error ? err.message : t("university.enrollError"));
     } finally {
       setEnrollingFieldId(null);
     }
@@ -132,7 +134,7 @@ export default function University() {
       const data = await api.getAcademyCurriculum(user.id);
       setCurriculum(data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo cargar el plan de estudios");
+      toast.error(err instanceof Error ? err.message : t("university.curriculumError"));
       setView("fields");
     } finally {
       setLoadingCurriculum(false);
@@ -141,10 +143,11 @@ export default function University() {
 
   const enrolledFieldId = progress?.enrollment?.field_id;
   const completedIds = new Set(progress?.completed_course_ids ?? []);
+  const userBadge = { name: user?.display_name || t("common.fallbackUser"), level: user?.level || "A1" };
 
   if (view === "course" && activeCourse && user?.id) {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="max-w-4xl mx-auto px-4 py-8">
           <CourseViewer
             userId={user.id}
@@ -163,25 +166,25 @@ export default function University() {
 
   if (view === "curriculum") {
     return (
-      <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+      <DashboardLayout user={userBadge}>
         <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => setView("fields")}>
-              ← Volver a las carreras
+              {t("university.backToCareers")}
             </Button>
           </div>
           {curriculum && (
             <div>
               <h1 className="text-3xl font-bold text-foreground mb-1">{curriculum.field_name}</h1>
               <p className="text-muted-foreground">
-                {curriculum.level_label} · {completedIds.size} de {curriculum.courses.length} cursos completados
-                {progress?.enrollment && <> · Contenido en {languageName(progress.enrollment.content_lang)}</>}
+                {t("university.coursesCompleted", { a: completedIds.size, b: curriculum.courses.length })}
+                {progress?.enrollment && <> · {t("university.contentIn")} {languageName(progress.enrollment.content_lang)}</>}
               </p>
             </div>
           )}
           {loadingCurriculum ? (
             <Card className="p-6 text-center">
-              <p className="text-muted-foreground">Cargando plan de estudios...</p>
+              <p className="text-muted-foreground">{t("university.loadingCurriculum")}</p>
             </Card>
           ) : (
             <div className="space-y-3">
@@ -218,37 +221,36 @@ export default function University() {
   }
 
   return (
-    <DashboardLayout user={{ name: user?.display_name || "User", level: user?.level || "A1" }}>
+    <DashboardLayout user={userBadge}>
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Universidad</h1>
+          <h1 className="text-4xl font-bold text-foreground mb-2">{t("university.title")}</h1>
           <p className="text-lg text-muted-foreground">
-            Carreras autodirigidas y rigurosas diseñadas para el dominio profesional
+            {t("university.subtitle")}
           </p>
         </div>
 
         <Card className="p-4 mb-8 border-yellow-200 bg-yellow-50">
           <p className="text-sm text-yellow-900">
-            <strong>Nota:</strong> Estas son rutas de aprendizaje a tu propio ritmo diseñadas para desarrollar
-            competencia profesional. No son programas acreditados y no otorgan títulos ni credenciales oficiales.
+            <strong>{t("university.disclaimerPrefix")}</strong> {t("university.disclaimer")}
           </p>
         </Card>
 
         {progress?.enrollment && (
           <Card className="p-4 mb-8 border-primary/30 bg-primary/5 flex items-center justify-between flex-wrap gap-3">
             <p className="text-sm text-foreground">
-              Inscrito actualmente en: <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
-              {progress.completed_course_ids.length} de {progress.total_courses} cursos completados · Contenido en{" "}
+              {t("university.enrolledIn")} <strong>{progress.enrollment.field_name}</strong> ({progress.enrollment.level_label}) —{" "}
+              {t("university.coursesCompleted", { a: progress.completed_course_ids.length, b: progress.total_courses })} · {t("university.contentIn")}{" "}
               <strong>{languageName(progress.enrollment.content_lang)}</strong>
             </p>
             <Button size="sm" onClick={openCurriculum}>
-              Ver plan de estudios
+              {t("university.viewCurriculum")}
             </Button>
           </Card>
         )}
 
         <Card className="p-4 mb-8 flex items-center gap-3 flex-wrap">
-          <label className="text-sm font-medium text-foreground">Idioma del contenido al inscribirme:</label>
+          <label className="text-sm font-medium text-foreground">{t("university.contentLangLabel")}</label>
           <select
             value={contentLang}
             onChange={(e) => setContentLang(e.target.value)}
@@ -261,15 +263,15 @@ export default function University() {
             ))}
           </select>
           <span className="text-xs text-muted-foreground">
-            Puedes estudiar una carrera en cualquier idioma, no solo en tu idioma natal.
+            {t("university.contentLangHint")}
           </span>
         </Card>
 
         <Tabs defaultValue="BACHELOR" className="mb-8">
           <TabsList className="grid w-full grid-cols-3">
-            {LEVEL_TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value}>
-                {t.label}
+            {LEVEL_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {t(tab.labelKey)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -278,7 +280,7 @@ export default function University() {
             <TabsContent key={tab.value} value={tab.value} className="space-y-6">
               {loading ? (
                 <Card className="p-6 text-center">
-                  <p className="text-muted-foreground">Cargando carreras...</p>
+                  <p className="text-muted-foreground">{t("university.loadingCareers")}</p>
                 </Card>
               ) : (
                 <div className="grid gap-6">
@@ -299,12 +301,13 @@ export default function University() {
                             disabled={enrollingFieldId === field.id}
                             onClick={() => handleEnroll(field.id, tab.value)}
                           >
-                            {isEnrolled ? "Inscrito ✓" : enrollingFieldId === field.id ? "Inscribiendo..." : "Inscribirme"}
+                            {isEnrolled ? t("university.enrolled") : enrollingFieldId === field.id ? t("university.enrolling") : t("university.enroll")}
                           </Button>
                         </div>
                         <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                           <p className="text-sm text-muted-foreground">
-                            <strong>{tab.courseCount} cursos</strong> en esta ruta · Tutor: {field.tutor_name}
+                            <strong>{tab.courseCount}</strong>{" "}
+                            {t("university.coursesInTrackRest", { tutor: field.tutor_name })}
                           </p>
                         </div>
                       </Card>

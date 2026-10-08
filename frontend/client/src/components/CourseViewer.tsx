@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { api, Assignment, CourseContent, CourseStub } from "@/lib/api";
+import { useLocale } from "@/contexts/LocaleContext";
 import { toast } from "sonner";
 
 interface CourseViewerProps {
@@ -27,6 +28,7 @@ function AssignmentCard({
 }) {
   const [response, setResponse] = useState(assignment.response);
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useLocale();
 
   const handleSubmit = async () => {
     if (!response.trim()) return;
@@ -34,9 +36,9 @@ function AssignmentCard({
     try {
       const result = await api.submitAcademyAssignment(userId, courseId, assignment.id, response);
       onSubmitted({ ...assignment, submitted: true, response, feedback: result.feedback, grade: result.grade });
-      toast.success("Tarea enviada y calificada");
+      toast.success(t("course.taskSubmitted"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo enviar la tarea");
+      toast.error(err instanceof Error ? err.message : t("course.submitTaskError"));
     } finally {
       setSubmitting(false);
     }
@@ -75,6 +77,7 @@ function AssignmentCard({
 }
 
 export default function CourseViewer({ userId, course, alreadyCompleted, onExit, onCompleted }: CourseViewerProps) {
+  const { t } = useLocale();
   const [content, setContent] = useState<CourseContent | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
 
@@ -102,7 +105,7 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
         const data = await api.getAcademyCourse(userId, course.id);
         if (!cancelled) setContent(data);
       } catch (err) {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : "No se pudo cargar el curso");
+        if (!cancelled) toast.error(err instanceof Error ? err.message : t("course.loadError"));
       } finally {
         if (!cancelled) setLoadingContent(false);
       }
@@ -130,7 +133,7 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
       const data = await api.getAcademyScenario(userId, course.id);
       setScenario(data.scenario);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo generar el caso práctico");
+      toast.error(err instanceof Error ? err.message : t("course.genCaseError"));
     } finally {
       setLoadingScenario(false);
     }
@@ -143,7 +146,7 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
       const data = await api.getAcademyScenarioFeedback(userId, course.id, scenario, scenarioResponse);
       setScenarioFeedback(data.feedback);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo evaluar tu respuesta");
+      toast.error(err instanceof Error ? err.message : t("course.evalError"));
     } finally {
       setSubmittingScenario(false);
     }
@@ -153,10 +156,10 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
     setCompleting(true);
     try {
       await api.completeAcademyCourse(userId, course.id);
-      toast.success("¡Curso completado!");
+      toast.success(t("course.courseCompleted"));
       onCompleted();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo marcar el curso como completado");
+      toast.error(err instanceof Error ? err.message : t("course.completeError"));
     } finally {
       setCompleting(false);
     }
@@ -166,13 +169,13 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={onExit}>
-          ← Volver al plan de estudios
+          {t("course.back")}
         </Button>
         {alreadyCompleted ? (
-          <Badge>Completado ✓</Badge>
+          <Badge>{t("course.completed")}</Badge>
         ) : (
           <Button onClick={handleComplete} disabled={completing}>
-            {completing ? "Guardando..." : "Marcar curso como completado"}
+            {completing ? t("common.saving") : t("course.markComplete")}
           </Button>
         )}
       </div>
@@ -184,11 +187,11 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
 
       {loadingContent ? (
         <Card className="p-6 text-center">
-          <p className="text-muted-foreground">Cargando contenido del curso...</p>
+          <p className="text-muted-foreground">{t("course.loading")}</p>
         </Card>
       ) : !content || content.modules.length === 0 ? (
         <Card className="p-6 text-center">
-          <p className="text-muted-foreground">No se pudo generar el contenido de este curso en este momento.</p>
+          <p className="text-muted-foreground">{t("course.contentError")}</p>
         </Card>
       ) : (
         <div className="space-y-4">
@@ -202,10 +205,10 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
       )}
 
       <div>
-        <h3 className="text-lg font-bold text-foreground mb-3">Caso práctico</h3>
+        <h3 className="text-lg font-bold text-foreground mb-3">{t("course.caseStudy")}</h3>
         {!scenario ? (
           <Button variant="outline" onClick={loadScenario} disabled={loadingScenario}>
-            {loadingScenario ? "Generando caso..." : "Generar un caso práctico"}
+            {loadingScenario ? t("course.generatingCase") : t("course.generateCase")}
           </Button>
         ) : (
           <Card className="p-5 space-y-3">
@@ -219,11 +222,11 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
                 <Textarea
                   value={scenarioResponse}
                   onChange={(e) => setScenarioResponse(e.target.value)}
-                  placeholder="¿Cómo resolverías este caso?"
+                  placeholder={t("course.casePlaceholder")}
                   rows={4}
                 />
                 <Button size="sm" onClick={submitScenario} disabled={submittingScenario || !scenarioResponse.trim()}>
-                  {submittingScenario ? "Evaluando..." : "Enviar respuesta"}
+                  {submittingScenario ? t("course.evaluating") : t("course.submitAnswer")}
                 </Button>
               </div>
             )}
@@ -232,11 +235,11 @@ export default function CourseViewer({ userId, course, alreadyCompleted, onExit,
       </div>
 
       <div>
-        <h3 className="text-lg font-bold text-foreground mb-3">Tareas</h3>
+        <h3 className="text-lg font-bold text-foreground mb-3">{t("course.assignments")}</h3>
         {loadingAssignments ? (
-          <p className="text-sm text-muted-foreground">Cargando tareas...</p>
+          <p className="text-sm text-muted-foreground">{t("course.loadingTasks")}</p>
         ) : !assignments || assignments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hay tareas disponibles para este curso en este momento.</p>
+          <p className="text-sm text-muted-foreground">{t("course.noTasks")}</p>
         ) : (
           <div className="space-y-4">
             {assignments.map((a) => (
